@@ -1,0 +1,24 @@
+{:paths ["src"]
+
+ :deps  {co.multiply/scoped        {:mvn/version "0.1.12"}
+         co.multiply/machine-latch {:mvn/version "0.1.8"}
+         co.multiply/pathling      {:mvn/version "0.1.7"}}
+
+ :aliases
+ {:dev    {:extra-paths ["dev"]
+           :extra-deps  {org.clojure/core.async {:mvn/version "1.8.741"}
+                         criterium/criterium    {:mvn/version "0.4.6"}
+                         nrepl/nrepl            {:mvn/version "1.5.2"}}}
+
+  :test   {:extra-paths ["test"]
+           :extra-deps  {org.clojure/core.async {:mvn/version "1.8.741"}
+                         lambdaisland/kaocha    {:mvn/version "1.91.1392"}}}
+
+  :build  {:ns-default build
+           :deps       {io.github.clojure/tools.build {:mvn/version "0.10.11"}
+                        slipset/deps-deploy           {:mvn/version "0.2.2"}}}
+
+  :cljdoc {:extra-deps {io.github.cljdoc/cljdoc-analyzer {:git/tag "0.10.3" :git/sha "3f37a390"}
+                        org.clojure/core.async           {:mvn/version "1.8.741"}}
+           :main-opts  ["-m" "cljdoc-analyzer.cljdoc-main"]}}}
+

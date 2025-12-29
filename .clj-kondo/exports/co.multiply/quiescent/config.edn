@@ -1,0 +1,3 @@
+{:lint-as {co.multiply.quiescent/qfor clojure.core/for
+           co.multiply.quiescent/qlet clojure.core/let
+           co.multiply.quiescent/qdo  clojure.core/do}}

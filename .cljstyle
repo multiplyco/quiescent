@@ -1,0 +1,19 @@
+{:rules
+ {:whitespace  {:remove-surrounding? true
+                :remove-trailing?    true
+                :insert-missing?     true}
+  :indentation {:indents {#"^:?require$" [[:inner 0]]
+                          #"^:?import$"  [[:inner 0]]
+                          #"^:?use$"     [[:inner 0]]
+                          #"^[^ \[]"     [[:inner 0]]
+                          =              [[:block 0]]
+                          catch          [[:inner 0]]
+                          deftype        [[:inner 1]]
+                          defrecord      [[:inner 1]]
+                          do             [[:inner 0]]
+                          not=           [[:block 0]]
+                          try            [[:inner 0]]}}
+
+  :types       {:types? false :protocols? false}
+  :vars        {:enabled? false}
+  :namespaces  {:enabled? false}}}
