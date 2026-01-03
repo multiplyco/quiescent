@@ -31,7 +31,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.1.4"}
+co.multiply/quiescent {:mvn/version "0.1.5"}
 ```
 
 ## Core concepts
