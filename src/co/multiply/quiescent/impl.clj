@@ -180,19 +180,13 @@
   (ml/machine-latch-factory state-machine))
 
 
-;; Subscription payload can be:
-;; - Function: Called with TaskState when phase is reached (for then, finally, ground callbacks)
-;; - Task: Strong ref, cascade cancel when phase reached (explicit child registration)
-;; - WeakReference[Task]: GC-friendly cascade cancel. Used for:
-;;   - Parent-child relationships (normal child registration via *this*)
-;;   - Backward cancellation in chains (downstream cancels upstream if still pending)
-;;   If referent was collected, the cancel is silently skipped.
 (deftype TaskState [^boolean exceptional ^boolean cancelled result])
 
 
 (definterface ITask
   (getState [])
   (getScope [])
+  (atOrPast [phase])
   (getNow [default])
   (^boolean awaitPhase [phase])
   (^boolean awaitPhaseMillis [phase ^long timeout-ms])
@@ -236,6 +230,7 @@
   (as-task [this] "Convert to a Task"))
 
 
+;; ## Subscriptions
 (definterface ISubscription
   (phase [])
   (run [task-state]))
@@ -246,13 +241,6 @@
   (phase [_this] phase)
   (run [_this _state]
     (ITask/.doCancelCascade target)))
-
-
-(deftype WeakTeardownSubscription [phase ^WeakReference target-ref]
-  ISubscription
-  (phase [_this] phase)
-  (run [_this _state]
-    (some-> target-ref (WeakReference/.get) (ITask/.doCancelCascade))))
 
 
 (deftype CallbackSubscription [phase f]
@@ -283,16 +271,28 @@
 
 ;; # Low-level helpers
 ;; ################################################################################
-(defmacro subscribe-teardown-weak
-  "Attach a subscription to `task`, tearing down task `target` when reaching `phase`."
-  [task phase target]
-  `(ITask/.doSubscribe ~task (WeakTeardownSubscription. ~phase (WeakReference. ~target))))
+(defn subscribe-teardown
+  "Attach a subscription to task `task`, tearing down task `target` when reaching `phase-settling`.
 
+   If `target` reaches `phase-settling` before `task`, remove the subscription from `task`."
+  [task target]
+  (cond
+    ;; If `task` is already settling, just insert the teardown on it (will run immediately).
+    (ITask/.atOrPast task phase-settling)
+    (ITask/.doSubscribe task (TeardownSubscription. phase-settling target))
 
-(defmacro subscribe-teardown
-  "Attach a subscription to `task`, tearing down task `target` when reaching `phase`."
-  [task phase target]
-  `(ITask/.doSubscribe ~task (TeardownSubscription. ~phase ~target)))
+    ;; If `target` is already settling, `task` can't possibly tear it down. No-op.
+    (ITask/.atOrPast target phase-settling) nil
+
+    ;; Neither task is settling yet. Subscribe ´this´ to tear down `target` if it settles first,
+    ;; and `target` to remove the teardown subscription if it settles first.
+    :else
+    (ITask/.doSubscribe target
+      (UnsubSubscription. phase-settling task
+        ;; Subscribe `target` to be torn down when `task` settles.
+        (ITask/.doSubscribe task
+          (TeardownSubscription. phase-settling target))))))
+
 
 
 (defmacro subscribe-callback
@@ -301,15 +301,6 @@
    `f` receives the current state of `this` as its only argument."
   [task phase f]
   `(ITask/.doSubscribe ~task (CallbackSubscription. ~phase ~f)))
-
-
-(defmacro subscribe-unsub
-  "Attach a subscription to `task` that removes `sub` from `target` when `task` enters `phase`.
-
-   Used for cleanup: when a child task settles, it removes its teardown subscription
-   from the parent to prevent memory leaks in long-running parent tasks."
-  [task phase target sub]
-  `(ITask/.doSubscribe ~task (UnsubSubscription. ~phase ~target ~sub)))
 
 
 (defmacro subscribe-cancel-future
@@ -406,14 +397,8 @@
         0 (on-complete v nil)
         ;; There's exactly one inner task. Hand over execution to it via a subscription.
         1 (let [inner-task (as-task (first matches))]
-            ;; When the inner task starts settling, remove the parent teardown.
-            ;; It's no longer needed, since the parent can't cancel the child
-            ;; after that anyway.
-            (subscribe-unsub inner-task phase-settling this
-              ;; When this task enters the settling phase for any reason, cancel the inner task.
-              ;; Reference is held strongly: there are no other contenders to finish ahead of,
-              ;; and so no use of a weak reference.
-              (subscribe-teardown this phase-settling inner-task))
+            ;; When this task enters the settling phase for any reason, cancel the inner task.
+            (subscribe-teardown this inner-task)
             ;; When the inner task produces a value, insert it on the data structure
             ;; in place of the task and call on-complete.
             (subscribe-callback inner-task phase-settling
@@ -431,30 +416,25 @@
           (loop [idx (unchecked-int 0)]
             (when (< idx task-count)
               (let [inner-task (as-task (matches idx))]
-                (doto inner-task
-                  ;; When the inner task starts settling, remove the parent teardown.
-                  ;; It's no longer needed, since the parent can't cancel the child
-                  ;; after that anyway.
-                  (subscribe-unsub phase-settling this
-                    ;; When this task enters the settling phase for any reason, cancel the inner task.
-                    ;; References are held weakly so that they can be GC'd when tasks finish at different
-                    ;; times.
-                    (subscribe-teardown-weak this phase-settling inner-task))
-                  ;; Runs when a value is available for the inner task.
-                  (subscribe-callback phase-settling
-                    (fn resolve-inner-task
-                      [^TaskState inner-task-state]
-                      (if (.-exceptional inner-task-state)
-                        ;; An exception leads to immediate termination of ground, and the
-                        ;; subsequent cancellation of all sibling inner tasks.
-                        (on-complete nil inner-task-state)
-                        (do (aset task-results idx (.-result inner-task-state))
-                          (when (zero? (.decrementAndGet task-done-count))
-                            ;; When all inner tasks have produced values, replace them within the
-                            ;; data structure with their resolved values.
-                            (on-complete
-                              (p/update-paths v nav (create-lookup-fn matches task-results))
-                              nil))))))))
+                ;; When this task enters the settling phase for any reason, cancel the inner task.
+                ;; References are held weakly so that they can be GC'd when tasks finish at different
+                ;; times.
+                (subscribe-teardown this inner-task)
+                ;; Runs when a value is available for the inner task.
+                (subscribe-callback inner-task phase-settling
+                  (fn resolve-inner-task
+                    [^TaskState inner-task-state]
+                    (if (.-exceptional inner-task-state)
+                      ;; An exception leads to immediate termination of ground, and the
+                      ;; subsequent cancellation of all sibling inner tasks.
+                      (on-complete nil inner-task-state)
+                      (do (aset task-results idx (.-result inner-task-state))
+                        (when (zero? (.decrementAndGet task-done-count))
+                          ;; When all inner tasks have produced values, replace them within the
+                          ;; data structure with their resolved values.
+                          (on-complete
+                            (p/update-paths v nav (create-lookup-fn matches task-results))
+                            nil)))))))
               (recur (unchecked-inc-int idx)))))))))
 
 
@@ -515,6 +495,9 @@
     (if (instance? TaskState state)
       (throw-boxed-error state)
       default))
+
+  (atOrPast [_this phase]
+    (ml/at-or-past? latch phase))
 
   ;; Waiting
   (^boolean awaitPhase [_this phase]
@@ -690,6 +673,11 @@
 
   (doThen [this executor f]
     (let [link (-pending-task executor)]
+      ;; If the chained `link` task is settling, attempt to cancel `this`.
+      ;; Can only happen if `link` is cancelled, since otherwise it can't
+      ;; reach the `settling` phase without `this` reaching `settling` first,
+      ;; which is an uncancellable phase (action-write can't transition from settling).
+      (subscribe-teardown link this)
       ;; Start `then` on the chained `link` task when `this` has a result.
       (subscribe-callback this phase-settling
         (fn setup-then
@@ -700,27 +688,25 @@
             (ITask/.doWrite link state)
             ;; If the state is handleable, run the function.
             (ITask/.doRun link (fn then [] (f (.-result state)))))))
-      ;; If the chained `link` task is settling, attempt to cancel `this`.
-      ;; Can only happen if `link` is cancelled, since otherwise it can't
-      ;; reach the `settling` phase without `this` reaching `settling` first,
-      ;; which is an uncancellable phase (action-write can't transition from settling).
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
   (doCatch [this executor f]
     (let [link (-pending-task executor)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-catch
           [^TaskState state]
           (if (and (.-exceptional state) (not (.-cancelled state)))
             (ITask/.doRun link (fn catch [] (f (.-result state))))
             (ITask/.doWrite link state))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
   (doCatchTyped [this executor type-handler-pairs]
     (assert (even? (count type-handler-pairs)) "Must have receive an even number of arguments.")
     (assert (every? class? (filter-by-index even? type-handler-pairs)) "Every function must have an associated class.")
     (assert (every? fn? (filter-by-index odd? type-handler-pairs)) "Every class must have an associated function.")
     (let [link (-pending-task executor)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-catch
           [^TaskState state]
@@ -745,11 +731,12 @@
                         (recur (unchecked-inc-int handler-idx))))
                     ;; If there are no matches, reference the existing state and move on.
                     (ITask/.doWrite link state))))))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
 
   (doHandle [this executor f]
     (let [link (-pending-task executor)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-handle
           [^TaskState state]
@@ -761,12 +748,13 @@
                 (if (.-exceptional state)
                   (f nil (.-result state))
                   (f (.-result state) nil)))))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
 
   (doOk [this executor f]
     (let [link  (-pending-task nil)
           scope (ITask/.getScope link)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-ok
           [^TaskState state]
@@ -781,12 +769,13 @@
                       (ITask/.doWrite link state)
                       (catch Throwable e
                         (ITask/.doApply link nil e))))))))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
 
   (doErr [this executor f]
     (let [link  (-pending-task nil)
           scope (ITask/.getScope link)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-err
           [^TaskState state]
@@ -801,12 +790,13 @@
                       (catch Throwable e
                         (ITask/.doApply link nil e)))))))
             (ITask/.doWrite link state))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
 
   (doDone [this executor f]
     (let [link  (-pending-task nil)
           scope (ITask/.getScope link)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-done
           [^TaskState state]
@@ -824,12 +814,13 @@
                       (ITask/.doWrite link state)
                       (catch Throwable e
                         (ITask/.doApply link nil e))))))))))
-      (doto link (subscribe-teardown-weak phase-settling this))))
+      link))
 
 
   (doFinally [this executor f]
     (let [link  (-pending-task nil)
           scope (ITask/.getScope link)]
+      (subscribe-teardown link this)
       (subscribe-callback this phase-settling
         (fn setup-finally
           [^TaskState state]
@@ -846,7 +837,7 @@
                     (Task/.doWrite link state)
                     (catch Throwable e
                       (Task/.doApply link nil e)))))))))
-      (doto link (subscribe-teardown-weak phase-settling this)))))
+      link)))
 
 
 ;; # Task construction
@@ -866,16 +857,10 @@
                   (current-scope))
          parent (ask *this*)]
      (when parent
-       ;; Unsubscribe from the parent, cleaning up the subscription, when the child settles.
-       ;; If this is not done properly, there will be memory leaks. Consider a task that
-       ;; runs for the entire lifetime of a program and spawns subtasks. If the children
-       ;; didn't remove their teardown connections from the parent, the parent would collect
-       ;; an unbounded number of stale subscriptions forever.
-       (subscribe-unsub t phase-settling parent
-         ;; Register with parent for cascade cancellation. When parent settles,
-         ;; cascade cancel is best-effort: child may be compelled (resists),
-         ;; or already past cancellable phases (no-op).
-         (subscribe-teardown parent phase-settling t)))
+       ;; Register with parent for cascade cancellation. When parent settles,
+       ;; cascade cancel is best-effort: child may be compelled (resists),
+       ;; or already past cancellable phases (no-op).
+       (subscribe-teardown parent t))
      t)))
 
 
@@ -938,6 +923,7 @@
   (getState [_this] (.getState task))
   (getScope [_this] (.getScope task))
   (getNow [_this default] (.getNow task default))
+  (atOrPast [_this phase] (.atOrPast task phase))
 
   ;; Waiting
   (^boolean awaitPhase [_this phase] (.awaitPhase task phase))
@@ -1042,7 +1028,7 @@
              errors     (ConcurrentLinkedQueue.)]
          (doseq [t tasks]
            ;; Register participating tasks to be torn down when `winner` settles.
-           (subscribe-teardown winner phase-settling t)
+           (subscribe-teardown winner t)
            ;; Set up the race.
            (subscribe-callback t phase-settling
              (fn [^TaskState state]

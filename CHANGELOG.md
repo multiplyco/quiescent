@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.6 - 2026-01-05
+
+### Replace weak references with mutual cleanup
+Previously, tasks occasionally held a weak reference to one another to allow for GC to occur even though eg. a parent held a reference (for potential cancellation) to a child.
+
+This is now replaced with a mutual cleanup instead. For task A and B, if A wants to be able to cancel B, it will have a strong reference to B. But if B passes the stage where it can be cancelled, it will remove this subscription from A.
+
+This is also more performant than hanging on to the weak references, and estimated performance numbers have been lowered in accordance.
+
 ## 0.1.5 - 2026-01-03
 
 - Bump `scoped` to 0.1.13

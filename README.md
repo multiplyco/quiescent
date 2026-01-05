@@ -31,7 +31,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.1.5"}
+co.multiply/quiescent {:mvn/version "0.1.6"}
 ```
 
 ## Core concepts
@@ -426,7 +426,7 @@ If you add in some coordination, for example:
   (q/q n))
 ```
 
-This comes out to **~536µs**, or about **~0.54µs** per task. If we disregard that the `mapv` to which `qfor` expands
+This comes out to **~351µs**, or about **~0.35µs** per task. If we disregard that the `mapv` to which `qfor` expands
 will cost some portion of this, most of the overhead is due to there being a parent task, with subtasks in its scope.
 So the tasks engage in coordination:
 
@@ -441,8 +441,8 @@ Starting a virtual thread itself takes somewhere between **0.1µs** to **1µs**,
   (q/task n)) ;; <- Run 1000 virtual threads
 ```
 
-This now takes **849µs**, where the additional cost can be attributed to the cost of submitting the body of the task to
-a virtual executor. So we spent somewehere around ~**0.3µs** per task starting a thread.
+This now takes **604µs**, where the additional cost can be attributed to the cost of submitting the body of the task to
+a virtual executor. So we spent somewhere around ~**0.25µs** per task starting a thread.
 
 Let's measure some grounding:
 
@@ -452,7 +452,7 @@ Let's measure some grounding:
       :frozen-places [(q/q "North pole") (q/q "My freezer")]})
 ```
 
-This comes out to **3.7µs** or about **0.52µs** per task, on the same machine as earlier. This is not a case where we
+This comes out to **2.6µs** or about **0.37µs** per task, on the same machine as earlier. This is not a case where we
 have many tasks, so the overhead is now mostly due to the same coordination and grounding as mentioned above. And indeed
 it's about the same cost per task (modulo noise) that we saw in the 1000 task example.
 
