@@ -85,7 +85,7 @@
     (let [this-ref (atom nil)
           base     (q/task (throw (Exception. "error")))
           link     (finally-fn base (fn [& _] (capture-this! this-ref)))]
-      (try @link (catch Exception _))
+      (q/await link)
       (is (identical? @this-ref link)))))
 
 
@@ -100,8 +100,8 @@
           base     (q/task (deliver started true) (Thread/sleep 10000) :result)
           link     (q/finally base (fn [& _] (capture-this! this-ref)))]
       @started
-      @(q/cancel base)
-      (try @link (catch Exception _))
+      (q/await (q/cancel base))
+      (q/await link)
       (is (identical? @this-ref link)))))
 
 
@@ -128,7 +128,7 @@
     (let [this-ref (atom nil)
           base     (q/task (throw (Exception. "error")))
           link     (err-fn base (fn [_] (capture-this! this-ref)))]
-      (try @link (catch Exception _))
+      (q/await link)
       (is (identical? @this-ref link)))))
 
 
@@ -181,7 +181,7 @@
                                @link))]
       @child-started?
       ;; Cancel outer - this should cascade to link, which should cascade to child
-      @(q/cancel outer)
+      (q/await (q/cancel outer))
       (Thread/sleep 100)
       (is @child-cancelled?
         "Child in then should be cancelled when outer is cancelled (via link)")))
@@ -202,7 +202,7 @@
                                                  :interrupted)))]
                                  @child)))]
       @child-started?
-      @(q/cancel link)
+      (q/await (q/cancel link))
       (Thread/sleep 100)
       (is @child-cancelled?
         "Child in finally should be cancelled when link is cancelled"))))

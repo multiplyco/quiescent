@@ -175,7 +175,38 @@
         (is false "Should have thrown")
         (catch Exception ex
           ;; Should throw the original exception, not wrapped
-          (is (identical? e ex)))))))
+          (is (identical? e ex))))))
+
+  (testing "Race with all tasks cancelled is cancelled"
+    (let [t1     (q/task (Thread/sleep 5000) :a)
+          t2     (q/task (Thread/sleep 5000) :b)
+          t3     (q/task (Thread/sleep 5000) :c)
+          result (q/race t1 t2 t3)]
+      ;; Cancel all racing tasks
+      (q/cancel t1)
+      (q/cancel t2)
+      (q/cancel t3)
+      ;; Wait for race to settle, then check it's cancelled (not "All tasks failed")
+      (q/await result)
+      (is (q/cancelled? result))))
+
+  (testing "Race with mix of cancelled and failed throws error, not cancellation"
+    (let [t1 (q/task (Thread/sleep 5000) :a)
+          t2 (q/task (throw (Exception. "Real error")))]
+      ;; t2 fails immediately, cancel t1
+      (Thread/sleep 20)
+      (q/cancel t1)
+      (Thread/sleep 20)
+      ;; Race should fail with error (not all were cancelled)
+      (is (not (q/cancelled? (q/race t1 t2))))
+      (try
+        @(q/race t1 t2)
+        (is false "Should have thrown")
+        (catch CancellationException _
+          (is false "Should not be CancellationException"))
+        (catch Exception e
+          (is (or (= "Real error" (ex-message e))
+                (= "All tasks failed." (ex-message e)))))))))
 
 
 (deftest race-edge-cases-test

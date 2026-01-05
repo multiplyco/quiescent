@@ -42,10 +42,10 @@
       (is @ran)))
 
   (testing "Finally runs on error"
-    (let [ran (atom false)]
-      (try @(-> (q/task (throw (Exception. "Boom")))
-              (q/finally (fn [& _] (reset! ran true))))
-           (catch Exception _))
+    (let [ran  (atom false)
+          task (-> (q/task (throw (Exception. "Boom")))
+                 (q/finally (fn [& _] (reset! ran true))))]
+      (q/await task)
       (is @ran)))
 
   (testing "Ok only runs on success"
@@ -54,10 +54,10 @@
          (q/ok (fn [v] (reset! ran v))))
       (is (= 42 @ran)))
 
-    (let [ran (atom false)]
-      (try @(-> (q/task (throw (Exception. "Boom")))
-              (q/ok (fn [v] (reset! ran true))))
-           (catch Exception _))
+    (let [ran  (atom false)
+          task (-> (q/task (throw (Exception. "Boom")))
+                 (q/ok (fn [v] (reset! ran true))))]
+      (q/await task)
       (is (false? @ran))))
 
   (testing "Error in nested structure cancels all tasks"
@@ -74,7 +74,7 @@
           inner       (q/task (Thread/sleep 10000) :result)
           link        (q/finally inner (fn [& _] (deliver handler-ran true)))]
       (Thread/sleep 20)
-      @(q/cancel link)
+      (q/await (q/cancel link))
       (is (true? (deref handler-ran 500 false)) "finally handler should run even when link is cancelled")))
 
   (testing "finally handler receives CancellationException when link is cancelled"
@@ -82,7 +82,7 @@
           inner          (q/task (Thread/sleep 10000) :result)
           link           (q/finally inner (fn [_ e _] (deliver received-error e)))]
       (Thread/sleep 20)
-      @(q/cancel link)
+      (q/await (q/cancel link))
       (is (instance? CancellationException (deref received-error 500 nil))
         "finally handler should receive CancellationException")))
 
@@ -90,7 +90,7 @@
     (let [inner (q/task (Thread/sleep 10000) :result)
           link  (q/finally inner (fn [& _] :handler-result))]
       (Thread/sleep 20)
-      @(q/cancel link)
+      (q/await (q/cancel link))
       (is (thrown? CancellationException @link)
         "cancelled link should throw CancellationException")))
 
@@ -126,7 +126,7 @@
           inner       (q/task (Thread/sleep 10000) :result)
           link        (handler-fn inner (fn [& _] (reset! handler-ran true)))]
       (Thread/sleep 20)
-      @(q/cancel link)
+      (q/await (q/cancel link))
       (Thread/sleep 100)
       (is (false? @handler-ran)))))
 
@@ -236,7 +236,7 @@
     (let [handler-ran (atom false)
           inner       (q/task (throw (Exception. "inner error")))
           link        (q/ok inner (fn [v] (reset! handler-ran true)))]
-      (try @link (catch Exception _))
+      (q/await link)
       (is (false? @handler-ran))))
 
   (testing "ok runs on success"
@@ -377,10 +377,10 @@
       (is (= 42 @result))))
 
   (testing (format "does not run on failure (%s)" kind)
-    (let [ran (atom false)]
-      (try @(-> (q/task (throw (Exception. "Boom")))
-              (ok-fn (fn [_] (reset! ran true))))
-           (catch Exception _))
+    (let [ran  (atom false)
+          task (-> (q/task (throw (Exception. "Boom")))
+                 (ok-fn (fn [_] (reset! ran true))))]
+      (q/await task)
       (is (false? @ran)))))
 
 

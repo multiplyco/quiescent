@@ -4,9 +4,7 @@
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent :as q]
-    [co.multiply.quiescent.impl :as impl]
-    [co.multiply.quiescent.test-support :refer [platform-thread-fixture]]
-    [co.multiply.scoped :refer [ask]])
+    [co.multiply.quiescent.test-support :refer [platform-thread-fixture]])
   (:import
     [java.util.concurrent CancellationException]))
 
@@ -323,17 +321,18 @@
     (testing "returns true for cancelled task"
       (let [task (q/task (Thread/sleep 10000) :result)]
         (Thread/sleep 10)
-        @(q/cancel task)
-        (is (true? (q/cancelled? task)))))
+        (q/await (q/cancel task))
+        (is (true? (q/cancelled? task)))
+        (is (thrown? CancellationException @task))))
 
     (testing "returns false for successful task"
       (let [task (q/task :success)]
-        @task
+        (q/await task)
         (is (false? (q/cancelled? task)))))
 
     (testing "returns false for failed task"
       (let [task (q/task (throw (Exception. "error")))]
-        (try @task (catch Exception _))
+        (q/await task)
         (is (false? (q/cancelled? task)))))
 
     (testing "returns false for nil argument"
@@ -347,8 +346,8 @@
                             (fn [_ _ cancelled]
                               (deliver was-cancelled cancelled)))]
         (Thread/sleep 10)
-        @(q/cancel upstream)
-        (try @chained (catch CancellationException _))
+        (q/await (q/cancel upstream))
+        (q/await chained)
         (is (true? @was-cancelled))))
 
     (testing "cancelled is false when upstream completed successfully"
@@ -366,7 +365,7 @@
             chained       (q/finally upstream
                             (fn [_ _ cancelled]
                               (deliver was-cancelled cancelled)))]
-        (try @chained (catch Exception _))
+        (q/await chained)
         (is (false? @was-cancelled))))))
 
 
@@ -387,13 +386,13 @@
 
   (testing "cancel returns false when task already settled successfully"
     (let [task (q/task :immediate)]
-      @task                                                 ; Wait for task to complete
+      (q/await task)
       (let [result @(q/cancel task)]
         (is (false? result) "cancel should return false when task already completed"))))
 
   (testing "cancel returns false when task already failed"
     (let [task (q/task (throw (Exception. "Error")))]
-      (try @task (catch Exception _))
+      (q/await task)
       (let [result @(q/cancel task)]
         (is (false? result) "cancel should return false when task already failed"))))
 

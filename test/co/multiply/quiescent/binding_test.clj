@@ -114,7 +114,7 @@
     (scoping [*test-binding* :catch-context]
       (is (= :catch-context
             @(q/catch (q/task (throw (Exception. "test")))
-                      (fn [_] (ask *test-binding*)))))))
+               (fn [_] (ask *test-binding*)))))))
 
   (testing "ok function sees scoped values"
     (scoping [*test-binding* :ok-context]
@@ -127,7 +127,7 @@
     (scoping [*test-binding* :finally-context]
       (let [observed (atom nil)]
         @(q/finally (q/task 42)
-                    (fn [& _] (reset! observed (ask *test-binding*))))
+           (fn [& _] (reset! observed (ask *test-binding*))))
         (is (= :finally-context @observed))))))
 
 
@@ -190,20 +190,21 @@
             chained  (q/finally original (fn [& _] (reset! observed (ask *test-binding*))))]
         (Thread/sleep 20)
         (q/cancel original)                                 ; Cancel the original task
-        (try @chained (catch CancellationException _))
+        (q/await chained)
         (Thread/sleep 50)
         (is (= :cancel-finally @observed)))))
 
   (testing "catch does NOT run when upstream is cancelled"
     (let [handler-ran (atom false)
           original    (q/task (Thread/sleep 10000) :result)
-          chained     (q/catch original CancellationException
-                        (fn [_]
-                          (reset! handler-ran true)
-                          :caught))]
+          chained     (-> original
+                        (q/catch CancellationException
+                          (fn [_]
+                            (reset! handler-ran true)
+                            :caught)))]
       (Thread/sleep 20)
       (q/cancel original)
-      (try @chained (catch CancellationException _))
+      (q/await chained)
       (Thread/sleep 50)
       (is (false? @handler-ran) "catch should not run on cancellation")))
 
@@ -216,7 +217,7 @@
                           (if e :cancelled v)))]
       (Thread/sleep 20)
       (q/cancel original)
-      (try @chained (catch CancellationException _))
+      (q/await chained)
       (Thread/sleep 50)
       (is (false? @handler-ran) "handle should not run on cancellation")))
 
@@ -232,7 +233,7 @@
                                 @child))]
         (Thread/sleep 10)
         (q/cancel parent)
-        (try @parent (catch CancellationException _))
+        (q/await parent)
         (is (= :teardown-context @child-saw-scope)))))
 
   (testing "Cancelling chained task propagates backward to cancel upstream"
@@ -385,5 +386,5 @@
                             :done)))]
         (Thread/sleep 10)
         (q/cancel parent)
-        (try @parent (catch CancellationException _))
+        (q/await parent)
         (is (= :compel-survive (deref observed 200 :timeout)))))))

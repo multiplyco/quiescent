@@ -5,14 +5,12 @@
    See `state-machine` for the lifecycle definition and `Task` for coordination details."
   (:refer-clojure :exclude [await promise #_with-bindings])
   (:require
-    [clojure.core :as cc]
     [co.multiply.machine-latch :as ml]
     [co.multiply.pathling :as p]
     [co.multiply.scoped :refer [ask assoc-scope current-scope scoping with-scope]])
   (:import
     [clojure.lang IBlockingDeref IDeref IFn IPending]
     [java.lang Thread$Builder]
-    [java.lang.ref WeakReference]
     [java.util HashMap Iterator Set]
     [java.util.concurrent CancellationException CompletableFuture ConcurrentHashMap ConcurrentHashMap$KeySetView ConcurrentLinkedQueue ExecutorService Executors Future ThreadFactory]
     [java.util.concurrent.atomic AtomicInteger]
@@ -294,7 +292,6 @@
           (TeardownSubscription. phase-settling target))))))
 
 
-
 (defmacro subscribe-callback
   "Attach a subscription to `task`, running `f` when reaching `phase`
 
@@ -331,6 +328,12 @@
              (map-indexed (fn [idx v] (if (pred idx) v ::remove)))
              (remove (partial identical? ::remove)))
     coll))
+
+
+(defn cancelled?
+  "True if the given task is cancelled."
+  [t]
+  (-> (ITask/.getState t) (:cancelled) (true?)))
 
 
 ;; # Grounding
@@ -1049,11 +1052,13 @@
                    (.add errors (.-result state))
                    (when (zero? (AtomicInteger/.decrementAndGet task-latch))
                      ;; All tasks failed - combine errors
-                     (let [all-errors (vec errors)]
-                       (Task/.doApply winner nil
-                         (if (= 1 (count all-errors))
-                           (first all-errors)
-                           (ex-info "All tasks failed." {:errors all-errors}))))))))))
+                     (if (every? cancelled? tasks)
+                       (Task/.doCancel winner "All tasks cancelled.")
+                       (let [all-errors (vec errors)]
+                         (Task/.doApply winner nil
+                           (if (= 1 (count all-errors))
+                             (first all-errors)
+                             (ex-info "All tasks failed." {:errors all-errors})))))))))))
          winner)))))
 
 

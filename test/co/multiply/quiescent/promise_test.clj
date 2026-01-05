@@ -117,7 +117,7 @@
     (let [p     (q/promise)
           outer (q/task @p)]
       (Thread/sleep 20)
-      @(q/cancel outer)
+      (q/await (q/cancel outer))
       ;; Outer should be cancelled
       (is (thrown? CancellationException @outer)))))
 
@@ -137,7 +137,7 @@
   (testing "failed-task can be caught"
     (is (= :recovered
           @(q/catch (q/failed-task (Exception. "Error"))
-                   (fn [_] :recovered)))))
+             (fn [_] :recovered)))))
 
   (testing "failed-task useful for conditional logic"
     (let [fetch-data (fn [valid?]

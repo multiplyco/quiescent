@@ -12,5 +12,5 @@
   [f]
   (q/throw-on-platform-park! false)
   (try (f)
-       (finally
-         (q/throw-on-platform-park! true))))
+    (finally
+      (q/throw-on-platform-park! true))))

@@ -28,7 +28,7 @@
   (testing "Multiple CompletableFutures in structure"
     (is (= {:a 1 :b 2}
           @(q/q {:a (CompletableFuture/completedFuture 1)
-                :b (CompletableFuture/completedFuture 2)})))))
+                 :b (CompletableFuture/completedFuture 2)})))))
 
 
 (deftest channel-not-auto-coerced-test
@@ -98,7 +98,7 @@
     (let [fut  (future (Thread/sleep 10000) :result)
           task (q/as-task fut)]
       ;; Cancel the task and wait for cancellation to complete
-      @(q/cancel task)
+      (q/await (q/cancel task))
       ;; Future should be cancelled
       (is (.isCancelled fut)))))
 
@@ -143,7 +143,7 @@
   (testing "Task cancellation propagates to CF"
     (let [task (q/task (Thread/sleep 10000) :result)
           cf   (q/as-cf task)]
-      @(q/cancel task)                                      ; Wait for cancellation to complete (cancel returns Task[Boolean])
+      (q/await (q/cancel task))
       (is (.isCancelled cf))))
 
   (testing "CF cancellation does NOT propagate to task (one-way only)"

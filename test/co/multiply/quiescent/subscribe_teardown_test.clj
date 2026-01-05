@@ -15,7 +15,7 @@
     (let [task   (q/task :done)
           target (q/task (Thread/sleep 5000) :target-result)]
       ;; Wait for task to settle
-      @task
+      (q/await task)
       ;; Target should still be running
       (is (not (realized? target)))
 
@@ -31,7 +31,7 @@
     (let [task   (q/task (Thread/sleep 5000) :task-result)
           target (q/task :done)]
       ;; Wait for target to settle
-      @target
+      (q/await target)
       ;; Task should still be running
       (is (not (realized? task)))
 
@@ -43,7 +43,7 @@
       (is (= :done @target))
 
       ;; Clean up
-      @(q/cancel task))))
+      (q/await (q/cancel task)))))
 
 
 (deftest subscribe-teardown-neither-settling-test
@@ -57,10 +57,11 @@
       ;; Set up mutual subscriptions
       (impl/subscribe-teardown task target)
 
-      ;; Wait for task to complete - this should tear down target
-      @task
+      ;; Wait for task to settle - this should tear down target
+      (q/await task)
 
-      ;; Target should be cancelled
+      ;; Wait for target to settle, then verify it's cancelled
+      (q/await target)
       (is (q/cancelled? target))))
 
   (testing "Case 3b: target settles first - target completes normally, not cancelled"
@@ -80,4 +81,4 @@
       (is (not (q/cancelled? target)))
 
       ;; Clean up
-      @(q/cancel task))))
+      (q/await (q/cancel task)))))

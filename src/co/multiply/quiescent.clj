@@ -213,37 +213,34 @@
 (defn cancelled?
   "True if the given task is cancelled."
   [t]
-  (-> (as-task t) (get-state) (:cancelled) (true?)))
+  (impl/cancelled? (as-task t)))
 
 
 (defn await
-  "Block until a task reaches the specified phase.
+  "Block until a task has settled (has a result available).
 
-   Phases (in order): `:pending` `:running` `:grounding` `:transforming` `:writing` `:settling` `:quiescent`
+   Returns true when settled, false if timeout expires.
+   Without timeout, blocks indefinitely.
 
-   Returns true when the phase is reached, false if timeout expires.
-   Without timeout, blocks indefinitely until phase is reached.
+   Unlike `deref`, does not throw if the task failed or was cancelled.
 
    Args:
      `t`         - The task to await
-     `phase`     - Target phase keyword (e.g., `:settling`, `:quiescent`)
      `ms-or-dur` - Optional timeout as milliseconds (long) or `java.time.Duration`
-
-   Must be called from a virtual thread (unless `*assert-virtual*` is false).
 
    Example:
 
    ```clojure
-   (await task :settling)              ; Block until result available
-   (await task :quiescent 1000)        ; With 1 second timeout
-   (await task :quiescent (Duration/ofSeconds 5))
+   (await task)                            ; Block until settled
+   (await task 1000)                       ; With 1 second timeout
+   (await task (Duration/ofSeconds 5))     ; With Duration timeout
    ```"
-  ([t phase]
-   (ITask/.awaitPhase t phase))
-  ([t phase ms-or-dur]
+  ([t]
+   (ITask/.awaitPhase t impl/phase-settling))
+  ([t ms-or-dur]
    (if (instance? Duration ms-or-dur)
-     (ITask/.awaitPhaseDur t phase ms-or-dur)
-     (ITask/.awaitPhaseMillis t phase ms-or-dur))))
+     (ITask/.awaitPhaseDur t impl/phase-settling ms-or-dur)
+     (ITask/.awaitPhaseMillis t impl/phase-settling ms-or-dur))))
 
 
 ;; # Task construction
@@ -503,7 +500,6 @@
    (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5]))
   ([t err1 f1 err2 f2 err3 f3 err4 f4 err5 f5 & pairs]
    (ITask/.doCatchTyped (impl/as-task t) cpu-executor (into [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5] pairs))))
-
 
 
 (defn handle

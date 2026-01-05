@@ -203,62 +203,42 @@
 (deftest await-test
   ;; await blocks until a task reaches a specified phase.
 
-  (testing "await returns true when phase is already reached"
+  (testing "await returns true when task is already settled"
     (let [task (q/task :immediate)]
       @task                                                 ; Complete the task
-      (is (true? (q/await task :quiescent)))))
+      (is (true? (q/await task)))))
 
-  (testing "await blocks until phase is reached"
+  (testing "await blocks until task settles"
     (let [task          (q/task (Thread/sleep 50) :result)
           phase-reached (promise)
           _             (future
                           (Thread/sleep 10)
-                          (q/await task :settling)
+                          (q/await task)
                           (deliver phase-reached true))]
       ;; Phase should be reached after task completes
-      (is (true? (deref phase-reached 200 false)) "await should block until settling phase")))
+      (is (true? (deref phase-reached 200 false)) "await should block until task settles")))
 
-  (testing "await with millisecond timeout returns true when phase reached"
+  (testing "await with millisecond timeout returns true when settled in time"
     (let [task (q/task (Thread/sleep 20) :result)]
-      (is (true? (q/await task :settling 500)) "Should return true when phase reached before timeout")))
+      (is (true? (q/await task 500)) "Should return true when settled before timeout")))
 
   (testing "await with millisecond timeout returns false when timed out"
     (let [task (q/task (Thread/sleep 5000) :result)]
-      (is (false? (q/await task :settling 50)) "Should return false when timeout expires")))
+      (is (false? (q/await task 50)) "Should return false when timeout expires")))
 
-  (testing "await with Duration timeout returns true when phase reached"
+  (testing "await with Duration timeout returns true when settled in time"
     (let [task (q/task (Thread/sleep 20) :result)]
-      (is (true? (q/await task :settling (Duration/ofMillis 500)))
-        "Should return true when phase reached before Duration timeout")))
+      (is (true? (q/await task (Duration/ofMillis 500)))
+        "Should return true when settled before Duration timeout")))
 
   (testing "await with Duration timeout returns false when timed out"
     (let [task (q/task (Thread/sleep 5000) :result)]
-      (is (false? (q/await task :settling (Duration/ofMillis 50)))
+      (is (false? (q/await task (Duration/ofMillis 50)))
         "Should return false when Duration timeout expires")))
 
-  (testing "await for :quiescent waits for complete teardown"
-    (let [cleanup-done   (promise)
-          await-returned (promise)
-          task           (-> (q/task (Thread/sleep 10000) :result)
-                           (q/finally
-                             (fn [& _]
-                               (Thread/sleep 50)
-                               (deliver cleanup-done true))))]
-      (Thread/sleep 10)
-      (q/cancel task)                                       ; Can cancel the link directly now
-      ;; Run await in a future
-      (future
-        (q/await task :quiescent)
-        (deliver await-returned true))
-      ;; Wait for await to return
-      (is (true? (deref await-returned 500 false)) "await should return when quiescent")
-      ;; By the time await returns, cleanup should be complete
-      (is (true? (deref cleanup-done 100 false)) "Cleanup should be complete after await :quiescent")))
-
-  (testing "await for earlier phase returns immediately if already past"
+  (testing "await returns immediately if already settled"
     (let [task (q/task :immediate)]
       @task
-      ;; Task is quiescent, so :settling should return immediately
       (let [start (System/currentTimeMillis)]
-        (q/await task :settling)
-        (is (< (- (System/currentTimeMillis) start) 50) "Should return immediately for past phase")))))
+        (q/await task)
+        (is (< (- (System/currentTimeMillis) start) 50) "Should return immediately for settled task")))))
