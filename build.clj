@@ -5,7 +5,7 @@
     [deps-deploy.deps-deploy :as deploy]))
 
 (def lib 'co.multiply/quiescent)
-(def version "0.1.7")
+(def version "0.1.8")
 (def class-dir "target/classes")
 (def jar-file (format "target/%s-%s.jar" (name lib) version))
 (def basis (delay (b/create-basis {:project "deps.edn"})))
@@ -27,9 +27,9 @@
   "Add provided-scope dependencies to the generated pom.xml for cljdoc analysis."
   [pom-path]
   (let [pom-content (slurp pom-path)
-        updated (str/replace pom-content
-                  #"(</dependencies>)"
-                  (str provided-dep "\n  $1"))]
+        updated     (str/replace pom-content
+                      #"(</dependencies>)"
+                      (str provided-dep "\n  $1"))]
     (spit pom-path updated)))
 
 (defn jar [_]

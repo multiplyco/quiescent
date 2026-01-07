@@ -1,7 +1,7 @@
 {:paths ["src"]
 
- :deps  {co.multiply/scoped        {:mvn/version "0.1.13"}
-         co.multiply/machine-latch {:mvn/version "0.1.8"}
+ :deps  {co.multiply/scoped        {:mvn/version "0.1.14"}
+         co.multiply/machine-latch {:mvn/version "0.1.12"}
          co.multiply/pathling      {:mvn/version "0.1.7"}}
 
  :aliases

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 - 2026-01-03
+
+- Bump `scoped` to 0.1.14
+- Bump `machine-latch` to 0.1.12
+
 ## 0.1.7 - 2026-01-05
 
 - `race` now cancels the "winner" task if all participants in the race are cancelled.
