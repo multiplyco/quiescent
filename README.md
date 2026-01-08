@@ -34,6 +34,11 @@ Quiescent builds heavily on virtual threads and other features present only in r
 co.multiply/quiescent {:mvn/version "0.1.8"}
 ```
 
+Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
+[Scoped](https://github.com/multiplyco/scoped), and [Pathling](https://github.com/multiplyco/pathling), which will be
+transitively available when using this library. Machine Latch in turn depends on Scoped. There are no further
+dependencies.
+
 ## Core concepts
 
 ### Tasks
@@ -549,8 +554,9 @@ it's used and callers don't need to remember to protect it ad-hoc.
           (Thread/sleep 1000)
           (println "Connection" id "released"))
       (q/finally
-        (fn [& _]
-          (println "Connection" id "leaked!"))))))
+        (fn [_v _e c]
+          (when c
+            (println "Connection" id "leaked!")))))))
 
 
 (defn process-with-resource
@@ -825,6 +831,12 @@ As inspired by [Missionary](https://github.com/leonoel/missionary/wiki/Happy-eye
 ;; [ 15ms] Winner: clojure.org/3.164.240.110
 ;; "Elapsed time: 15.34175 msecs"
 ```
+
+## General notes
+
+If you're looking for the React library by the same name, it's [available here](https://github.com/levand/quiescent).
+This library was named before I was aware that there was a previous library of the same name. There's no relation
+between them.
 
 ## License
 
