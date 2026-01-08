@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 - 2026-01-08
+
+- Bump `pathling` to 0.1.8
+
 ## 0.1.8 - 2026-01-03
 
 - Bump `scoped` to 0.1.14

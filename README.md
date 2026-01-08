@@ -31,7 +31,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.1.8"}
+co.multiply/quiescent {:mvn/version "0.1.9"}
 ```
 
 Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -73,13 +73,13 @@ Promises are tasks you resolve externally, which is useful for bridging callback
 ```clojure
 (def p (q/promise))
 
-; Later, from a callback:
+;; Later, from a callback:
 (deliver p "result")
-; or
+;; or
 (q/fail p (ex-info "oops" {}))
 
 @p
-;; => "result"
+;; => "result" (or throws ExceptionInfo if the `fail` was used)
 ```
 
 Promises cannot be cancelled or compelled, but otherwise implement the full task API. You can chain with `then`,
@@ -271,10 +271,11 @@ Use `done` to observe success or error (but not cancellation):
 
 ```clojure
 (-> (q/task (fetch-user 123))
-  (q/done (fn [v e]
-            (if e
-              (metrics/record-failure)
-              (metrics/record-success)))))
+  (q/done
+    (fn [_v e]
+      (if e
+        (metrics/record-failure)
+        (metrics/record-success)))))
 ```
 
 Use `finally` to release resources that must be cleaned up regardless of outcome. It receives a third
@@ -283,12 +284,13 @@ argument indicating whether the task was cancelled:
 ```clojure
 (let [resource (acquire-resource)]
   (-> (q/task (use-resource resource))
-    (q/finally (fn [_v e c]
-                 (release-resource resource)
-                 (cond
-                   e (println "Error!")
-                   c (println "Cancelled!")
-                   :else (println "Success!"))))))
+    (q/finally
+      (fn [_v e c]
+        (release-resource resource)
+        (cond
+          c (println "Cancelled!")
+          e (println "Error!")
+          :else (println "Success!"))))))
 ```
 
 Use `monitor` to trigger a side effect when a task doesn't finish within the specified timeframe:
