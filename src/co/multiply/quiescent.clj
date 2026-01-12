@@ -10,44 +10,26 @@
   (:import
     [co.multiply.quiescent.impl ITask Promise Task TaskState]
     [java.time Duration]
-    [java.util.concurrent CancellationException CompletableFuture ExecutorService Executors ScheduledExecutorService Semaphore ThreadFactory TimeUnit TimeoutException]
-    [java.util.concurrent.atomic AtomicLong]))
+    [java.util.concurrent CancellationException CompletableFuture ForkJoinPool ScheduledExecutorService Semaphore ThreadPerTaskExecutor TimeUnit TimeoutException]))
 
 
 ;; # Executors
 ;; ################################################################################
 (defonce ^{:doc    "Virtual thread executor for IO-bound tasks. Creates a new virtual thread per task.
-                 Default executor for tasks - use for network calls, file IO, and blocking operations."
+                    Default executor for tasks - use for network calls, file IO, and blocking operations."
            :no-doc true}
-  ^ExecutorService virtual-executor impl/virtual-executor)
+  ^ThreadPerTaskExecutor virtual-executor impl/virtual-executor)
 
 
-(defonce ^{:doc    "Fixed thread pool for CPU-bound tasks. Use for compute-intensive work
-                 that should not block virtual threads. Pool size scales with available CPUs."
+(defonce ^{:doc    "Work stealing thread pool for CPU-bound tasks. Use for compute-intensive work
+                    that should not block. Pool size scales with available CPUs."
            :no-doc true}
-  ^ExecutorService cpu-executor
-  (let [counter   (AtomicLong. 0)
-        n-cpus    (.. Runtime getRuntime availableProcessors)
-        n-threads (* 2 n-cpus)]
-    (Executors/newFixedThreadPool n-threads
-      (reify ThreadFactory
-        (newThread
-          [_ runnable]
-          (doto (Thread. runnable)
-            (Thread/.setName (str "q-cpu-" (AtomicLong/.getAndIncrement counter)))
-            (Thread/.setDaemon true)))))))
+  ^ForkJoinPool cpu-executor impl/cpu-executor)
 
 
 (defonce ^{:doc    "Single-thread executor for scheduling delayed tasks (sleep, timeout)."
            :no-doc true}
-  scheduling-executor
-  (Executors/newSingleThreadScheduledExecutor
-    (reify ThreadFactory
-      (newThread
-        [_ r]
-        (doto (Thread. r "q-se")
-          (.setDaemon true))))))
-
+  ^ScheduledExecutorService scheduling-executor impl/scheduling-executor)
 
 ;; # Thread control
 ;; ################################################################################

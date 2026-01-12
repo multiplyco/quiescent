@@ -12,8 +12,8 @@
     [clojure.lang IBlockingDeref IDeref IFn IPending]
     [java.lang Thread$Builder]
     [java.util HashMap Iterator Set]
-    [java.util.concurrent CancellationException CompletableFuture ConcurrentHashMap ConcurrentHashMap$KeySetView ConcurrentLinkedQueue ExecutorService Executors Future ThreadFactory]
-    [java.util.concurrent.atomic AtomicInteger]
+    [java.util.concurrent CancellationException CompletableFuture ConcurrentHashMap ConcurrentHashMap$KeySetView ConcurrentLinkedQueue ExecutorService Executors ForkJoinPool ForkJoinPool$ForkJoinWorkerThreadFactory Future ScheduledExecutorService ThreadFactory ThreadPerTaskExecutor]
+    [java.util.concurrent.atomic AtomicInteger AtomicLong]
     [java.util.function BiConsumer]))
 
 
@@ -31,11 +31,11 @@
 (declare -pending-task task?)
 
 
-;; # Executor
+;; # Executors
 ;; ################################################################################
 (defonce ^{:doc "Virtual thread executor for IO-bound tasks. Creates a new virtual thread per task.
                  Default executor for tasks - use for network calls, file IO, and blocking operations."}
-  ^ExecutorService virtual-executor
+  ^ThreadPerTaskExecutor virtual-executor
   (Executors/newThreadPerTaskExecutor
     (reify ThreadFactory
       (newThread
@@ -43,6 +43,32 @@
         (-> (Thread/ofVirtual)
           (Thread$Builder/.name "q-io")
           (Thread$Builder/.unstarted runnable))))))
+
+
+(defonce ^{:doc    "Work stealing thread pool for CPU-bound tasks. Use for compute-intensive work
+                    that should not block. Pool size scales with available CPUs."
+           :no-doc true}
+  ^ForkJoinPool cpu-executor
+  (let [counter (AtomicLong. 0)
+        n-cpus  (.. Runtime getRuntime availableProcessors)]
+    (ForkJoinPool. n-cpus
+      (reify ForkJoinPool$ForkJoinWorkerThreadFactory
+        (newThread
+          [_ pool]
+          (doto (ForkJoinPool$ForkJoinWorkerThreadFactory/.newThread ForkJoinPool/defaultForkJoinWorkerThreadFactory pool)
+            (.setName (str "q-cpu-" (.getAndIncrement counter))))))
+      nil false)))
+
+
+(defonce ^{:doc    "Single-thread executor for scheduling delayed tasks (sleep, timeout)."
+           :no-doc true}
+  ^ScheduledExecutorService scheduling-executor
+  (Executors/newSingleThreadScheduledExecutor
+    (reify ThreadFactory
+      (newThread
+        [_ r]
+        (doto (Thread. r "q-se")
+          (.setDaemon true))))))
 
 
 (defn submit
@@ -984,9 +1010,11 @@
     ;; `nil` is used as the executor since it never will be used (doApply path).
     (let [task (doto (-pending-task nil)
                  (subscribe-cancel-future phase-settling cf))]
-      (CompletableFuture/.whenCompleteAsync cf
-        ^BiConsumer (fn [v e] (ITask/.doApply task v e))
-        virtual-executor)
+      (letfn [(propagate-cf-result [v e]
+                (if (CompletableFuture/.isCancelled cf)
+                  (ITask/.doCancel task "CompletableFuture cancelled.")
+                  (ITask/.doApply task v e)))]
+        (CompletableFuture/.whenCompleteAsync cf ^BiConsumer propagate-cf-result virtual-executor))
       task))
 
 

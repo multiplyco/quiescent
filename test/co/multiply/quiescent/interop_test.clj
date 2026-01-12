@@ -31,6 +31,25 @@
                  :b (CompletableFuture/completedFuture 2)})))))
 
 
+(deftest completable-future-cancellation-test
+  (testing "Cancelled CF propagates as cancellation, not exception"
+    (let [cf           (CompletableFuture.)
+          catch-ran?   (atom false)
+          finally-ran? (atom false)
+          cancelled?   (atom nil)
+          task         (-> (q/as-task cf)
+                         (q/catch (fn [_] (reset! catch-ran? true)))
+                         (q/finally (fn [_ _ c]
+                                      (reset! finally-ran? true)
+                                      (reset! cancelled? c))))]
+      (.cancel cf true)
+      (q/await task)
+      (is (false? @catch-ran?) "catch should NOT run for cancellation")
+      (is (true? @finally-ran?) "finally should run for cancellation")
+      (is (true? @cancelled?) "finally should receive cancelled=true")
+      (is (q/cancelled? task) "task should be marked as cancelled"))))
+
+
 (deftest channel-not-auto-coerced-test
   (testing "core.async channels are NOT automatically coerced in data structures"
     (let [ch (clojure.core.async/chan)]

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.10 - 2026-01-12
+
+- CPU executor now uses a work-stealing `ForkJoinPool` instead of a fixed thread pool, since it's reasonable to expect
+  CPU bound work of variable duration.
+- CPU executor pool size reduced from `2 * number-of-cores` to `number-of-cores`. With platform parking throwing by
+  default, the previous precaution should be unnecessary.
+- Cancelled `CompletableFuture` now propagates as task cancellation rather than exception. Previously, cancellations
+  would propagate as if they were exceptions, causing the Quiescent task to go into exception handling (e.g. `catch`)
+  rather than exclusively teardown handling (`finally`).
+
 ## 0.1.9 - 2026-01-08
 
 - Bump `pathling` to 0.1.8
