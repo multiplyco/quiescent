@@ -1067,10 +1067,21 @@
                  ;; Success - race to apply value
                  (not (.-exceptional state))
                  (let [result (.-result state)]
+                   ;; Attempt to apply winning result to `winner`.
                    (when-not (Task/.doApply winner result nil tf)
+                     ;; If this was unsuccessful, another task won. We now have two
+                     ;; "successful" results. This is not a problem, unless the task
+                     ;; was stateful. If a release function was given, run it on the
+                     ;; result of the runner-up.
                      (when release
+                       ;; We know that the task is at least settling, so there's no point
+                       ;; in subscribing to it. Additionally, we want to ensure that the
+                       ;; teardown happens in a virtual executor, regardless of what
+                       ;; executor was given in the task itself. Just spawn a new virtual
+                       ;; thread.
                        (submit virtual-executor
-                         (fn []
+                         (fn teardown-stateful-non-winner
+                           []
                            (with-scope (ITask/.getScope t)
                              (release result)))))))
 

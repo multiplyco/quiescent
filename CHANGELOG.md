@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.11 - 2026-01-13
+
+- `time` (new); measure the time it takes to execute a task. Takes a function that receives the args of `finally` plus a
+  Duration that estimates the time it took to run the task.
+- `monitor` no longer incorrectly breaks cascading cancellation chain.
+
 ## 0.1.10 - 2026-01-12
 
 - CPU executor now uses a work-stealing `ForkJoinPool` instead of a fixed thread pool, since it's reasonable to expect

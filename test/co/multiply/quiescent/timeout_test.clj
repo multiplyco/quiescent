@@ -1,11 +1,11 @@
 (ns co.multiply.quiescent.timeout-test
-  "Tests for timeout, monitor, sleep, await, and retry operations."
+  "Tests for timeout, monitor, sleep, await, retry, and time operations."
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent :as q]
     [co.multiply.quiescent.test-support :refer [platform-thread-fixture]])
   (:import
-    [java.time Duration]
+    [java.time Duration Instant]
     [java.util.concurrent CancellationException TimeoutException]))
 
 
@@ -242,3 +242,27 @@
       (let [start (System/currentTimeMillis)]
         (q/await task)
         (is (< (- (System/currentTimeMillis) start) 50) "Should return immediately for settled task")))))
+
+
+(deftest time-test
+  (testing "Duration is measured and passed to side-effect"
+    (let [result   (promise)
+          duration (promise)]
+      @(-> (q/task
+             (Thread/sleep 50)
+             :done)
+         (q/time (fn [v e c d]
+                   (deliver result [v e c])
+                   (deliver duration d))))
+      (is (= [:done nil false] @result))
+      (is (instance? Duration @duration))
+      (is (>= (.toMillis @duration) 50))))
+
+  (testing "Custom start-inst is respected"
+    (let [duration    (promise)
+          early-start (Instant/now)]
+      (Thread/sleep 100)
+      @(-> (q/task :done)
+         (q/time early-start (fn [_ _ _ d]
+                               (deliver duration d))))
+      (is (>= (.toMillis @duration) 100)))))

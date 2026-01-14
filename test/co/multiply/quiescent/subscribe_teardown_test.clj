@@ -4,7 +4,9 @@
     [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent :as q]
     [co.multiply.quiescent.impl :as impl]
-    [co.multiply.quiescent.test-support :refer [platform-thread-fixture]]))
+    [co.multiply.quiescent.test-support :refer [platform-thread-fixture]])
+  (:import
+    [java.time Duration]))
 
 
 (use-fixtures :once platform-thread-fixture)
@@ -82,3 +84,16 @@
 
       ;; Clean up
       (q/await (q/cancel task)))))
+
+
+(deftest monitor-propagates-cancellation-test
+  (testing "Monitor should not break the cancellation chain."
+    (let [task   (q/task @(promise))]
+      (-> task
+        ;; Set up monitor
+        (q/monitor (Duration/ofHours 1) #(println "I should not print."))
+        ;; Cancel it
+        (q/cancel)
+        ;; Await teardown
+        (q/await))
+      (is (q/cancelled? task)))))

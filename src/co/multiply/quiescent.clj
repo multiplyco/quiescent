@@ -1,6 +1,6 @@
 (ns co.multiply.quiescent
   "Composable async tasks with automatic parallelization and grounding."
-  (:refer-clojure :exclude [await promise])
+  (:refer-clojure :exclude [await promise time])
   (:require
     [clojure.core]
     [co.multiply.machine-latch :as ml]
@@ -9,7 +9,7 @@
     [co.multiply.scoped :refer [scoping]])
   (:import
     [co.multiply.quiescent.impl ITask Promise Task TaskState]
-    [java.time Duration]
+    [java.time Duration Instant]
     [java.util.concurrent CancellationException CompletableFuture ForkJoinPool ScheduledExecutorService Semaphore ThreadPerTaskExecutor TimeUnit TimeoutException]))
 
 
@@ -653,7 +653,7 @@
 (defn finally
   "Run a function after a task completes, regardless of outcome.
 
-   The function receives `[value error cancelled?]`:
+   The function receives `[value error cancelled]`:
    - On success: `[value nil false]` (value may be nil)
    - On error: `[nil exception false]`
    - On cancellation: `[nil CancellationException true]`
@@ -684,7 +684,7 @@
 
    Executes on the platform thread pool.
 
-   The function receives `[value error cancelled?]`:
+   The function receives `[value error cancelled]`:
    - On success: `[value nil false]` (value may be nil)
    - On error: `[nil exception false]`
    - On cancellation: `[nil CancellationException true]`
@@ -943,10 +943,6 @@
    This is useful for diagnostics: log warnings when operations are slow without
    actually timing them out or affecting their execution.
 
-   Implementation: Uses `compel` to create a protected wrapper around the task, then
-   races that wrapper against a timeout. When the timeout fires, it cancels the wrapper
-   but not the original task. The watchdog runs 'on the side' and is discarded.
-
    Args:
      - `t`              Task to monitor
      - `ms-or-dur`      Duration after which to trigger side effect:
@@ -954,7 +950,7 @@
                         - `java.time.Duration`: duration object
      - `side-effect-fn` Function (or value) passed to timeout's default parameter.
                         If a function, it's called when the timeout fires.
-                        Exceptions from the side effect are caught and logged.
+                        Exceptions from the side effect propagate and fail the task.
 
    Returns the original task unchanged - result and timing are unaffected.
 
@@ -964,17 +960,51 @@
    (-> (slow-operation)
      (monitor 5000
        #(log/warn \"Operation exceeded 5s\")))
-   ```
-
-   The side effect runs in a fire-and-forget manner - exceptions are logged but don't
-   affect the monitored task."
+   ```"
   [t ms-or-dur side-effect-fn]
-  (timeout (compel t) ms-or-dur
-    (fn []
-      (try (side-effect-fn)
-        (catch Throwable _e))
-      ;; Regardless of side-effect-fn, return `t`. Will be grounded on return.
-      t)))
+  (qdo (timeout (compel t) ms-or-dur side-effect-fn)
+    ;; Return `t` uncompelled to allow outside cancellations to cascade.
+    t))
+
+
+(defn time
+  "Measures the duration of a task and reports it via a side-effect function.
+
+   The side-effect function receives four arguments: the task's value (or nil),
+   exception (or nil), cancelled flag, and a `java.time.Duration` representing
+   the elapsed time.
+
+   By default, timing starts when `time` is called. To include task construction
+   time in the measurement, capture an `Instant` beforehand and pass it as
+   `start-inst`.
+
+   Args:
+     - `t`              Task to measure
+     - `start-inst`     Optional starting instant (default: `Instant/now` at call time)
+     - `side-effect-fn` Function called with `[value exception cancelled duration]`
+
+   Returns the task unchanged.
+
+   Example:
+
+   ```clojure
+   ;; Basic usage - timing starts when `time` is attached
+   (-> (fetch-user id)
+     (time (fn [v e c dur]
+             (log/info \"fetch-user took\" dur))))
+
+   ;; Include construction time
+   (let [start (Instant/now)]
+     (-> (fetch-user id)
+       (time start (fn [v e c dur]
+                     (log/info \"Total time:\" dur)))))
+   ```"
+  ([t side-effect-fn]
+   (time t (Instant/now) side-effect-fn))
+  ([t start-inst side-effect-fn]
+   (finally t
+     (fn [v e c]
+       (side-effect-fn v e c (Duration/between start-inst (Instant/now)))))))
 
 
 (defn- default-validate

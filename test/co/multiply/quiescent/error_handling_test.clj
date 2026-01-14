@@ -64,7 +64,12 @@
     (is (thrown? Exception
           @(q/q {:a (q/task 1)
                  :b (q/task (throw (Exception. "Boom!")))
-                 :c (q/task 3)})))))
+                 :c (q/task 3)}))))
+
+  (testing "Error in `monitor` side-effect propagates"
+    (is (thrown? Exception
+          @(-> (q/task @(promise))
+             (q/monitor 1 #(throw (Exception. "Bang!"))))))))
 
 
 (deftest finally-cancellation-semantics-test
