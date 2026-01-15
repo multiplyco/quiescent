@@ -284,7 +284,29 @@
       (Thread/sleep 50)
       ;; Released value should be a map with :id
       (is (map? @released))
-      (is (contains? @released :id)))))
+      (is (contains? @released :id))))
+
+  (testing "same task raced multiple times does not release winner"
+    (let [released (atom [])]
+      ;; Race each task twice - guarantees one callback for the winner loses the
+      ;; doApply CAS and would have incorrectly released the winner before fix.
+      (let [t1     (q/q :r1)
+            t2     (q/q :r2)
+            winner @(q/race-stateful
+                      #(swap! released conj %)
+                      t1 t1 t2 t2)]
+        (Thread/sleep 50)
+        ;; Loser should be released exactly once, winner not at all
+        (let [loser (if (= winner :r1) :r2 :r1)]
+          (is (= [loser] @released)
+            "Only loser released, exactly once")))))
+
+  (testing "nil results don't throw in race"
+    (is (nil? @(q/race (q/q nil) (q/q nil)))))
+
+  (testing "nil results don't throw in race-stateful"
+    (let [released (atom [])]
+      (is (nil? @(q/race-stateful #(swap! released conj %) (q/q nil) (q/q nil)))))))
 
 
 (deftest advanced-features-test

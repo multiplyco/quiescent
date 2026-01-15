@@ -12,7 +12,7 @@
     [clojure.lang IBlockingDeref IDeref IFn IPending]
     [java.lang Thread$Builder]
     [java.util HashMap Iterator Set]
-    [java.util.concurrent CancellationException CompletableFuture ConcurrentHashMap ConcurrentHashMap$KeySetView ConcurrentLinkedQueue ExecutorService Executors ForkJoinPool ForkJoinPool$ForkJoinWorkerThreadFactory Future ScheduledExecutorService ThreadFactory ThreadPerTaskExecutor]
+    [java.util.concurrent CancellationException CompletableFuture ConcurrentHashMap ConcurrentHashMap$KeySetView ExecutorService Executors ForkJoinPool ForkJoinPool$ForkJoinWorkerThreadFactory Future ScheduledExecutorService ThreadFactory ThreadPerTaskExecutor]
     [java.util.concurrent.atomic AtomicInteger AtomicLong]
     [java.util.function BiConsumer]))
 
@@ -1056,48 +1056,49 @@
        :else
        (let [winner     (-pending-task nil)
              task-latch (AtomicInteger. (count tasks))
-             errors     (ConcurrentLinkedQueue.)]
+             results    (ConcurrentHashMap/newKeySet)
+             errors     (ConcurrentHashMap/newKeySet)]
          (doseq [t tasks]
            ;; Register participating tasks to be torn down when `winner` settles.
            (subscribe-teardown winner t)
            ;; Set up the race.
            (subscribe-callback t phase-settling
-             (fn [^TaskState state]
-               (cond
-                 ;; Success - race to apply value
-                 (not (.-exceptional state))
-                 (let [result (.-result state)]
-                   ;; Attempt to apply winning result to `winner`.
-                   (when-not (Task/.doApply winner result nil tf)
-                     ;; If this was unsuccessful, another task won. We now have two
-                     ;; "successful" results. This is not a problem, unless the task
-                     ;; was stateful. If a release function was given, run it on the
-                     ;; result of the runner-up.
-                     (when release
-                       ;; We know that the task is at least settling, so there's no point
-                       ;; in subscribing to it. Additionally, we want to ensure that the
-                       ;; teardown happens in a virtual executor, regardless of what
-                       ;; executor was given in the task itself. Just spawn a new virtual
-                       ;; thread.
-                       (submit virtual-executor
-                         (fn teardown-stateful-non-winner
-                           []
-                           (with-scope (ITask/.getScope t)
-                             (release result)))))))
-
-                 ;; Exception - collect and check if last
-                 :else
-                 (do
-                   (.add errors (.-result state))
+             (fn handle-race-participant
+               [^TaskState state]
+               (if (.-exceptional state)
+                 ;; If an exception occurred, collect it.
+                 (do (ConcurrentHashMap$KeySetView/.add errors (.-result state))
+                   ;; For every exception, count down. If we reach zero, all tasks
+                   ;; yielded exceptions, and we must fail the race.
                    (when (zero? (AtomicInteger/.decrementAndGet task-latch))
-                     ;; All tasks failed - combine errors
                      (if (every? cancelled? tasks)
-                       (Task/.doCancel winner "All tasks cancelled.")
+                       (Task/.doCancel winner "Race cancelled due to all participants cancelled.")
                        (let [all-errors (vec errors)]
                          (Task/.doApply winner nil
                            (if (= 1 (count all-errors))
+                             ;; Handle the edge case of racing one failing task.
                              (first all-errors)
-                             (ex-info "All tasks failed." {:errors all-errors})))))))))))
+                             ;; When there are multiple exceptions, return all,
+                             ;; wrapped in an ex-info.
+                             (ex-info "All tasks failed." {:errors all-errors})))))))
+                 ;; Value was successful.
+                 (let [result (.-result state)]
+                   ;; Handle releasing of stateful resources if a `release` function is supplied.
+                   ;; Only non-nil results are supported due to constraints of KeySetView.
+                   (if (and release (some? result))
+                     ;; If this is the first time we see the value, proceed. No point in going
+                     ;; further otherwise.
+                     (when (ConcurrentHashMap$KeySetView/.add results result)
+                       ;; Attempt to apply the result to `winner`.
+                       (when-not (Task/.doApply winner result nil tf)
+                         ;; If application failed, run cleanup on the value: it's a realized loser.
+                         (submit virtual-executor
+                           (fn teardown-stateful-non-winner
+                             []
+                             (with-scope (ITask/.getScope t)
+                               (release result))))))
+                     ;; Otherwise, attempt to win without cleanup.
+                     (Task/.doApply winner result nil tf)))))))
          winner)))))
 
 

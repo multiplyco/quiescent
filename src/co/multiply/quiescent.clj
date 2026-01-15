@@ -756,7 +756,8 @@
    determined, one wins and the other's value is passed to `release`.
 
    Args:
-     `release` - Function called with each orphaned value (realized but lost)
+     `release` - Function called with each orphaned value (realized but lost).
+                 Only called for non-nil results.
      `tasks`   - Tasks to race
 
    Example:
@@ -996,8 +997,9 @@
    ;; Include construction time
    (let [start (Instant/now)]
      (-> (fetch-user id)
-       (time start (fn [v e c dur]
-                     (log/info \"Total time:\" dur)))))
+       (time start
+         (fn [v e c dur]
+           (log/info \"Total time:\" dur)))))
    ```"
   ([t side-effect-fn]
    (time t (Instant/now) side-effect-fn))

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.12 - 2026-01-14
+
+- `race-stateful`; Fixed bug where racing the same task multiple times could incorrectly release the winning result, or
+  could attempt to release the same losing result multiple times. Now, winning results will not be released, and losing
+  results will be released exactly once. Introduces a constraint: `release` will not run on `nil` due to underlying
+  constraints. This is OK, `nil` is not stateful.
+
 ## 0.1.11 - 2026-01-13
 
 - `time` (new); measure the time it takes to execute a task. Takes a function that receives the args of `finally` plus a

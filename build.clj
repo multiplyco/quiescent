@@ -5,7 +5,7 @@
     [deps-deploy.deps-deploy :as deploy]))
 
 (def lib 'co.multiply/quiescent)
-(def version "0.1.11")
+(def version "0.1.12")
 (def class-dir "target/classes")
 (def jar-file (format "target/%s-%s.jar" (name lib) version))
 (def basis (delay (b/create-basis {:project "deps.edn"})))
