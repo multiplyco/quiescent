@@ -88,7 +88,7 @@
 
 (deftest monitor-propagates-cancellation-test
   (testing "Monitor should not break the cancellation chain."
-    (let [task   (q/task @(promise))]
+    (let [task (q/task @(promise))]
       (-> task
         ;; Set up monitor
         (q/monitor (Duration/ofHours 1) #(println "I should not print."))

@@ -31,6 +31,7 @@
            :no-doc true}
   ^ScheduledExecutorService scheduling-executor impl/scheduling-executor)
 
+
 ;; # Thread control
 ;; ################################################################################
 (defn conditionally-wait
@@ -207,8 +208,8 @@
    Unlike `deref`, does not throw if the task failed or was cancelled.
 
    Args:
-     `t`         - The task to await
-     `ms-or-dur` - Optional timeout as milliseconds (long) or `java.time.Duration`
+     - `t`         The task to await
+     - `ms-or-dur` Optional timeout as milliseconds (long) or `java.time.Duration`
 
    Example:
 
@@ -330,10 +331,10 @@
   "Chain a function after one or more tasks complete.
 
    Single task:
-     `(then task f)` - Calls `(f @task)`
+     `(then task f)` - Calls the equivalent of `(f @task)`
 
    Multiple tasks:
-     `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls `(f @t1 @t2 @t3)`"
+     `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls the equivalent of `(f @t1 @t2 @t3)`"
   ([t f] (ITask/.doThen (impl/as-task t) virtual-executor f))
   ([t1 t2 f] (do-applier virtual-executor [t1 t2] nil (partial apply f)))
   ([t1 t2 t3 f] (do-applier virtual-executor [t1 t2 t3] nil (partial apply f)))
@@ -354,10 +355,10 @@
    Executes on the platform thread pool.
 
    Single task:
-     `(then task f)` - Calls `(f @task)`
+     `(then task f)` - Calls the equivalent of `(f @task)`
 
    Multiple tasks:
-     `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls `(f @t1 @t2 @t3)`"
+     `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls the equivalent of `(f @t1 @t2 @t3)`"
   ([t f] (ITask/.doThen (impl/as-task t) cpu-executor f))
   ([t1 t2 f] (do-applier cpu-executor [t1 t2] nil (partial apply f)))
   ([t1 t2 t3 f] (do-applier cpu-executor [t1 t2 t3] nil (partial apply f)))
@@ -413,18 +414,18 @@
    ```"
   ([t f]
    (ITask/.doCatch (impl/as-task t) virtual-executor f))
-  ([t err1 f1]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [err1 f1]))
-  ([t err1 f1 err2 f2]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [err1 f1 err2 f2]))
-  ([t err1 f1 err2 f2 err3 f3]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [err1 f1 err2 f2 err3 f3]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [err1 f1 err2 f2 err3 f3 err4 f4]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4 err5 f5]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4 err5 f5 & pairs]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor (into [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5] pairs))))
+  ([t e f]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e f]))
+  ([t e1 f1 e2 f2]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2]))
+  ([t e1 f1 e2 f2 e3 f3]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3 e4 f4]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5 & pairs]
+   (ITask/.doCatchTyped (impl/as-task t) virtual-executor (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
 
 
 (defn catch-cpu
@@ -470,18 +471,18 @@
    ```"
   ([t f]
    (ITask/.doCatch (impl/as-task t) cpu-executor f))
-  ([t err1 f1]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1]))
-  ([t err1 f1 err2 f2]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1 err2 f2]))
-  ([t err1 f1 err2 f2 err3 f3]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1 err2 f2 err3 f3]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1 err2 f2 err3 f3 err4 f4]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4 err5 f5]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5]))
-  ([t err1 f1 err2 f2 err3 f3 err4 f4 err5 f5 & pairs]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor (into [err1 f1 err2 f2 err3 f3 err4 f4 err5 f5] pairs))))
+  ([t e f]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e f]))
+  ([t e1 f1 e2 f2]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2]))
+  ([t e1 f1 e2 f2 e3 f3]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3 e4 f4]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
+  ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5 & pairs]
+   (ITask/.doCatchTyped (impl/as-task t) cpu-executor (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
 
 
 (defn handle
@@ -756,9 +757,9 @@
    determined, one wins and the other's value is passed to `release`.
 
    Args:
-     `release` - Function called with each orphaned value (realized but lost).
+     - `release` Function called with each orphaned value (realized but lost).
                  Only called for non-nil results.
-     `tasks`   - Tasks to race
+     - `tasks`   Tasks to race
 
    Example:
 
@@ -848,12 +849,12 @@
   "Create a task that sleeps for the specified duration, then returns `default`.
 
    Args:
-     `ms-or-duration` - Sleep duration as either:
-                        - Long: non-negative milliseconds (0 = immediate return)
-                        - `java.time.Duration`: non-negative duration
-     `default`        - Optional value to return after sleep (default: nil)
-                        - If a function, calls it and returns its result
-                        - If a Throwable, fails the task with that exception
+     - `ms-or-duration` Sleep duration as either:
+       - Long: non-negative milliseconds (0 = immediate return)
+       - `java.time.Duration`: non-negative duration
+     - `default` Optional value to return after sleep (default: nil)
+       - If a function, calls it and returns its result
+       - If a Throwable, fails the task with that exception
 
    Returns a task that completes after the specified duration.
    Throws for negative or unsupported duration values.
@@ -861,9 +862,10 @@
    Example:
 
    ```clojure
-   @(sleep 100)                      ; Sleep 100ms, return nil
-   @(sleep 100 :done)                ; Sleep 100ms, return :done
-   @(sleep (Duration/ofSeconds 1))   ; Sleep 1 second, return nil
+   @(sleep 100)                       ; Sleep 100ms, return nil
+   @(sleep 100 :done)                 ; Sleep 100ms, return :done
+   @(sleep 100 #(rand-int 10))        ; Sleep 100ms, then call function
+   @(sleep (Duration/ofSeconds 1))    ; Sleep 1 second, return nil
    @(sleep 100 (Exception. \"Boom\")) ; Sleep 100ms, then throw
    ```"
   ([ms-or-duration]
@@ -894,31 +896,29 @@
 (defn timeout
   "Asynchronous timeout that races a task against a sleep timer.
 
-   Roughly equivalent to `(deref task ms-or-dur default)`, except:
-   - Asynchronous: doesn't block the calling thread unless dereferenced. Returns a task.
-   - `default` is optional. If omitted, throws a `TimeoutException` on timeout.
-      - If a function is given, executes it on timeout, and returns its result.
-      - If an exception is given, throws it on timeout.
+   Roughly equivalent to `(deref task ms-or-dur default)`, except it's asynchronous
+   and doesn't block the calling thread unless dereferenced.
 
    Args:
-     `t`              - Task to race against timeout
-     `ms-or-dur`      - Timeout duration as either:
-                        - Long: milliseconds
-                        - `java.time.Duration`: duration object
-     `default`        - Optional value/behavior on timeout:
-                        - Value: returned on timeout
-                        - Function: executed and its result returned
-                        - Exception: thrown on timeout
-                        - Omitted: throws `TimeoutException`
+     - `t` Task to race against timeout
+     - `ms-or-dur` Timeout duration as either:
+       - Long: milliseconds
+       - `java.time.Duration`: duration object
+     - `default` Optional value/behavior on timeout:
+       - Value: returned on timeout
+       - Function: executed and its result returned
+       - Exception: thrown on timeout
+       - Omitted: throws `TimeoutException`
 
-   Returns a task that completes with either the task's result or the timeout default.
+   Returns a task that completes with either the task's result or the timeout `default`.
 
    Example:
 
    ```clojure
-   @(timeout my-task 1000)                     ; Throw TimeoutException after 1s
-   @(timeout my-task 1000 :timed-out)          ; Return :timed-out after 1s
-   @(timeout my-task (Duration/ofSeconds 5))   ; Throw after 5 seconds
+   @(timeout my-task 1000)                   ; Throw TimeoutException after 1s
+   @(timeout my-task 1000 :timed-out)        ; Return :timed-out after 1s
+   @(timeout my-task 1000 #(rand-int 10))    ; Call fallback fn on timeout
+   @(timeout my-task (Duration/ofSeconds 5)) ; Throw after 5 seconds
    ```"
   ([t ms-or-dur]
    (timeout t ms-or-dur (TimeoutException. (str "Task timed out after " ms-or-dur "."))))
@@ -945,13 +945,13 @@
    actually timing them out or affecting their execution.
 
    Args:
-     - `t`              Task to monitor
-     - `ms-or-dur`      Duration after which to trigger side effect:
-                        - Long: milliseconds
-                        - `java.time.Duration`: duration object
+     - `t` Task to monitor
+     - `ms-or-dur` Duration after which to trigger side effect:
+       - Long: milliseconds
+       - `java.time.Duration`: duration object
      - `side-effect-fn` Function (or value) passed to timeout's default parameter.
-                        If a function, it's called when the timeout fires.
-                        Exceptions from the side effect propagate and fail the task.
+       If a function, it's called when the timeout fires.
+       Exceptions from the side effect propagate and fail the task.
 
    Returns the original task unchanged - result and timing are unaffected.
 
@@ -980,8 +980,8 @@
    `start-inst`.
 
    Args:
-     - `t`              Task to measure
-     - `start-inst`     Optional starting instant (default: `Instant/now` at call time)
+     - `t` Task to measure
+     - `start-inst` Optional starting instant (default: `Instant/now` at call time)
      - `side-effect-fn` Function called with `[value exception cancelled duration]`
 
    Returns the task unchanged.
@@ -1005,8 +1005,8 @@
    (time t (Instant/now) side-effect-fn))
   ([t start-inst side-effect-fn]
    (finally t
-     (fn [v e c]
-       (side-effect-fn v e c (Duration/between start-inst (Instant/now)))))))
+            (fn [v e c]
+              (side-effect-fn v e c (Duration/between start-inst (Instant/now)))))))
 
 
 (defn- default-validate

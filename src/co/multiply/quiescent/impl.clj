@@ -1010,7 +1010,8 @@
     ;; `nil` is used as the executor since it never will be used (doApply path).
     (let [task (doto (-pending-task nil)
                  (subscribe-cancel-future phase-settling cf))]
-      (letfn [(propagate-cf-result [v e]
+      (letfn [(propagate-cf-result
+                [v e]
                 (if (CompletableFuture/.isCancelled cf)
                   (ITask/.doCancel task "CompletableFuture cancelled.")
                   (ITask/.doApply task v e)))]

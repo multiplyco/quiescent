@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.14 - 2026-01-15
+
+- Docstring formatting improvements for cljdoc rendering (Args sections now use markdown lists).
+- Added function examples to `sleep` and `timeout` docstrings.
+- Renamed `err1/err2/...` parameters to `e1/e2/...` in `catch` and `catch-cpu` for consistency.
+
 ## 0.1.12 - 2026-01-14
 
 - `race-stateful`; Fixed bug where racing the same task multiple times could incorrectly release the winning result, or
