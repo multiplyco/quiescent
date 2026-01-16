@@ -1,24 +1,32 @@
-{:paths ["src"]
+{:paths ["src" "target/classes" "java"]
 
- :deps  {co.multiply/scoped        {:mvn/version "0.1.14"}
-         co.multiply/machine-latch {:mvn/version "0.1.12"}
-         co.multiply/pathling      {:mvn/version "0.1.8"}}
+ :deps  {co.multiply/scoped        {:mvn/version "0.1.16"}
+         co.multiply/machine-latch {:mvn/version "0.1.15"}
+         co.multiply/pathling      {:mvn/version "0.2.1"}
+         co.multiply/conc          {:mvn/version "0.1.3"}
+
+         #_#_org.clojure/clojure       {:mvn/version "1.12.4"}
+         #_#_org.clojure/clojurescript {:mvn/version "1.12.134"}}
 
  :aliases
- {:dev    {:extra-paths ["dev"]
-           :extra-deps  {org.clojure/core.async {:mvn/version "1.8.741"}
-                         criterium/criterium    {:mvn/version "0.4.6"}
-                         nrepl/nrepl            {:mvn/version "1.5.2"}}}
+ {:dev         {:extra-paths ["dev"]
+                :extra-deps  {org.clojure/core.async                   {:mvn/version "1.8.741"}
+                              com.clojure-goes-fast/clj-async-profiler {:mvn/version "2.0.0-beta1"}
+                              criterium/criterium                      {:mvn/version "0.4.6"}
+                              nrepl/nrepl                              {:mvn/version "1.5.2"}}
+                :jvm-opts    ["-Djdk.attach.allowAttachSelf"]}
 
-  :test   {:extra-paths ["test"]
-           :extra-deps  {org.clojure/core.async {:mvn/version "1.8.741"}
-                         lambdaisland/kaocha    {:mvn/version "1.91.1392"}}}
+  :test        {:extra-paths ["test"]
+                :extra-deps  {org.clojure/core.async {:mvn/version "1.8.741"}
+                              lambdaisland/kaocha    {:mvn/version "1.91.1392"}}}
 
-  :build  {:ns-default build
-           :deps       {io.github.clojure/tools.build {:mvn/version "0.10.11"}
-                        slipset/deps-deploy           {:mvn/version "0.2.2"}}}
+  :build       {:ns-default build
+                :deps       {io.github.clojure/tools.build {:mvn/version "0.10.11"}
+                             slipset/deps-deploy           {:mvn/version "0.2.2"}}}
 
-  :cljdoc {:extra-deps {io.github.cljdoc/cljdoc-analyzer {:git/tag "0.10.3" :git/sha "3f37a390"}
-                        org.clojure/core.async           {:mvn/version "1.8.741"}}
-           :main-opts  ["-m" "cljdoc-analyzer.cljdoc-main"]}}}
+  :cljdoc      {:extra-deps {io.github.cljdoc/cljdoc-analyzer {:git/tag "v1.0.873" :git/sha "bf4f620c"}
+                             org.clojure/core.async           {:mvn/version "1.8.741"}}
+                :main-opts  ["-m" "cljdoc-analyzer.cljdoc-main"]}
+
+  :shadow-cljs {:extra-deps {thheller/shadow-cljs {:mvn/version "3.3.4"}}}}}
 

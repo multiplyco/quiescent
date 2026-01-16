@@ -1,0 +1,7 @@
+{:deps   {:aliases [:test :shadow-cljs]}
+ :builds {:browser {:target    :karma
+                    :output-to "target/browser-test.js"
+                    :ns-regexp "co\\.multiply\\.quiescent.*"}
+          :node    {:target    :node-test
+                    :output-to "target/node-test.js"
+                    :ns-regexp "co\\.multiply\\.quiescent.*"}}}

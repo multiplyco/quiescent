@@ -1,9 +1,8 @@
-#kaocha/v1
-{:tests [{:id          :unit
-          :test-paths  ["test"]
-          :ns-patterns [".*-test$"]}]
+#kaocha/v1 {:tests           [{:id          :unit
+                               :test-paths ["test"]
+                               :ns-patterns [".*-test$"]}]
 
- :plugins [:kaocha.plugin/capture-output]
- :kaocha/reporter [kaocha.report/documentation]
+            :plugins         [:kaocha.plugin/capture-output]
+            #_#_:kaocha/reporter [kaocha.report/documentation]
 
- :capture-output? true}
+            :capture-output? true}

@@ -3,8 +3,8 @@
 [![Clojars Project](https://img.shields.io/clojars/v/co.multiply/quiescent.svg)](https://clojars.org/co.multiply/quiescent)
 [![cljdoc](https://cljdoc.org/badge/co.multiply/quiescent)](https://cljdoc.org/d/co.multiply/quiescent)
 
-A Clojure library for composable async tasks with automatic parallelization, structured concurrency, and parent-child
-and chain cancellation.
+A Clojure/ClojureScript library for composable async tasks with automatic parallelization, structured concurrency,
+and parent-child and chain cancellation.
 
 In particular, Quiescent has been designed with these constraints in mind:
 
@@ -19,7 +19,38 @@ Tasks go through 7 phases during their lifecycle: pending, running, grounding, t
 **quiescent**. This library is named after the last phase in the lifecycle, which is when all subtasks have settled and
 the task tree has come to rest.
 
+## Table of contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Core concepts](#core-concepts)
+  - [Tasks](#tasks)
+  - [Promises](#promises)
+  - [Structured Concurrency](#structured-concurrency)
+  - [Grounding](#grounding)
+  - [Handling outcomes and chaining transformations](#handling-outcomes-and-chaining-transformations)
+  - [Transformations and error handling](#transformations-and-error-handling)
+  - [Cancellation](#cancellation)
+  - [Controlling parallelism](#controlling-parallelism)
+  - [Retry](#retry)
+  - [Scopes](#scopes)
+- [Performance and overhead](#performance-and-overhead)
+- [Platform thread safety](#platform-thread-safety)
+- [Integration](#integration)
+  - [CompletableFuture (CLJ)](#completablefuture-clj)
+  - [JS Promise (CLJS)](#js-promise-cljs)
+  - [core.async (CLJ + CLJS)](#coreasync-clj--cljs)
+- [ClojureScript Differences](#clojurescript-differences)
+- [Examples](#examples)
+  - [Graceful Shutdown](#graceful-shutdown)
+  - [Racing Structures](#racing-structures)
+  - [Automatic Parallelization with qlet](#automatic-parallelization-with-qlet)
+  - [Happy Eyeballs](#happy-eyeballs)
+- [License](#license)
+
 ## Requirements
+
+### Clojure
 
 Quiescent builds heavily on virtual threads and other features present only in recent versions of the JDK.
 
@@ -27,11 +58,16 @@ Quiescent builds heavily on virtual threads and other features present only in r
 - JDK 25 recommended (Better virtual threads; `ScopedValue` support)
 - Clojure 1.12+
 
+### ClojureScript
+
+- ClojureScript 1.11+
+- Any modern JavaScript runtime (browser or Node.js)
+
 ## Installation
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.1.14"}
+co.multiply/quiescent {:mvn/version "0.2.4"}
 ```
 
 Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -63,8 +99,8 @@ A task represents an async computation. Create one that executes on a virtual th
 ;; (blocks until complete)
 ```
 
-`task` spawns a task that runs on a virtual thread, while `cpu-task` runs directly on a platform thread, and `q` runs
-on the calling thread. Other than that, they are all semantically equivalent.
+`task` spawns a task that runs on a virtual thread, while `cpu-task` runs directly on a platform thread. `q` runs the
+body synchronously on the calling thread. Other than that, they are all semantically equivalent.
 
 ### Promises
 
@@ -82,8 +118,8 @@ Promises are tasks you resolve externally, which is useful for bridging callback
 ;; => "result" (or throws ExceptionInfo if the `fail` was used)
 ```
 
-Promises cannot be cancelled or compelled, but otherwise implement the full task API. You can chain with `then`,
-`finally`, and so on, or `race` them against other tasks, or do anything else that tasks generally permit.
+Promises cannot be compelled, but otherwise implement the full task API. You can chain with `then`, `finally`, and so
+on, cancel them, race them against other tasks, or do anything else that tasks generally permit.
 
 ### Structured Concurrency
 
@@ -218,6 +254,21 @@ provided directly.
 (q/then task-a task-b task-c +)
 ```
 
+`qmerge` merges maps whose values may be (or contain) tasks:
+
+```clojure
+(q/qmerge
+  {:user (fetch-user id)}
+  {:orders (fetch-orders id)})
+;; => {:user {...} :orders [...]}
+```
+
+This is slightly more ergonomic and efficient than the semantically equivalent:
+
+```clojure
+(q/then {:user (fetch-user id)} {:orders (fetch-orders id)} merge)
+```
+
 Use `catch` to recover from errors:
 
 ```clojure
@@ -300,6 +351,31 @@ Use `monitor` to trigger a side effect when a task doesn't finish within the spe
   (q/monitor 500 #(println "This is taking a long time.")))
 ```
 
+Use `time` to measure how long a task takes:
+
+```clojure
+(-> (fetch-user id)
+  (q/time (fn [value error cancelled ms]
+            (log/info "fetch-user took" ms "ms"))))
+```
+
+The side-effect function receives four arguments: value (or nil), exception (or nil), cancelled flag, and elapsed
+milliseconds. By default, timing starts when `time` is called. To include task construction time, capture the start
+time beforehand and pass it as the second argument.
+
+`qdo` awaits all tasks but returns only the last result. Useful for awaiting side effects:
+
+  ```clojure
+  (q/qdo
+    (log-event)
+    (perform-work))
+  ```
+
+If `perform-work` were fast enough, and `log-event` slow enough, `log-event` might be cancelled without completing.
+
+Where `compel` would allow `log-event` to complete independently (and resist cancellation), `qdo` delays the return of
+`perform-work` until both are done (and won't resist cancellation).
+
 ### Cancellation
 
 Tasks can be cancelled explicitly with `cancel`:
@@ -343,6 +419,21 @@ cancel `subtask`. The moat that protects `subtask` only exists within the `race`
 
 If you hold a reference to a `compel`ed task, you can still cancel it explicitly.
 
+#### Awaiting without throwing
+
+Use `await` to wait until a task reaches quiescence:
+
+```clojure
+@(q/await task)           ; Block until quiescent, returns true
+@(q/await task 1000)      ; With timeout, returns false if expired
+```
+
+`await` returns a task containing a boolean: `true` when settled, `false` if the timeout expired. Unlike `deref`, it
+never throws on failure or cancellation. This is useful when you need to know a task has finished while being unaffected
+by the outcome.
+
+Dereferencing cannot be done in ClojureScript. You can chain off the task returned by `await` on both platforms.
+
 #### Detecting cancellation
 
 Use `cancelled?` to check if a task was cancelled:
@@ -363,32 +454,130 @@ Inside a `finally` handler, check the third argument:
 
 ### Controlling parallelism
 
-To limit how many tasks are executed in parallel, use a semaphore:
+To limit how many tasks run concurrently, use a gate:
 
 ```clojure
-(let [sem (q/semaphore 20)]
-  @(q/qfor [n (range 1000)]
-     (q/task
-       (q/with-semaphore sem
-         (Thread/sleep (+ 50 (rand-int 100)))
-         (println "Thread" n "done.")
-         n))))
+(let [g (q/gate 20)]
+  @(qfor [n (range 1000)]
+     (q/gate-task g
+       (q/sleep (+ 50 (rand-int 100))
+         (fn simulate-delay []
+           (println "Task" n "done.")
+           n)))))
 
-;; Prints a lot of "Thread <n> done."
+;; Prints a lot of "Task <n> done."
 ;; => [0 1 2 … 999]
 ```
 
-`qfor` is nothing special; it expands to `(q/q (mapv …))`.
+`qfor` is nothing special; it expands to `(q (mapv …))`.
 
-Note that you can't by default acquire a semaphore permit inside a platform thread. This would block the thread, which
-this library discourages. Acquire the permit within a virtual thread, then start the platform thread.
+Gates participate in structured concurrency: cancelling a gate cancels all tasks created through it. Any task created
+via a gate that hasn't already been cancelled, or run to completion, is immediately cancelled in turn.
+
+Gates are also **reentrant**: nested `gate-task` calls on the same gate don't consume additional permits:
+
+```clojure
+(let [g (q/gate 1)]
+  ;; This works despite only 1 permit, because the inner gate-task
+  ;; detects that it's already inside the same gate, and so runs immediately.
+  @(q/gate-task g
+     (q/gate-task g :inner-result)))
+;; => :inner-result
+```
+
+To run the gated code on a platform thread, just return a `cpu-task` directly or inside a data structure.
+
+```clojure
+(let [g (q/gate 20)]
+  @(qfor [n (range 1000)]
+     (q/gate-task g
+       {:cpu-bound (q/cpu-task …)
+        :io-bound  (q/task …)})))
+```
+
+Other than being dependent on a gate, `gate-task` is a normal task, and can be treated as such:
+
+```clojure
+(let [g (q/gate 20)]
+  @(qfor [n (range 1000)]
+     (-> (q/gate-task g
+           {:cpu-bound (q/cpu-task …)
+            :io-bound  (q/task …)})
+       (q/then (fn [value] …)))))
+```
+
+Any handler chained onto the `gate-task` runs _after_ its permit has been returned to the gate. It does not extend the
+lifetime of the `gate-task` itself.
+
+Gates can be used mid-chain:
+
+```clojure 
+(let [g (q/gate 20)]
+  @(qfor [n (range 1000)]
+     (-> (q/task (* n 2)) ;; Runs with parallelism greater than 20
+       (q/then
+         (fn stringify
+           [n]
+           (q/gate-task g ;; Runs with parallelism of 20
+             (q/sleep (+ 10 (rand-int 100))
+               #(str "n-" n)))))
+       (q/then            ;; Runs with parallelism greater than 20
+         (fn keywordify
+           [s]
+           (println "Done:" s)
+           (keyword s))))))
+```
+
+Gates work with both Clojure and ClojureScript.
+
+#### CLJ: Semaphore alternative
+
+On Clojure, you can also use `semaphore` with `with-semaphore` for more traditional permit-based control:
 
 ```clojure
 (let [sem (q/semaphore 4)]
-  @(q/qfor [work-unit (get-work-units)]
+  @(qfor [work-unit (get-work-units)]
      (q/task
        (q/with-semaphore sem
          @(q/cpu-task (cpu-bound-calculation work-unit))))))
+```
+
+Note that you can't acquire a semaphore permit inside a platform thread by default — this would block the thread.
+Acquire the permit within a virtual thread, then start the platform thread.
+
+### Retry
+
+`retry` provides configurable retry logic with exponential backoff:
+
+```clojure
+(q/retry
+  (fn [retrying?]
+    (fetch-flaky-service))
+  {:retries        5
+   :backoff-ms     1000
+   :backoff-factor 2
+   :retry-callback (fn [e retries backoff]
+                     (log/warn "Retry in" backoff "ms," retries "left"))})
+```
+
+The function receives a boolean indicating whether this is a retry attempt (`false` for the first call, `true` for
+subsequent retries). Options:
+
+- `:retries` - Maximum retry attempts (default: 3)
+- `:backoff-ms` - Initial backoff duration in ms (default: 2000)
+- `:backoff-factor` - Multiplier for backoff after each retry (default: 2)
+- `:retry-callback` - Called before each retry with `[exception retries-left backoff-ms]`
+- `:validate` - Function `[value exception]` to determine success; throw to trigger retry
+
+The `:validate` option is useful when a "successful" response should still trigger a retry:
+
+```clojure
+(q/retry
+  (fn [_] (http/get url))
+  {:validate (fn [response _]
+               (when (= 503 (:status response))
+                 (throw (ex-info "Service unavailable" {})))
+               response)})
 ```
 
 ### Scopes
@@ -422,18 +611,18 @@ extract the currently bound value.
 
 ## Performance and overhead
 
-The floor for a task that does nothing and runs synchronously on the current thread (i.e. `(q/q nil)`) is **91ns** as
+The floor for a task that does nothing and runs synchronously on the current thread (i.e. `(q nil)`) is **91ns** as
 measured on an M1 using Criterium. This sounds impressive until you realize that this is 91ns longer than it takes to
 run `nil`. Still, this establishes where we're starting from.
 
 If you add in some coordination, for example:
 
 ```clojure
-(q/for [n (range 1000)]
-  (q/q n))
+(qfor [n (range 1000)]
+  (q n))
 ```
 
-This comes out to **~351µs**, or about **~0.35µs** per task. If we disregard that the `mapv` to which `qfor` expands
+This comes out to **~266µs**, or about **~0.27µs** per task. If we disregard that the `mapv` to which `qfor` expands
 will cost some portion of this, most of the overhead is due to there being a parent task, with subtasks in its scope.
 So the tasks engage in coordination:
 
@@ -441,39 +630,46 @@ So the tasks engage in coordination:
 - Tracking to ensure that uncompelled tasks in the scope of the parent don't exceed the lifetime of the same parent
 - Grounding of all subtask values into the value of the parent (in this case, a vector)
 
+However, there is very little contention. `q` is synchronous, so the tasks are started, run, and end synchronously.
+
 Starting a virtual thread itself takes somewhere between **0.1µs** to **1µs**, so we can remeasure with this:
 
 ```clojure
-(q/for [n (range 1000)]
+(qfor [n (range 1000)]
   (q/task n)) ;; <- Run 1000 virtual threads
 ```
 
-This now takes **604µs**, where the additional cost can be attributed to the cost of submitting the body of the task to
-a virtual executor. So we spent somewhere around ~**0.25µs** per task starting a thread.
+This now takes **505µs**, or about **0.5µs** where the additional cost can partly be attributed to the submission of the
+body to a virtual executor, and partly to contention during coordination when the tasks start, run, and stop
+asynchronously.
 
-Let's measure some grounding:
-
-```clojure
-(q/q {:hello         (q/q :world)
-      :animals       #{(q/q :dog) (q/q :cat) (q/q :capybara)}
-      :frozen-places [(q/q "North pole") (q/q "My freezer")]})
-```
-
-This comes out to **2.6µs** or about **0.37µs** per task, on the same machine as earlier. This is not a case where we
-have many tasks, so the overhead is now mostly due to the same coordination and grounding as mentioned above. And indeed
-it's about the same cost per task (modulo noise) that we saw in the 1000 task example.
-
-Dereferencing this would return:
+If we start 100 000 tasks instead:
 
 ```clojure
-{:hello         :world
- :animals       #{:cat :capybara :dog}
- :frozen-places ["North pole" "My freezer"]}
+(qfor [n (range 100000)]
+  (q/task n))
 ```
+
+This takes 69ms, or about **0.69µs**, which means that it goes slightly superlinear at larger volumes of _simultaneous_
+tasks.
+
+However, if we group them into 100 batches of 1000 each instead:
+
+```clojure
+(qfor [_ (range 100)]
+  (q/task
+    (qfor [n (range 1000)]
+      (q/task n))))
+```
+
+We're looking at a total running time of 30ms, or **0.3µs** per task. As contention is decreased and constant overhead
+is amortize across many tasks, the average cost of a task decreases. Therefore, if your work is bursty in nature, it
+could be worth chunking it. However, if those same tasks are spread out over time, this will not matter, as contention
+will be low during any given moment of time.
 
 You might not be using an M1, so the exact numbers here are not important. But understanding the relative ratio between
-the cost of a task in isolation, and the cost of tasks under coordination, can be useful to help you reason about your
-own workloads.
+the cost of a task in isolation, and the cost of tasks under coordination and at scale can be useful to help you reason
+about your own workloads.
 
 ## Platform thread safety
 
@@ -492,17 +688,17 @@ Disable this check globally with `(q/throw-on-platform-park! false)`.
 
 ## Integration
 
-### CompletableFuture
+### CompletableFuture (CLJ)
 
-CompletableFutures integrate pretty much directly with tasks without special consideration.
+CompletableFutures are automatically converted when returned from tasks or passed to chaining functions.
 
 ```clojure
 ; Wrap a CompletableFuture as a task
-(q/as-task (s3/async-get …)) ;; <- Presuming that `async-get` returns a CompletableFuture
+(q/as-task (s3/async-get …))
 
-;; Or just use it directly:
-(q/qlet [some-cf (s3/async-get …)
-         some-other (q/task …)]
+;; Or use directly in chaining functions:
+(qlet [some-cf (s3/async-get …)
+       some-other (q/task …)]
   (str some-cf some-other))
 
 (-> (s3/async-get …)
@@ -515,7 +711,28 @@ CompletableFutures integrate pretty much directly with tasks without special con
 (q/as-cf my-task)
 ```
 
-### core.async (optional)
+### JS Promise (CLJS)
+
+JavaScript Promises integrate directly with tasks.
+
+```clojure
+; Wrap a Promise as a task
+(q/as-task (js/fetch url))
+
+;; Or use directly in task context:
+(q/task
+  (let [response (q (js/fetch url))
+        data     (q (.json response))]
+    (process data)))
+
+; Convert task to Promise
+(q/as-jsp my-task)
+```
+
+Note: JS Promises cannot represent cancellation distinctly from rejection. A cancelled task converted via `as-jsp`
+will reject with the cancellation error.
+
+### core.async (CLJ + CLJS)
 
 core.async support is available as an optional adapter. Add core.async to your own dependencies, then require the
 adapter:
@@ -529,6 +746,96 @@ adapter:
 ; Convert task to channel
 (q-async/as-chan my-task)
 ```
+
+Unlike CompletableFuture and js/Promise, channels require explicit conversion with `as-task`. Channels are
+intentionally not auto-converted during grounding, since a channel in a return value is often meant to remain
+a channel.
+
+## ClojureScript Differences
+
+Quiescent aims to provide the same semantics on both platforms, but some differences arise from the underlying
+runtime environments.
+
+### No blocking deref
+
+JavaScript is single-threaded, so tasks cannot be dereferenced with `@`. Use callbacks, convert to JS Promise with
+`as-jsp`, or use the `with-task` test helper.
+
+```clojure
+;; Won't work in CLJS:
+;; @(q/task :result)
+
+;; Instead, chain handlers:
+(-> (q/task :result)
+  (q/then process-result)
+  (q/catch handle-error))
+
+;; Or convert to Promise:
+(-> (q/as-jsp my-task)
+  (.then process-result)
+  (.catch handle-error))
+```
+
+### No virtual/platform thread distinction
+
+Since JavaScript has no threads, the following CLJ-specific features are not available in CLJS:
+
+- `cpu-task` - Use `task` instead (runs on the event loop)
+- All `-cpu` handler variants (`then-cpu`, `catch-cpu`, `handle-cpu`, `ok-cpu`, `err-cpu`, `done-cpu`, `finally-cpu`) -
+  Use the non-`-cpu` versions instead
+- `semaphore`, `with-semaphore`, `acquire`, `release` - Use `gate` / `gate-task` instead
+- `interrupted?`, `comply-interrupt` - Use `aborted?` / `comply-abort` with `abort-signal` instead
+- `deref-cpu` - Not applicable
+- `throw-on-platform-park!` - Not applicable
+
+### AbortSignal integration
+
+CLJS provides `abort-signal` for integrating with the Fetch API and other AbortController-aware APIs:
+
+```clojure
+(qlet [response (js/fetch url #js {:signal (q/abort-signal)})]
+  (process response))
+```
+
+When the task is cancelled, the AbortSignal is triggered, which cancels the fetch request. Each call to
+`abort-signal` returns a fresh signal tied to the current task's lifecycle.
+
+Related utilities:
+
+- `(aborted? signal)` - Check if an AbortSignal has been triggered
+- `(comply-abort signal)` - Throw if the signal has been triggered
+
+### Exception handling differences
+
+**Cancellation exceptions** differ between platforms:
+
+| Platform | Cancellation exception                        |
+|----------|-----------------------------------------------|
+| CLJ      | `java.util.concurrent.CancellationException`  |
+| CLJS     | `ex-info` with `{:cancelled true}` in ex-data |
+
+The `cancelled?` predicate works uniformly on both platforms.
+
+**`catch` clause matching** uses different mechanisms:
+
+```clojure
+;; CLJ - exception classes:
+(q/catch task
+  IllegalArgumentException (fn [e] :bad-arg)
+  IOException (fn [e] :io-error))
+
+;; CLJS - predicates:
+(q/catch task
+  #(= :bad-arg (:type (ex-data %))) (fn [e] :bad-arg)
+  #(= :io-error (:type (ex-data %))) (fn [e] :io-error))
+```
+
+The single-arity form `(q/catch task handler-fn)` works the same on both platforms.
+
+### Scoped values
+
+On JDK 25+, Quiescent uses `ScopedValue` for efficient scope propagation. In CLJS (and earlier JDKs), an alternative
+mechanism is used. The API (`scoping`, `ask`) remains the same.
 
 ## Examples
 
@@ -683,10 +990,10 @@ in parallel. `qlet` instead infers it from the data flow.
 
 (time
   (scoping [*start-ms* (System/currentTimeMillis)]
-    @(q/qlet [user (fetch-user 123)
-              orders (fetch-orders (:id user))          ; depends on user
-              recs (fetch-recommendations (:id user)) ; depends on user
-              promos (fetch-promotions)]                ; independent
+    @(qlet [user (fetch-user 123)
+            orders (fetch-orders (:id user))          ; depends on user
+            recs (fetch-recommendations (:id user)) ; depends on user
+            promos (fetch-promotions)]                ; independent
        {:user (:name user) :orders orders :recs recs :promos promos})))
 
 ;; [  2ms] Fetching user...
@@ -730,7 +1037,7 @@ The `qlet` above expands to:
               orders param-1
               recs   param-2
               promos param-3]
-          {:user (:name user), :orders orders, :recs recs, :promos promos})))))
+          {:user (:name user)  :orders orders  :recs recs  :promos promos})))))
 ```
 
 Note that forms with no dependencies remain unchanged and are not automatically wrapped with task conversion. This is
@@ -740,6 +1047,24 @@ because:
 - `then` accepts non-tasks as arguments anyway.
 
 Supply your own `task`/`cpu-task` for forms where you truly want to construct a task inline.
+
+#### Conditional variants: if-qlet and when-qlet
+
+`if-qlet` and `when-qlet` provide async versions of `if-let` and `when-let`:
+
+```clojure
+;; if-qlet: await, bind if truthy, else branch
+(q/if-qlet [user (fetch-user id)]
+  (process-user user)
+  (handle-not-found))
+
+;; when-qlet: await, bind and execute body if truthy
+(q/when-qlet [user (fetch-user id)]
+  (log/info "Processing" user)
+  (process-user user))
+```
+
+Both return tasks. The test expression is awaited, and if truthy, its value is bound for the body.
 
 ### Happy Eyeballs
 
@@ -842,6 +1167,6 @@ between them.
 
 ## License
 
-Eclipse Public License 2.0. Copyright (c) 2025 Multiply. See [LICENSE](LICENSE).
+Eclipse Public License 2.0. Copyright (c) 2025-2026 Multiply. See [LICENSE](LICENSE).
 
 Authored by [@eneroth](https://github.com/eneroth)

@@ -1,128 +1,175 @@
 (ns co.multiply.quiescent
   "Composable async tasks with automatic parallelization and grounding."
+  #?(:cljs (:require-macros co.multiply.quiescent))
   (:refer-clojure :exclude [await promise time])
   (:require
     [clojure.core]
     [co.multiply.machine-latch :as ml]
+    [co.multiply.machine-latch.impl :as ml.impl]
     [co.multiply.pathling :as p]
-    [co.multiply.quiescent.impl :as impl :refer [-pending-task do-applier do-runner]]
-    [co.multiply.scoped :refer [scoping]])
-  (:import
-    [co.multiply.quiescent.impl ITask Promise Task TaskState]
-    [java.time Duration Instant]
-    [java.util.concurrent CancellationException CompletableFuture ForkJoinPool ScheduledExecutorService Semaphore ThreadPerTaskExecutor TimeUnit TimeoutException]))
-
-
-;; # Executors
-;; ################################################################################
-(defonce ^{:doc    "Virtual thread executor for IO-bound tasks. Creates a new virtual thread per task.
-                    Default executor for tasks - use for network calls, file IO, and blocking operations."
-           :no-doc true}
-  ^ThreadPerTaskExecutor virtual-executor impl/virtual-executor)
-
-
-(defonce ^{:doc    "Work stealing thread pool for CPU-bound tasks. Use for compute-intensive work
-                    that should not block. Pool size scales with available CPUs."
-           :no-doc true}
-  ^ForkJoinPool cpu-executor impl/cpu-executor)
-
-
-(defonce ^{:doc    "Single-thread executor for scheduling delayed tasks (sleep, timeout)."
-           :no-doc true}
-  ^ScheduledExecutorService scheduling-executor impl/scheduling-executor)
+    [co.multiply.quiescent.impl :as impl :refer [-pending-task do-applier do-runner #?(:cljs Promise) #?(:cljs Task)]]
+    [co.multiply.quiescent.impl.executor :refer [delegate-cpu delegate-scheduled delegate-virtual delegate-sync]]
+    [co.multiply.quiescent.impl.gate :as gate]
+    [co.multiply.quiescent.impl.race :as race]
+    [co.multiply.quiescent.impl.state-machine :as sm]
+    [co.multiply.quiescent.impl.subscription :as subs]
+    [co.multiply.quiescent.type :as type #?@(:cljs [:refer [ICancellable ITask TaskState]])]
+    [co.multiply.quiescent.type.call :as call]
+    [co.multiply.scoped :refer [ask scoping current-scope with-scope assoc-scope]])
+  #?(:clj (:import
+            [co.multiply.quiescent.impl Promise Task]
+            [co.multiply.quiescent.impl ICancellable ITask TaskState]
+            [java.time Duration]
+            [java.util.concurrent CancellationException CompletableFuture Semaphore TimeoutException])))
 
 
 ;; # Thread control
 ;; ################################################################################
-(defn conditionally-wait
-  "Sleep for the specified duration, if positive.
+#?(:clj (defn conditionally-wait
+          "Sleep for the specified duration, if positive.
 
-   Accepts milliseconds (positive number) or java.time.Duration (positive).
-   Zero, negative, nil, and other values are no-ops.
+           Accepts milliseconds (positive number) or java.time.Duration (positive).
+           Zero, negative, nil, and other values are no-ops.
 
-   Avoids unnecessary scheduler interaction when no wait is needed."
-  [ms-or-dur]
-  (cond
-    (and (number? ms-or-dur) (pos? ms-or-dur))
-    (Thread/sleep (long ms-or-dur))
+           Avoids unnecessary scheduler interaction when no wait is needed."
+          [ms-or-dur]
+          (cond
+            (and (number? ms-or-dur) (pos? ms-or-dur))
+            (Thread/sleep (long ms-or-dur))
 
-    (and (instance? Duration ms-or-dur)
-      (not (Duration/.isZero ms-or-dur))
-      (not (Duration/.isNegative ms-or-dur)))
-    (Thread/sleep ^Duration ms-or-dur)
+            (and (instance? Duration ms-or-dur)
+              (not (Duration/.isZero ms-or-dur))
+              (not (Duration/.isNegative ms-or-dur)))
+            (Thread/sleep ^Duration ms-or-dur)
 
-    :else nil))
-
-
-(defn semaphore
-  "Creates a semaphore. By default, `fairness` is set to true, which
-   means that allocations will be first-in first-out."
-  (^Semaphore [n]
-   (Semaphore. (int n) true))
-  (^Semaphore [n ^Boolean fair]
-   (Semaphore. (int n) fair)))
+            :else nil)))
 
 
-(defn release
-  "Release a permit back to the semaphore."
-  [sem]
-  (Semaphore/.release sem))
+#?(:clj (defn semaphore
+          "Creates a semaphore. By default, `fairness` is set to true, which
+           means that allocations will be first-in first-out."
+          (^Semaphore [n]
+           (Semaphore. (int n) true))
+          (^Semaphore [n ^Boolean fair]
+           (Semaphore. (int n) fair))))
 
 
-(defn acquire
-  "Acquire a permit from the semaphore, blocking until one is available."
-  [sem]
-  (ml/assert-virtual! (Thread/currentThread))
-  (Semaphore/.acquire sem))
+#?(:clj (defn release
+          "Release a permit back to the semaphore."
+          [sem]
+          (Semaphore/.release sem)))
 
 
-(defmacro with-semaphore
-  "Execute body while holding a semaphore permit. Releases on completion or exception."
-  [^Semaphore sem & body]
-  `(do (acquire ~sem)
-     (try ~@body
-       (finally
-         (release ~sem)))))
+#?(:clj (defn acquire
+          "Acquire a permit from the semaphore, blocking until one is available."
+          [sem]
+          (ml.impl/assert-virtual! (Thread/currentThread))
+          (Semaphore/.acquire sem)))
 
 
-(defn interrupted?
-  "Check if the current or specified thread is interrupted."
-  ([]
-   (.isInterrupted (Thread/currentThread)))
-  ([^Thread thread]
-   (.isInterrupted thread)))
+#?(:clj (defmacro with-semaphore
+          "Execute body while holding a semaphore permit. Releases on completion or exception."
+          [^Semaphore sem & body]
+          `(do (acquire ~sem)
+             (try ~@body
+               (finally
+                 (release ~sem))))))
 
 
-(defn comply-interrupt
-  "If interruption has been requested in the current thread,
-   throw an `InterruptedException`."
-  []
-  (when (interrupted?) (throw (InterruptedException.))))
+(defn gate
+  "Create a gate that limits concurrent task execution to `n` at a time.
+
+   A gate acts like a semaphore: tasks created with [[gate-task]] wait for
+   an available permit before running. When a task completes (success, error,
+   or cancellation), its permit is released for the next waiting task.
+
+   Gates participate in structured concurrency: cancelling a gate cancels
+   all tasks created through it."
+  [n]
+  (gate/gate n))
 
 
-(defn throw-on-platform-park!
-  "Configure whether awaiting from a platform thread throws an exception.
-   When true (default), parking a platform thread raises IllegalStateException.
-   Set to false for testing or when platform thread parking is intentional."
-  [bool]
-  (alter-var-root #'ml/*assert-virtual* (constantly (boolean bool))))
+(defmacro gate-task
+  "Create a task that runs through `gate`, waiting for an available permit.
+   The task executes `body` when a permit is acquired.
+
+   Returns immediately with a task that will eventually contain the result of `body`.
+
+   Example:
+   ```clojure
+   (let [g (gate 2)]  ; max 2 concurrent
+     (qfor [url urls]
+       (gate-task g
+         (fetch url))))
+   ```"
+  [gate & body]
+  `(gate/enqueue ~gate (fn enqueued# [] ~@body)))
 
 
-(defn deref-cpu
-  "Temporarily bypass the restriction that Tasks can't be parked on platform threads."
-  [t]
-  (scoping [ml/*assert-virtual* false]
-    (deref t)))
+#?(:cljs (defn abort-signal
+           "Create and return an [AbortSignal](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal)
+            tied to the current task's lifecycle.
+
+            Each invocation creates a new AbortController and returns its signal. The signal
+            is aborted when the task settles (completes, fails, or is cancelled).
+
+            Example:
+
+            ```clojure
+            (q (js/fetch url #js {:signal (abort-signal)}))
+            ;; If the task is cancelled, completes, or fails, the fetch will abort.
+            ```
+
+            Throws if called outside a task scope."
+           []
+           (if-some [task (ask impl/*this* nil)]
+             (let [controller (js/AbortController.)]
+               (subs/subscribe-callback task sm/phase-settling
+                 #(.abort controller))
+               (.-signal controller))
+             (throw (js/Error. "Abort signal can only be used in task scope.")))))
+
+
+#?(:clj  (defn interrupted?
+           "Check if the current or specified thread is interrupted."
+           ([]
+            (.isInterrupted (Thread/currentThread)))
+           ([^Thread thread]
+            (.isInterrupted thread)))
+   :cljs (defn aborted?
+           "Returns true if the abort signal has been triggered."
+           [signal]
+           (.-aborted signal)))
+
+
+#?(:clj  (defn comply-interrupt
+           "If interruption has been requested in the current thread,
+            throw an `InterruptedException`."
+           []
+           (when (interrupted?) (throw (InterruptedException.))))
+   :cljs (defn comply-abort
+           "If abort signal has been triggered, throw."
+           [signal]
+           (.throwIfAborted signal)))
+
+
+#?(:clj (defn throw-on-platform-park!
+          "Configure whether awaiting from a platform thread throws an exception.
+           When true (default), parking a platform thread raises IllegalStateException.
+           Set to false for testing or when platform thread parking is intentional."
+          [bool]
+          (alter-var-root #'ml/*assert-virtual* (constantly (boolean bool)))))
+
+
+#?(:clj (defn deref-cpu
+          "Temporarily bypass the restriction that Tasks can't be parked on platform threads."
+          [t]
+          (scoping [ml/*assert-virtual* false]
+            (deref t))))
 
 
 ;; # Task dereferencing
 ;; ################################################################################
-(defn get-state
-  "Return a map of debugging information about a task."
-  [t]
-  (.getState ^ITask (impl/as-task t)))
-
-
 (defn get-now
   "Get the current value if completed, otherwise return default.
    Non-blocking alternative to deref. Throws if completed exceptionally.
@@ -141,7 +188,7 @@
        (process result)))
    ```"
   [t default]
-  (ITask/.getNow (impl/as-task t) default))
+  (call/getNow (type/as-task t) default))
 
 
 (defn task?
@@ -153,24 +200,15 @@
 
 
 (defn taskable?
-  "Returns true if v can be converted to a Task via `as-task`.
+  "Returns true if v is an async primitive that Quiescent handles specially.
 
-   True for: Task, Promise, CompletableFuture, Future, core.async channel.
-   False for: nil, plain values, collections."
+   True for: Task, Promise, CompletableFuture (CLJ), Future (CLJ), js/Promise (CLJS).
+   False for: nil, plain values, collections.
+
+   Note: core.async channels become taskable when the optional
+   `co.multiply.quiescent.adapter.core-async` namespace is required."
   [v]
-  (impl/taskable? v))
-
-
-(defn as-task
-  "Convert a value to a Task.
-
-   - Task/Promise: returned as-is
-   - CompletableFuture: wrapped, completes when CF completes
-   - Future: wrapped, blocks virtual thread until Future completes
-   - core.async channel (optional): wrapped, completes when channel delivers
-   - Other values: wrapped in an already-completed Task"
-  [v]
-  (impl/as-task v))
+  (type/taskable? v))
 
 
 (defn exceptional?
@@ -190,72 +228,55 @@
      (log/error \"Task failed\" {:task task}))
    ```"
   [t]
-  (-> (as-task t) (get-state) (:exceptional) (true?)))
+  (call/isExceptional (type/as-task t)))
 
 
 (defn cancelled?
   "True if the given task is cancelled."
   [t]
-  (impl/cancelled? (as-task t)))
-
-
-(defn await
-  "Block until a task has settled (has a result available).
-
-   Returns true when settled, false if timeout expires.
-   Without timeout, blocks indefinitely.
-
-   Unlike `deref`, does not throw if the task failed or was cancelled.
-
-   Args:
-     - `t`         The task to await
-     - `ms-or-dur` Optional timeout as milliseconds (long) or `java.time.Duration`
-
-   Example:
-
-   ```clojure
-   (await task)                            ; Block until settled
-   (await task 1000)                       ; With 1 second timeout
-   (await task (Duration/ofSeconds 5))     ; With Duration timeout
-   ```"
-  ([t]
-   (ITask/.awaitPhase t impl/phase-settling))
-  ([t ms-or-dur]
-   (if (instance? Duration ms-or-dur)
-     (ITask/.awaitPhaseDur t impl/phase-settling ms-or-dur)
-     (ITask/.awaitPhaseMillis t impl/phase-settling ms-or-dur))))
+  (call/isCancelled (type/as-task t)))
 
 
 ;; # Task construction
 ;; ################################################################################
 (defmacro q
-  "Execute the body in _the current thread_, then return a task
-   containing the return value.
+  "Execute body synchronously and return a task containing the result.
 
-   If the return value is a regular clojure data structure that
-   contains tasks, awaits the completion of all contained tasks
-   before becoming realized."
+   Runs on the calling thread. If the result contains nested tasks, they are
+   awaited in parallel and their values inlined (grounding)."
   [& body]
-  `(let [body# (do ~@body)]
-     ;; Don't create a task if the body throws.
-     ;; Pass `nil` as the executor. `q` runs on the current thread and will
-     ;; never use an executor.
-     (doto (-pending-task nil) (Task/.doApply body#))))
+  `(do-runner delegate-sync ~@body))
 
 
 (defmacro task
-  "Create and run a task on the virtual thread executor.
-   Returns the Task immediately; body executes asynchronously.
-   Deref (@) blocks until the task settles and returns the result or throws."
+  "Execute body asynchronously on a virtual thread and return a task.
+
+   Returns immediately; body runs in the background. Deref blocks until
+   the task settles. Nested tasks in the result are grounded."
   [& body]
-  `(do-runner virtual-executor ~@body))
+  `(do-runner delegate-virtual ~@body))
 
 
 (defmacro cpu-task
-  "Execute a CPU-bound task on the platform thread pool.
-   Use this for compute-intensive work without blocking operations."
+  "Execute body on the platform thread pool and return a task.
+
+   Use for CPU-bound work that shouldn't run on virtual threads. Returns
+   immediately; body runs in the background. Nested tasks in the result
+   are grounded."
   [& body]
-  `(do-runner cpu-executor ~@body))
+  `(do-runner delegate-cpu ~@body))
+
+
+(defn as-task
+  "Convert an async primitive to a Task.
+
+   Supports CompletableFuture (CLJ), Future (CLJ), js/Promise (CLJS), and
+   core.async channels (when adapter is loaded). Tasks and Promises pass
+   through unchanged. Plain values are wrapped in an immediately-settled task.
+
+   Use this to bridge external async APIs into Quiescent's task model."
+  [v]
+  (type/as-task v))
 
 
 (defn failed-task
@@ -274,26 +295,26 @@
      (failed-task (ex-info \"Invalid input\" {:code 400})))
    ```"
   [e]
-  (doto (-pending-task nil) (Task/.doApply nil e)))
+  (doto (-pending-task delegate-sync) (call/doApply nil e)))
 
 
 (defn ^:no-doc -compel
   [v]
   ;; Attempt to convert to task, ie. only Task, CompletableFuture, etc.
-  (let [t (if (impl/groundable? v) (impl/as-task v) v)]
+  (let [t (if (type/groundable? v) (type/as-task v) v)]
     (if (task? t)
       ;; If we successfully converted to a Task, proceed
-      (let [moat (-pending-task nil true)]
+      (let [moat (-pending-task delegate-sync true)]
         ;; Forward direct cancellation from moat to inner task
-        (impl/subscribe-callback moat impl/phase-settling
+        (subs/subscribe-callback moat sm/phase-settling
           (fn [^TaskState state]
             (when (.-cancelled state)
-              (Task/.doCancel t "Task cancelled directly."))))
+              (call/doCancel t "Task cancelled directly."))))
         ;; Moat grounds with the inner task as value.
-        (doto moat (Task/.doApply t)))
+        (doto moat (call/doApply t)))
       ;; If task conversion was unsuccessful, throw. This includes Promise, which
       ;; must not ever be compelled, or it may become orphaned and become a resource leak.
-      (throw (IllegalArgumentException. (format "Can only compel Tasks, not '%s'" (class v)))))))
+      (throw (type/illegal-argument-exception (str "Can only compel Tasks, not '" (type v) "'"))))))
 
 
 (defmacro compel
@@ -335,18 +356,18 @@
 
    Multiple tasks:
      `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls the equivalent of `(f @t1 @t2 @t3)`"
-  ([t f] (ITask/.doThen (impl/as-task t) virtual-executor f))
-  ([t1 t2 f] (do-applier virtual-executor [t1 t2] nil (partial apply f)))
-  ([t1 t2 t3 f] (do-applier virtual-executor [t1 t2 t3] nil (partial apply f)))
-  ([t1 t2 t3 t4 f] (do-applier virtual-executor [t1 t2 t3 t4] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 f] (do-applier virtual-executor [t1 t2 t3 t4 t5] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 f] (do-applier virtual-executor [t1 t2 t3 t4 t5 t6] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 f] (do-applier virtual-executor [t1 t2 t3 t4 t5 t6 t7] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 f] (do-applier virtual-executor [t1 t2 t3 t4 t5 t6 t7 t8] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 f] (do-applier virtual-executor [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 f] (do-applier virtual-executor [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil (partial apply f)))
+  ([t f] (call/doThen (type/as-task t) delegate-virtual f))
+  ([t1 t2 f] (do-applier delegate-virtual [t1 t2] nil (partial apply f)))
+  ([t1 t2 t3 f] (do-applier delegate-virtual [t1 t2 t3] nil (partial apply f)))
+  ([t1 t2 t3 t4 f] (do-applier delegate-virtual [t1 t2 t3 t4] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5 t6] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5 t6 t7] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5 t6 t7 t8] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 f] (do-applier delegate-virtual [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil (partial apply f)))
   ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 & more]
-   (do-applier virtual-executor (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11] (butlast more)) nil (partial apply (last more)))))
+   (do-applier delegate-virtual (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11] (butlast more)) nil (partial apply (last more)))))
 
 
 (defn then-cpu
@@ -359,27 +380,30 @@
 
    Multiple tasks:
      `(then t1 t2 t3 f)` - Waits for all tasks in parallel, calls the equivalent of `(f @t1 @t2 @t3)`"
-  ([t f] (ITask/.doThen (impl/as-task t) cpu-executor f))
-  ([t1 t2 f] (do-applier cpu-executor [t1 t2] nil (partial apply f)))
-  ([t1 t2 t3 f] (do-applier cpu-executor [t1 t2 t3] nil (partial apply f)))
-  ([t1 t2 t3 t4 f] (do-applier cpu-executor [t1 t2 t3 t4] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 f] (do-applier cpu-executor [t1 t2 t3 t4 t5] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 f] (do-applier cpu-executor [t1 t2 t3 t4 t5 t6] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 f] (do-applier cpu-executor [t1 t2 t3 t4 t5 t6 t7] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 f] (do-applier cpu-executor [t1 t2 t3 t4 t5 t6 t7 t8] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 f] (do-applier cpu-executor [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil (partial apply f)))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 f] (do-applier cpu-executor [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil (partial apply f)))
+  ([t f] (call/doThen (type/as-task t) delegate-cpu f))
+  ([t1 t2 f] (do-applier delegate-cpu [t1 t2] nil (partial apply f)))
+  ([t1 t2 t3 f] (do-applier delegate-cpu [t1 t2 t3] nil (partial apply f)))
+  ([t1 t2 t3 t4 f] (do-applier delegate-cpu [t1 t2 t3 t4] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5 t6] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5 t6 t7] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5 t6 t7 t8] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil (partial apply f)))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 f] (do-applier delegate-cpu [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil (partial apply f)))
   ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 & more]
-   (do-applier cpu-executor (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11] (butlast more)) nil (partial apply (last more)))))
+   (do-applier delegate-cpu (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11] (butlast more)) nil (partial apply (last more)))))
 
 
 (defn catch
   "Handle errors from a task with a recovery function.
 
    Arities:
-     `(catch task f)` - Handle any Throwable
-     `(catch task Type f)` - Handle specific exception type
-     `(catch task Type1 f1 Type2 f2 ...)` - Handle multiple types (first match wins)
+     `(catch task f)` - Handle any exception
+     `(catch task Type f)` - Handle specific exception type (CLJ) or matching predicate (CLJS)
+     `(catch task Type1 f1 Type2 f2 ...)` - Handle multiple types/predicates (first match wins)
+
+   In CLJ, pass exception classes (e.g., `IllegalArgumentException`).
+   In CLJS, pass predicates (e.g., `#(= :bad-arg (:type (ex-data %)))`).
 
    The recovery function receives the exception and can:
    - Return a fallback value (task succeeds with that value)
@@ -413,25 +437,25 @@
      Throwable (fn [e] :other))
    ```"
   ([t f]
-   (ITask/.doCatch (impl/as-task t) virtual-executor f))
+   (call/doCatch (type/as-task t) delegate-virtual f))
   ([t e f]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e f]))
+   (call/doCatchTyped (type/as-task t) delegate-virtual [e f]))
   ([t e1 f1 e2 f2]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2]))
+   (call/doCatchTyped (type/as-task t) delegate-virtual [e1 f1 e2 f2]))
   ([t e1 f1 e2 f2 e3 f3]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3]))
+   (call/doCatchTyped (type/as-task t) delegate-virtual [e1 f1 e2 f2 e3 f3]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3 e4 f4]))
+   (call/doCatchTyped (type/as-task t) delegate-virtual [e1 f1 e2 f2 e3 f3 e4 f4]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
+   (call/doCatchTyped (type/as-task t) delegate-virtual [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5 & pairs]
-   (ITask/.doCatchTyped (impl/as-task t) virtual-executor (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
+   (call/doCatchTyped (type/as-task t) delegate-virtual (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
 
 
 (defn catch-cpu
   "Handle errors from a task with a recovery function.
 
-   Executes on the platform thread pool.
+   Executes on the platform thread pool. CLJ only.
 
    Arities:
      `(catch-cpu task f)` - Handle any Throwable
@@ -470,19 +494,19 @@
      Throwable (fn [e] :other))
    ```"
   ([t f]
-   (ITask/.doCatch (impl/as-task t) cpu-executor f))
+   (call/doCatch (type/as-task t) delegate-cpu f))
   ([t e f]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e f]))
+   (call/doCatchTyped (type/as-task t) delegate-cpu [e f]))
   ([t e1 f1 e2 f2]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2]))
+   (call/doCatchTyped (type/as-task t) delegate-cpu [e1 f1 e2 f2]))
   ([t e1 f1 e2 f2 e3 f3]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3]))
+   (call/doCatchTyped (type/as-task t) delegate-cpu [e1 f1 e2 f2 e3 f3]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3 e4 f4]))
+   (call/doCatchTyped (type/as-task t) delegate-cpu [e1 f1 e2 f2 e3 f3 e4 f4]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
+   (call/doCatchTyped (type/as-task t) delegate-cpu [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5]))
   ([t e1 f1 e2 f2 e3 f3 e4 f4 e5 f5 & pairs]
-   (ITask/.doCatchTyped (impl/as-task t) cpu-executor (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
+   (call/doCatchTyped (type/as-task t) delegate-cpu (into [e1 f1 e2 f2 e3 f3 e4 f4 e5 f5] pairs))))
 
 
 (defn handle
@@ -510,7 +534,7 @@
          (process v))))
    ```"
   [t f]
-  (ITask/.doHandle (impl/as-task t) virtual-executor f))
+  (call/doHandle (type/as-task t) delegate-virtual f))
 
 
 (defn handle-cpu
@@ -540,7 +564,7 @@
          (process v))))
    ```"
   [t f]
-  (ITask/.doHandle (impl/as-task t) cpu-executor f))
+  (call/doHandle (type/as-task t) delegate-cpu f))
 
 
 (defn ok
@@ -555,7 +579,7 @@
 
    Use for logging, metrics, or triggering downstream effects on success."
   [t f]
-  (ITask/.doOk (impl/as-task t) virtual-executor f))
+  (call/doOk (type/as-task t) delegate-virtual f))
 
 
 (defn ok-cpu
@@ -572,7 +596,7 @@
 
    Use for logging, metrics, or triggering downstream effects on success."
   [t f]
-  (ITask/.doOk (impl/as-task t) cpu-executor f))
+  (call/doOk (type/as-task t) delegate-cpu f))
 
 
 (defn err
@@ -588,7 +612,7 @@
    **Cancellation**: Does NOT run when task is cancelled. Cancellation is a control
    signal, not an error. Use `finally` for cleanup that must run on cancellation."
   [t f]
-  (ITask/.doErr (impl/as-task t) virtual-executor f))
+  (call/doErr (type/as-task t) delegate-virtual f))
 
 
 (defn err-cpu
@@ -606,7 +630,7 @@
    **Cancellation**: Does NOT run when task is cancelled. Cancellation is a control
    signal, not an error. Use `finally` for cleanup that must run on cancellation."
   [t f]
-  (ITask/.doErr (impl/as-task t) cpu-executor f))
+  (call/doErr (type/as-task t) delegate-cpu f))
 
 
 (defn done
@@ -626,7 +650,7 @@
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
    cleanup that must run on cancellation."
   [t f]
-  (ITask/.doDone (impl/as-task t) virtual-executor f))
+  (call/doDone (type/as-task t) delegate-virtual f))
 
 
 (defn done-cpu
@@ -648,7 +672,7 @@
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
    cleanup that must run on cancellation."
   [t f]
-  (ITask/.doDone (impl/as-task t) cpu-executor f))
+  (call/doDone (type/as-task t) delegate-cpu f))
 
 
 (defn finally
@@ -677,7 +701,7 @@
          (log/info \"Task was cancelled\"))))
    ```"
   [t f]
-  (ITask/.doFinally (impl/as-task t) virtual-executor f))
+  (call/doFinally (type/as-task t) delegate-virtual f))
 
 
 (defn finally-cpu
@@ -708,33 +732,42 @@
          (log/info \"Task was cancelled\"))))
    ```"
   [t f]
-  (ITask/.doFinally (impl/as-task t) cpu-executor f))
+  (call/doFinally (type/as-task t) delegate-cpu f))
 
 
 ;; # Coordination
 ;; ################################################################################
 (defn cancel
-  "Attempt to cancel a task. Returns a `Task[Boolean]`.
+  "Attempt to cancel a task, promise, or gate. Returns a `Task[Boolean]`.
 
    The returned task settles with:
-   - `true`: This cancel call won the race and successfully cancelled the task
-   - `false`: The task was already settled, or another cancel call won first
+   - `true`: This cancel call won the race and successfully cancelled the target
+   - `false`: The target was already settled, or another cancel call won first
 
-   The returned task settles when the target task reaches quiescent phase,
+   The returned task settles when the target reaches quiescent phase,
    regardless of the boolean result. This enables coordination code to wait
    for complete teardown before proceeding.
+
+   Cancellation propagates to chained tasks as cancellation (not failure),
+   meaning `cancelled?` will return true and only `finally` handlers run.
 
    Usage:
 
    ```clojure
    (cancel task)   ; Fire-and-forget: attempt cancellation without blocking
    @(cancel task)  ; Wait for target to reach quiescent, returns boolean
-   ```
-
-   Throws `UnsupportedOperationException` if called on a Promise. Promises are
-   externally controlled - use `fail` to complete with an error instead."
+   ```"
   [t]
-  (ITask/.doCancelDirect t))
+  (call/doCancelDirect
+    (cond
+      (#?(:clj instance? :cljs cljs.core/satisfies?) ICancellable t)
+      t
+
+      (type/taskable? t)
+      (type/as-task t)
+
+      :else
+      (throw (ex-info "Cannot cancel: target is not cancellable" {:target t})))))
 
 
 (defn race
@@ -746,7 +779,7 @@
    If all tasks fail, returns an exception. If one task fails, returns the
    combined errors as ex-info with :errors key."
   [& tasks]
-  (impl/race tasks))
+  (race/race tasks))
 
 
 (defn race-stateful
@@ -770,7 +803,7 @@
    Returns a Task that completes with the first successful result.
    Losing tasks are cancelled. If all tasks fail, returns the combined errors."
   [release & tasks]
-  (impl/race tasks {:release release}))
+  (race/race tasks {:release release}))
 
 
 (defmacro qfor
@@ -791,11 +824,11 @@
    ;; => [{:id 1 ...} {:id 2 ...} ...]
    ```"
   [[bind-to coll] & body]
-  `(q (mapv (fn per-item# [~bind-to] ~@body) ~coll)))
+  `(co.multiply.quiescent/q (mapv (fn per-item# [~bind-to] ~@body) ~coll)))
 
 
 (def ^:private plain-merge
-  (comp impl/plain (partial apply merge)))
+  (comp type/plain (partial apply merge)))
 
 
 (defn qmerge
@@ -805,42 +838,46 @@
 
    Prefer this over `(then task-a task-b merge)` - it skips the grounding phase
    since the result is known to contain only resolved values."
-  ([] (q {}))
-  ([m] (q m))
-  ([m1 m2] (do-applier nil [m1 m2] nil plain-merge))
-  ([m1 m2 m3] (do-applier nil [m1 m2 m3] nil plain-merge))
-  ([m1 m2 m3 m4] (do-applier nil [m1 m2 m3 m4] nil plain-merge))
-  ([m1 m2 m3 m4 m5] (do-applier nil [m1 m2 m3 m4 m5] nil plain-merge))
-  ([m1 m2 m3 m4 m5 m6] (do-applier nil [m1 m2 m3 m4 m5 m6] nil plain-merge))
-  ([m1 m2 m3 m4 m5 m6 m7] (do-applier nil [m1 m2 m3 m4 m5 m6 m7] nil plain-merge))
-  ([m1 m2 m3 m4 m5 m6 m7 m8] (do-applier nil [m1 m2 m3 m4 m5 m6 m7 m8] nil plain-merge))
-  ([m1 m2 m3 m4 m5 m6 m7 m8 m9] (do-applier nil [m1 m2 m3 m4 m5 m6 m7 m8 m9] nil plain-merge))
-  ([m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] (do-applier nil [m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] nil plain-merge))
+  ([] (type/as-task {}))
+  ([m] (type/as-task m))
+  ([m1 m2] (do-applier delegate-sync [m1 m2] nil plain-merge))
+  ([m1 m2 m3] (do-applier delegate-sync [m1 m2 m3] nil plain-merge))
+  ([m1 m2 m3 m4] (do-applier delegate-sync [m1 m2 m3 m4] nil plain-merge))
+  ([m1 m2 m3 m4 m5] (do-applier delegate-sync [m1 m2 m3 m4 m5] nil plain-merge))
+  ([m1 m2 m3 m4 m5 m6] (do-applier delegate-sync [m1 m2 m3 m4 m5 m6] nil plain-merge))
+  ([m1 m2 m3 m4 m5 m6 m7] (do-applier delegate-sync [m1 m2 m3 m4 m5 m6 m7] nil plain-merge))
+  ([m1 m2 m3 m4 m5 m6 m7 m8] (do-applier delegate-sync [m1 m2 m3 m4 m5 m6 m7 m8] nil plain-merge))
+  ([m1 m2 m3 m4 m5 m6 m7 m8 m9] (do-applier delegate-sync [m1 m2 m3 m4 m5 m6 m7 m8 m9] nil plain-merge))
+  ([m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] (do-applier delegate-sync [m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] nil plain-merge))
   ([m1 m2 m3 m4 m5 m6 m7 m8 m9 m10 & ms]
-   (do-applier nil (into [m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] ms) nil plain-merge)))
+   (do-applier delegate-sync (into [m1 m2 m3 m4 m5 m6 m7 m8 m9 m10] ms) nil plain-merge)))
 
 
 (def ^:private plain-last
-  (comp impl/plain last))
+  (comp type/plain
+    (fn [v]
+      (let [c (type/vecCount v)]
+        (when-not (zero? c)
+          (type/vecNth v (dec c)))))))
 
 
 (defn qdo
   "Await all tasks, but only return the output of the last one.
 
    If one task throws, all are cancelled."
-  ([] (q nil))
-  ([t] (q t))
-  ([t1 t2] (do-applier nil [t1 t2] nil plain-last))
-  ([t1 t2 t3] (do-applier nil [t1 t2 t3] nil plain-last))
-  ([t1 t2 t3 t4] (do-applier nil [t1 t2 t3 t4] nil plain-last))
-  ([t1 t2 t3 t4 t5] (do-applier nil [t1 t2 t3 t4 t5] nil plain-last))
-  ([t1 t2 t3 t4 t5 t6] (do-applier nil [t1 t2 t3 t4 t5 t6] nil plain-last))
-  ([t1 t2 t3 t4 t5 t6 t7] (do-applier nil [t1 t2 t3 t4 t5 t6 t7] nil plain-last))
-  ([t1 t2 t3 t4 t5 t6 t7 t8] (do-applier nil [t1 t2 t3 t4 t5 t6 t7 t8] nil plain-last))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9] (do-applier nil [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil plain-last))
-  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] (do-applier nil [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil plain-last))
+  ([] (type/as-task nil))
+  ([t] (type/as-task t))
+  ([t1 t2] (do-applier delegate-sync [t1 t2] nil plain-last))
+  ([t1 t2 t3] (do-applier delegate-sync [t1 t2 t3] nil plain-last))
+  ([t1 t2 t3 t4] (do-applier delegate-sync [t1 t2 t3 t4] nil plain-last))
+  ([t1 t2 t3 t4 t5] (do-applier delegate-sync [t1 t2 t3 t4 t5] nil plain-last))
+  ([t1 t2 t3 t4 t5 t6] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6] nil plain-last))
+  ([t1 t2 t3 t4 t5 t6 t7] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6 t7] nil plain-last))
+  ([t1 t2 t3 t4 t5 t6 t7 t8] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6 t7 t8] nil plain-last))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6 t7 t8 t9] nil plain-last))
+  ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil plain-last))
   ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 & ts]
-   (do-applier nil (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] ts) nil plain-last)))
+   (do-applier delegate-sync (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] ts) nil plain-last)))
 
 
 ;; # Timing and lifecycle
@@ -871,26 +908,16 @@
   ([ms-or-duration]
    (sleep ms-or-duration nil))
   ([ms-or-duration default]
-   (let [nanos  (long (cond
-                        (nat-int? ms-or-duration)
-                        (* (long ms-or-duration) 1000000)
-
-                        (and (instance? Duration ms-or-duration) (not (Duration/.isNegative ms-or-duration)))
-                        (Duration/.toNanos ^Duration ms-or-duration)
-
-                        :else
-                        (throw (IllegalArgumentException. (format "Unsupported time unit '%s'. Use non-negative Long or Duration." (class ms-or-duration))))))
-         task   (-pending-task virtual-executor)
-         runner (ScheduledExecutorService/.schedule scheduling-executor
-                  ^Runnable (fn runner
-                              []
-                              (cond
-                                (fn? default) (ITask/.doRun task default)
-                                (instance? Throwable default) (ITask/.doApply task nil default)
-                                :else (ITask/.doApply task default)))
-                  nanos TimeUnit/NANOSECONDS)]
+   (let [task (-pending-task delegate-virtual)]
      (doto task
-       (impl/subscribe-cancel-future impl/phase-settling runner)))))
+       (subs/subscribe-cancel-exec sm/phase-settling
+         (delegate-scheduled ms-or-duration
+           (fn runner
+             []
+             (cond
+               (fn? default) (call/doRun task default)
+               (instance? #?(:clj Throwable :cljs js/Error) default) (call/doApply task nil default)
+               :else (call/doApply task default)))))))))
 
 
 (defn timeout
@@ -921,15 +948,15 @@
    @(timeout my-task (Duration/ofSeconds 5)) ; Throw after 5 seconds
    ```"
   ([t ms-or-dur]
-   (timeout t ms-or-dur (TimeoutException. (str "Task timed out after " ms-or-dur "."))))
+   (timeout t ms-or-dur (type/timeout-exception (str "Task timed out after " ms-or-dur "."))))
   ([t ms-or-dur default]
-   (impl/race [t (sleep ms-or-dur ::timeout)]
+   (race/race [t (sleep ms-or-dur ::timeout)]
      {:tf (fn handle-default
             [res]
             (if (= ::timeout res)
               (cond
                 (fn? default) (default)
-                (instance? Throwable default) (throw default)
+                (instance? #?(:clj Throwable :cljs js/Error) default) (throw default)
                 :else default)
               res))})))
 
@@ -963,7 +990,7 @@
        #(log/warn \"Operation exceeded 5s\")))
    ```"
   [t ms-or-dur side-effect-fn]
-  (qdo (timeout (compel t) ms-or-dur side-effect-fn)
+  (qdo (timeout (co.multiply.quiescent/compel t) ms-or-dur side-effect-fn)
     ;; Return `t` uncompelled to allow outside cancellations to cascade.
     t))
 
@@ -972,17 +999,16 @@
   "Measures the duration of a task and reports it via a side-effect function.
 
    The side-effect function receives four arguments: the task's value (or nil),
-   exception (or nil), cancelled flag, and a `java.time.Duration` representing
-   the elapsed time.
+   exception (or nil), cancelled flag, and elapsed milliseconds as a number.
 
    By default, timing starts when `time` is called. To include task construction
-   time in the measurement, capture an `Instant` beforehand and pass it as
-   `start-inst`.
+   time in the measurement, capture the current time beforehand and pass it as
+   `start-ms`.
 
    Args:
      - `t` Task to measure
-     - `start-inst` Optional starting instant (default: `Instant/now` at call time)
-     - `side-effect-fn` Function called with `[value exception cancelled duration]`
+     - `start-ms` Optional starting time in ms (default: current time at call)
+     - `side-effect-fn` Function called with `[value exception cancelled ms]`
 
    Returns the task unchanged.
 
@@ -991,27 +1017,29 @@
    ```clojure
    ;; Basic usage - timing starts when `time` is attached
    (-> (fetch-user id)
-     (time (fn [v e c dur]
-             (log/info \"fetch-user took\" dur))))
+     (time (fn [v e c ms]
+             (log/info \"fetch-user took\" ms \"ms\"))))
 
    ;; Include construction time
-   (let [start (Instant/now)]
+   (let [start (System/currentTimeMillis)]  ; or js/performance.now in CLJS
      (-> (fetch-user id)
        (time start
-         (fn [v e c dur]
-           (log/info \"Total time:\" dur)))))
+         (fn [v e c ms]
+           (log/info \"Total time:\" ms \"ms\")))))
    ```"
   ([t side-effect-fn]
-   (time t (Instant/now) side-effect-fn))
-  ([t start-inst side-effect-fn]
+   (time t #?(:clj (System/currentTimeMillis) :cljs (js/performance.now)) side-effect-fn))
+  ([t start side-effect-fn]
    (finally t
             (fn [v e c]
-              (side-effect-fn v e c (Duration/between start-inst (Instant/now)))))))
+              (side-effect-fn v e c
+                #?(:clj  (- (System/currentTimeMillis) start)
+                   :cljs (- (js/performance.now) start)))))))
 
 
 (defn- default-validate
   [v e]
-  (if (instance? Throwable e)
+  (if (instance? #?(:clj Throwable :cljs js/Error) e)
     (throw e)
     v))
 
@@ -1038,16 +1066,12 @@
               retry-callback (constantly nil)}
        :as   args}]
    (-> args (get ::retrying) (true?) (f)
-     (impl/as-task)
+     (type/as-task)
      (handle validate)
      (catch
        (fn [e]
-         (if (or (zero? retries) (interrupted?)
-               (instance? CancellationException e))
-           ;; Rethrow error if:
-           ;; 1. No more retries left.
-           ;; 2. Thread has been interrupted.
-           ;; 3. Task has been cancelled.
+         (if (zero? retries)
+           ;; Rethrow error if there are no more retries.
            (throw e)
            ;; Recursive call. Grounds into `catch` (yielding the `catch` thread).
            (sleep backoff-ms
@@ -1061,6 +1085,34 @@
                     :backoff-factor backoff-factor
                     :validate       validate
                     :retry-callback retry-callback}))))))))))
+
+
+(def ^:no-doc constantly-false (constantly false))
+
+
+(defn await
+  "Re until a task has settled (has a result available).
+
+   Returns true when settled, false if timeout expires.
+   Without timeout, blocks indefinitely.
+
+   Unlike `deref`, does not throw if the task failed or was cancelled.
+
+   Args:
+     - `t`         The task to await
+     - `ms-or-dur` Optional timeout as milliseconds (long) or `java.time.Duration`
+
+   Example:
+
+   ```clojure
+   (await task)                            ; Block until settled
+   (await task 1000)                       ; With 1 second timeout
+   (await task (Duration/ofSeconds 5))     ; With Duration timeout
+   ```"
+  ([t]
+   (call/newQuiescenceProxy (type/as-task t) true))
+  ([t ms-or-dur]
+   (timeout (await t) ms-or-dur constantly-false)))
 
 
 ;; # Async let
@@ -1271,14 +1323,20 @@
 
    A Promise is functionally identical to a Task (implements `ITask`),
    but unlike `task` which executes immediately, a Promise's resolution is controlled
-   externally.
+   externally via `deliver`, `fail`, or `cancel`. In both Clojure and ClojureScript,
+   the promise result can be set by executing the promise as a function of a value.
 
-   Chaining operations on promises work as with tasks.
+   Chaining operations work as with tasks. Promises can be cancelled, which
+   propagates cancellation to chained tasks.
+
+   If a Task is set as the promise value, the task is resolved, and the value that
+   it contains is set as the value of the promise.
 
    ```clojure
    (def p (q/promise))
    (deliver p :result)  ; Delivers :result to the promise
    (p :result)          ; also works
+   (cancel p)           ; cancels the promise if not yet settled
    ```
 
    Example:
@@ -1291,7 +1349,7 @@
        (ok println)))  ; Prints \"Got: done\" after 1 second
    ```"
   []
-  (Promise. (-pending-task nil)))
+  (Promise. (-pending-task delegate-sync)))
 
 
 (defn promise?
@@ -1316,28 +1374,61 @@
      p)
    ```"
   [p e]
-  (doto p (Promise/.doApply nil e)))
+  (doto p (call/doApply nil e)))
 
 
 ;; # Task conversion
 ;; ################################################################################
-(defn as-cf
-  "Convert a task to a CompletableFuture.
+#?(:clj  (defn as-cf
+           "Convert a task to a CompletableFuture.
 
-   The returned future completes when the task settles, with the same
-   value, exception, or cancellation status."
-  [t]
-  (let [cf (CompletableFuture.)]
-    (doto (impl/as-task t)
-      (impl/subscribe-callback impl/phase-settling
-        (fn [^TaskState state]
-          (cond
-            (.-cancelled state)
-            (CompletableFuture/.cancel cf true)
+            The returned future completes when the task settles, with the same
+            value, exception, or cancellation status.
 
-            (.-exceptional state)
-            (CompletableFuture/.completeExceptionally cf (.-result state))
+            Structured concurrency boundary: CompletableFutures do not participate
+            in Quiescent's structured concurrency. Continuations attached to the
+            returned CF (via .thenApply, .thenCompose, etc.) run detached from any
+            task lineage - effectively at root level. Tasks created within those
+            continuations will start their own independent structured concurrency
+            trees."
+           [t]
+           (let [cf    (CompletableFuture.)
+                 scope (assoc-scope (current-scope) impl/*this* nil)]
+             (subs/subscribe-callback (type/as-task t) sm/phase-settling
+               (fn [^TaskState state]
+                 (with-scope scope
+                   (cond
+                     (.-cancelled state)
+                     (CompletableFuture/.cancel cf true)
 
-            :else
-            (CompletableFuture/.complete cf (.-result state))))))
-    cf))
+                     (.-exceptional state)
+                     (CompletableFuture/.completeExceptionally cf (.-result state))
+
+                     :else
+                     (CompletableFuture/.complete cf (.-result state))))))
+             cf))
+   :cljs (defn as-jsp
+           "Convert a task to a JavaScript Promise.
+
+            The returned promise resolves when the task settles, with the same
+            value or rejection. Note: JS Promises cannot represent cancellation
+            distinctly - a cancelled task will reject with the cancellation error.
+
+            Structured concurrency boundary: JavaScript Promises do not participate
+            in Quiescent's structured concurrency. Continuations attached to the
+            returned Promise (via .then, .catch, etc.) run detached from any task
+            lineage - effectively at root level. Tasks created within those
+            continuations will start their own independent structured concurrency
+            trees."
+           [t]
+           (let [scope (assoc-scope (current-scope) impl/*this* nil)]
+             (js/Promise.
+               (fn [resolve reject]
+                 (subs/subscribe-callback (type/as-task t) sm/phase-settling
+                   (fn [^TaskState state]
+                     ;; Likely redundant since continuations are put on the microtask queue,
+                     ;; but kept for safety.
+                     (with-scope scope
+                       (if (.-exceptional state)
+                         (reject (.-result state))
+                         (resolve (.-result state)))))))))))

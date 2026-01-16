@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.4 - 2026-02-09
+
+- **ClojureScript support.** The core task API now works on both Clojure and ClojureScript. See README for
+  platform-specific differences.
+- `gate` / `gate-task` (new); cross-platform concurrency limiter. Creates a gate with N permits; `gate-task` runs
+  work through the gate, queueing if no permits are available. Gates participate in structured concurrency (cancelling
+  a gate cancels all gated tasks) and are reentrant (nested `gate-task` calls on the same gate don't consume additional
+  permits).
+- `cancel` now accepts any `ICancellable`, not just tasks. This allows cancelling gates directly.
+- Promises can now be cancelled. Cancelling a promise sets the `cancelled?` flag and propagates cancellation (not
+  failure) to chained tasks, consistent with task cancellation semantics.
+- `abort-signal` / `aborted?` / `comply-abort` (new, CLJS only); create an `AbortSignal` tied to the current task's
+  lifecycle. The signal is aborted when the task settles (completes, fails, or is cancelled), enabling automatic cleanup
+  of `fetch` requests and other AbortSignal-aware APIs.
+- `as-jsp` (new, CLJS only); convert a task to a JavaScript Promise. The CLJS counterpart to `as-cf`.
+- Task coordination performance improvements. The subscription system now uses a lock-free intrusive deque instead of
+  a `ConcurrentHashMap`, improving scalability when many sibling tasks are started concurrently within a single parent.
+  Except for `race`, the entire implementation is now lock-free.
+
 ## 0.1.14 - 2026-01-15
 
 - Docstring formatting improvements for cljdoc rendering (Args sections now use markdown lists).

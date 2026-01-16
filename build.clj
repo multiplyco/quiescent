@@ -4,16 +4,30 @@
     [clojure.tools.build.api :as b]
     [deps-deploy.deps-deploy :as deploy]))
 
+
 (def lib 'co.multiply/quiescent)
-(def version "0.1.14")
+(def version "0.2.4")
 (def class-dir "target/classes")
 (def jar-file (format "target/%s-%s.jar" (name lib) version))
 (def basis (delay (b/create-basis {:project "deps.edn"})))
 
-(defn clean [_]
+
+(defn clean
+  [_]
   (b/delete {:path "target"}))
 
+
+(defn compile-java
+  "Compile Java sources. Requires Java 21+."
+  [_]
+  (b/javac {:src-dirs   ["java"]
+            :class-dir  class-dir
+            :basis      @basis
+            :javac-opts ["--release" "21"]}))
+
+
 (def scm-url "https://github.com/multiplyco/quiescent")
+
 
 (def provided-dep
   "    <dependency>
@@ -22,6 +36,7 @@
       <version>1.8.741</version>
       <scope>provided</scope>
     </dependency>")
+
 
 (defn- add-provided-deps
   "Add provided-scope dependencies to the generated pom.xml for cljdoc analysis."
@@ -32,8 +47,11 @@
                       (str provided-dep "\n  $1"))]
     (spit pom-path updated)))
 
-(defn jar [_]
+
+(defn jar
+  [_]
   (clean nil)
+  (compile-java nil)
   (b/write-pom {:class-dir class-dir
                 :lib       lib
                 :version   version
@@ -56,7 +74,9 @@
           :jar-file  jar-file})
   (println "Built:" jar-file))
 
-(defn install [_]
+
+(defn install
+  [_]
   (jar nil)
   (b/install {:basis     @basis
               :lib       lib
@@ -65,7 +85,9 @@
               :class-dir class-dir})
   (println "Installed:" lib version))
 
-(defn deploy [_]
+
+(defn deploy
+  [_]
   (jar nil)
   (deploy/deploy {:installer  :remote
                   :artifact   jar-file
@@ -74,10 +96,12 @@
                                           :username (System/getenv "CLOJARS_DEPLOY_MAVEN_USERNAME")
                                           :password (System/getenv "CLOJARS_DEPLOY_MAVEN_PASSWORD")}}}))
 
+
 (defn version-str
   "Print the current version string."
   [_]
   (println version))
+
 
 (defn tag
   "Create and push a version tag."
