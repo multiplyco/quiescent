@@ -32,8 +32,8 @@
   (if (plain? v)
     (on-complete (plain-val v) nil)
     (let [{:keys [matches nav]} (p/path-when v type/groundable? {:raw-matches true})
-          task-count (or (some-> matches (acc-size)) (unchecked-int 0))]
-      (case task-count
+          task-count (or (some-> matches (acc-size)) 0)]
+      (case (unchecked-int task-count)
         ;; The result contained no inner tasks; return as is.
         0 (on-complete v nil)
         ;; There's exactly one inner task. Hand over execution to it via a subscription.

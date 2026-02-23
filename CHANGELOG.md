@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 - 2026-02-23
+
+- Fix performance warning in `ground`: `case` expression now coerces to primitive int, avoiding boxed comparison.
+- Add `bb warn:reflection` task for checking reflection and performance warnings. Runs as part of `bb test:clj`.
+
 ## 0.2.4 - 2026-02-09
 
 - **ClojureScript support.** The core task API now works on both Clojure and ClojureScript. See README for

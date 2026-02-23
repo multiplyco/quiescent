@@ -10,7 +10,7 @@
                      :depends [test:clj test:cljs]}
 
   test:clj          {:doc     "Run CLJ tests"
-                     :depends [compile:java]
+                     :depends [compile:java warn:reflection]
                      :task    (shell (str "clj -M:test -m kaocha.runner " (clojure.string/join " " *command-line-args*)))}
 
   test:cljs         {:doc     "Run all CLJS tests (browser + node)"
@@ -43,6 +43,10 @@
                                 (shell "clj -M:cljdoc"
                                   (format "{:project \"co.multiply/quiescent\" :version \"%s\" :jarpath \"target/quiescent-%s.jar\" :pompath \"target/classes/META-INF/maven/co.multiply/quiescent/pom.xml\"}"
                                     v v)))}
+
+  warn:reflection   {:doc     "Check for reflection and performance warnings"
+                     :depends [compile:java]
+                     :task    (shell "clj" "-M" "-e" "(set! *warn-on-reflection* true)" "-e" "(require 'co.multiply.quiescent)")}
 
   format:check      {:doc  "Check code formatting"
                      :task (shell "cljstyle check")}

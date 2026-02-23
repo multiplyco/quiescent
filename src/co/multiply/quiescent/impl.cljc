@@ -123,13 +123,13 @@
 
   ;; Waiting
   #?(:clj (^boolean awaitPhase [_this ^clojure.lang.Keyword phase]
-            (ml/await latch phase)))
+                               (ml/await latch phase)))
 
   #?(:clj (^boolean awaitPhaseMillis [_this ^clojure.lang.Keyword phase ^long timeout-ms]
-            (ml/await-millis latch phase timeout-ms)))
+                                     (ml/await-millis latch phase timeout-ms)))
 
   #?(:clj (^boolean awaitPhaseDur [_this ^clojure.lang.Keyword phase ^java.time.Duration duration]
-            (ml/await-dur latch phase duration)))
+                                  (ml/await-dur latch phase duration)))
 
   ;; ## Entry points
   (^boolean doRun [this f tf]
