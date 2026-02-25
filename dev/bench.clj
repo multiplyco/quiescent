@@ -1,7 +1,8 @@
 (ns bench
   (:require
     [clj-async-profiler.core :as prof]
-    [co.multiply.quiescent :as q :refer [q qfor]]
+    [co.multiply.quiescent :as q :refer [q qfor qlet qdo]]
+    [co.multiply.quiescent.channel :as qc :refer [chan put! take!]]
     [criterium.core :as c]))
 
 
@@ -80,4 +81,33 @@
              [s]
              (println "Done:" s)
              (keyword s))))))
+
+
+  (def test-ch (chan 5))
+
+  (qc/capacity test-ch) ;; => 8
+
+  (put! test-ch true)   ;; => true
+  (put! test-ch :hello) ;; => true
+  (put! test-ch nil)    ;; => true
+  (put! test-ch 0)      ;; => true
+
+  (take! test-ch)       ;; => true
+  (take! test-ch)       ;; => :hello
+  (take! test-ch)       ;; => nil
+  (take! test-ch)       ;; => 0
+
+  (let [ch (chan 5)]
+    (q/deref-cpu
+      (q/task
+        (q/task
+          (dotimes [n 10]
+            (put! ch (str "first-" n))))
+        (q/task
+          (dotimes [n 10]
+            (put! ch (str "second-" n))))
+        (repeatedly 10 #(take! ch)))))
+
+  ;; => ("first-0" "first-1" "first-2" "first-3" "first-4" "first-5" "second-0" "first-6" "first-7" "first-8")
+
   #__)
