@@ -66,4 +66,20 @@
                      :task (shell "cljstyle check")}
 
   format:fix        {:doc  "Fix code formatting"
-                     :task (shell "cljstyle fix")}}}
+                     :task (shell "cljstyle fix")}
+
+  bench:check       {:doc "Check JVM channel benchmark workloads and runner"
+                     :depends [compile:java]
+                     :task (shell "clojure -Srepro -M:bench:bench-test")}
+
+  bench             {:doc "Run saved JVM channel benchmarks (:profile :full/:quick/:smoke :cases [...] :forks 4)"
+                     :depends [test:clj bench:check]
+                     :task (apply shell "clojure" "-Srepro" "-X:bench" *command-line-args*)}
+
+  bench:legacy      {:doc     "Exploratory legacy Criterium harness (-q --only :group)"
+                     :depends [compile:java]
+                     :task    (do (apply shell "clj"
+                                          "-J-XX:+StartAttachListener"
+                                          "-M:dev" "-m" "channel-bench"
+                                          *command-line-args*)
+                                (println (slurp "benchmark_results.md")))}}}

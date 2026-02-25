@@ -33,7 +33,7 @@
   "    <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>core.async</artifactId>
-      <version>1.8.741</version>
+      <version>1.9.865</version>
       <scope>provided</scope>
     </dependency>")
 
