@@ -52,4 +52,8 @@
                      :task (shell "cljstyle check")}
 
   format:fix        {:doc  "Fix code formatting"
-                     :task (shell "cljstyle fix")}}}
+                     :task (shell "cljstyle fix")}
+
+  bench             {:doc  "Run benchmarks and print results"
+                     :task (do (shell "clj -M:dev -e \"(require 'channel-bench) (channel-bench/run-all-benchmarks)\"")
+                             (println (slurp "benchmark_results.md")))}}}
