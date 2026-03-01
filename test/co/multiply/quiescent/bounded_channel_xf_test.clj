@@ -5,7 +5,8 @@
     [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park]])
   (:import
-    [co.multiply.quiescent.impl.channel IChannel]))
+    [co.multiply.quiescent.impl.channel IChannel]
+    [java.util.concurrent CancellationException]))
 
 
 (allow-platform-park)
@@ -191,8 +192,9 @@
     (put! ch 1)
     (put! ch 2)
     (IChannel/.cancel ch nil)
-    (is (false? (put! ch 3)))
-    (is (identical? IChannel/CANCELLED (take! ch)))))
+    (is (thrown? CancellationException (put! ch 3)))
+    (is (false? (put! ch 3 false)))
+    (is (identical? IChannel/CANCELLED (IChannel/.take ch)))))
 
 
 (deftest seal-xf-drains-test
@@ -200,7 +202,8 @@
     (put! ch 1)
     (put! ch 2)
     (IChannel/.seal ch)
-    (is (false? (put! ch 3)))
+    (is (thrown? CancellationException (put! ch 3)))
+    (is (false? (put! ch 3 false)))
     (is (= 2 (take! ch)))
     (is (= 3 (take! ch)))
-    (is (identical? IChannel/CANCELLED (take! ch)))))
+    (is (identical? IChannel/CANCELLED (IChannel/.take ch)))))

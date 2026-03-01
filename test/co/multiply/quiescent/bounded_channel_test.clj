@@ -2,10 +2,11 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [co.multiply.quiescent :as q]
-    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]
+    [co.multiply.quiescent.channel :refer [buf-count cancel! capacity chan poll put! seal! saturation take!]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park]])
   (:import
-    [co.multiply.quiescent.impl.channel IChannel]))
+    [co.multiply.quiescent.impl.channel IChannel]
+    [java.util.concurrent CancellationException]))
 
 
 (allow-platform-park)
@@ -214,20 +215,26 @@
   (let [ch (chan 4)]
     (put! ch :before)
     (is (true? (IChannel/.cancel ch nil)))
-    (is (false? (put! ch :after)))))
+    (testing "put! throws CancellationException by default"
+      (is (thrown? CancellationException (put! ch :after))))
+    (testing "put! with cancel? false returns false"
+      (is (false? (put! ch :after false))))))
 
 
 (deftest cancel-stops-new-takes-test
   (let [ch (chan 4)]
     (put! ch :v)
     (IChannel/.cancel ch nil)
-    (is (identical? IChannel/CANCELLED (take! ch)))))
+    (testing "raw take returns CANCELLED sentinel"
+      (is (identical? IChannel/CANCELLED (IChannel/.take ch))))
+    (testing "take! throws CancellationException"
+      (is (thrown? CancellationException (take! ch))))))
 
 
 (deftest cancel-wakes-parked-consumer-test
   (let [ch     (chan 4)
         result (promise)]
-    (q/task (deliver result (take! ch)))
+    (q/task (deliver result (IChannel/.take ch)))
     (Thread/sleep 10)
     (is (not (realized? result)) "Consumer should be parked")
     (IChannel/.cancel ch nil)
@@ -238,7 +245,7 @@
   (let [ch     (chan 1)
         result (promise)]
     (put! ch :fill)
-    (q/task (deliver result (put! ch :blocked)))
+    (q/task (deliver result (put! ch :blocked false)))
     (Thread/sleep 10)
     (is (not (realized? result)) "Producer should be parked")
     (IChannel/.cancel ch nil)
@@ -266,7 +273,10 @@
 (deftest seal-stops-new-puts-test
   (let [ch (chan 4)]
     (is (true? (IChannel/.seal ch)))
-    (is (false? (put! ch :after)))))
+    (testing "put! throws CancellationException by default"
+      (is (thrown? CancellationException (put! ch :after))))
+    (testing "put! with cancel? false returns false"
+      (is (false? (put! ch :after false))))))
 
 
 (deftest seal-drains-buffered-values-test
@@ -278,14 +288,14 @@
     (is (= :a (take! ch)))
     (is (= :b (take! ch)))
     (is (= :c (take! ch)))
-    (is (identical? IChannel/CANCELLED (take! ch)))))
+    (is (identical? IChannel/CANCELLED (IChannel/.take ch)))))
 
 
 (deftest seal-wakes-parked-producer-test
   (let [ch     (chan 1)
         result (promise)]
     (put! ch :fill)
-    (q/task (deliver result (put! ch :blocked)))
+    (q/task (deliver result (put! ch :blocked false)))
     (Thread/sleep 10)
     (is (not (realized? result)) "Producer should be parked")
     (IChannel/.seal ch)
@@ -310,3 +320,30 @@
     (IChannel/.seal ch)
     (is (true? (IChannel/.cancel ch nil)))
     (is (true? (IChannel/.isCancelled ch)))))
+
+
+;; # poll macro
+;; ################################################################################
+
+(deftest put-cancel-false-returns-false-test
+  (let [ch (chan 4)]
+    (cancel! ch)
+    (is (false? (put! ch :v false)) "Explicit false behaves like 2-arity")))
+
+
+(deftest poll-drains-values-test
+  (let [ch (chan 8)]
+    (put! ch 1)
+    (put! ch 2)
+    (put! ch 3)
+    (seal! ch)
+    (is (= 6 (loop [acc 0]
+               (poll [v ch]
+                 (recur (+ acc v))
+                 acc))))))
+
+
+(deftest poll-returns-else-on-cancel-test
+  (let [ch (chan 4)]
+    (cancel! ch)
+    (is (= :done (poll [v ch] v :done)))))
