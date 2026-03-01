@@ -4,8 +4,13 @@
    Channels are bounded ring buffers for passing values between
    virtual threads. `put` writes a value, `take` reads one. Both
    park the virtual thread when the buffer is full or empty."
+  (:require
+    [co.multiply.quiescent.impl :as impl]
+    [co.multiply.quiescent.type.call :as call]
+    [co.multiply.scoped :refer [ask]])
   (:import
-    [co.multiply.quiescent.impl.channel BoundedChannel BoundedChannelXf IBuffered IChannel]))
+    [co.multiply.quiescent.impl.channel BoundedChannel BoundedChannelXf IBuffered IChannel]
+    [java.util.concurrent CancellationException]))
 
 
 ;; # Construction
@@ -37,16 +42,50 @@
 ;; ################################################################################
 (defn put!
   "Put a value on the channel. Parks if the buffer is full.
-   Returns true."
-  [ch v]
-  (IChannel/.put ch v))
+
+   If the channel is sealed/cancelled, cancels the current task (if any)
+   and throws CancellationException. Pass `false` to suppress cancellation
+   and return false instead."
+  ([ch v]
+   (put! ch v true))
+  ([ch v cancel?]
+   (let [ok (IChannel/.put ch v)]
+     (if (and (not ok) cancel?)
+       (do
+         (when-let [this (ask impl/*this* nil)]
+           (call/doCancel this "Channel sealed."))
+         (throw (CancellationException. "Channel sealed.")))
+       ok))))
 
 
 (defn take!
   "Take a value from the channel. Parks if the buffer is empty.
-   Returns the value."
+   Returns the value. If the channel is cancelled or sealed+drained,
+   cancels the current task (if any) and throws CancellationException."
   [ch]
-  (IChannel/.take ch))
+  (let [v (IChannel/.take ch)]
+    (if (identical? v IChannel/CANCELLED)
+      (do
+        (when-let [this (ask impl/*this* nil)]
+          (call/doCancel this "Channel cancelled."))
+        (throw (CancellationException. "Channel cancelled.")))
+      v)))
+
+
+(defmacro poll
+  "Take from channel with exhaustion handling. If a value is available,
+   binds it and evaluates the then branch. If the channel is cancelled
+   or sealed+drained, evaluates the else branch (binding is not in scope).
+
+   (poll [v ch]
+     (recur (+ acc v))
+     acc)"
+  [[sym ch] then else]
+  `(let [v# (IChannel/.take ~ch)]
+     (if (identical? v# IChannel/CANCELLED)
+       ~else
+       (let [~sym v#]
+         ~then))))
 
 
 ;; # Lifecycle
