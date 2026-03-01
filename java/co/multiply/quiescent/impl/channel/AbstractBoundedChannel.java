@@ -26,6 +26,9 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
     // Sentinel: slot is clear, ready for the next generation's waiter.
     protected static final Object CLEARED = new Object();
 
+    // Sentinel: avail[] value indicating channel is cancelled.
+    protected static final long CANCELLED_AVAIL = Long.MIN_VALUE;
+
     // -- Ring buffer structure --
     protected static final int ASHFT_PADDED = 3; // 8× stride = 64-byte cache lines
     protected static final int SPIN_LIMIT = 256;
@@ -121,14 +124,18 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
     @Override
     public Object take() {
         long slot = (long) CONSUMER_SEQ.getAndAdd(this, 1L);
+        if (slot < 0) return IChannel.CANCELLED;
+
         int idx = (int) (slot & mask);
         int pIdx = idx << ashft;
         long gen = slot >>> sizeShift;
 
         // Check if value is published for our generation
         if ((long) AVAIL.getVolatile(avail, pIdx) != gen) {
-            park(consumerThreads, pIdx, gen, -gen,
-                 consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS);
+            if (!park(consumerThreads, pIdx, gen, -gen,
+                      consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS)) {
+                return IChannel.CANCELLED;
+            }
         }
 
         // Read value
@@ -148,21 +155,35 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
 
     // ---- Three-tier parking ----
 
-    protected void park(Object[] registry, int pIdx, long expectedAvail, long prevStep,
-                        ReentrantLock gateLock, Condition gate,
-                        VarHandle gateWaiters) {
+    /**
+     * Three-tier parking. Returns true if the slot is ready, false if
+     * the channel was cancelled or sealed (caller should bail).
+     */
+    protected boolean park(Object[] registry, int pIdx, long expectedAvail, long prevStep,
+                           ReentrantLock gateLock, Condition gate,
+                           VarHandle gateWaiters) {
         Thread self = Thread.currentThread();
         int spins = 0;
 
         // Tier 2/3: am I next in line, or should I gate?
         while (true) {
             long currentAvail = (long) AVAIL.getVolatile(avail, pIdx);
-            if (currentAvail == expectedAvail) return;
+            if (currentAvail == expectedAvail) return true;
+            if (currentAvail == CANCELLED_AVAIL) return false;
 
             if (currentAvail == prevStep) {
                 // Tier 2: I'm next — try to register for Dekker park.
-                if (OBJ_ARRAY.compareAndSet(registry, pIdx, CLEARED, self)) {
+                Object witness = OBJ_ARRAY.compareAndExchange(registry, pIdx, CLEARED, self);
+                if (witness == CLEARED) {
                     break; // registered, proceed to Dekker park below
+                }
+                if (witness == IChannel.CANCELLED) {
+                    // Sealed/cancelled. Spin briefly for in-flight counterpart.
+                    for (int i = 0; i < SPIN_LIMIT; i++) {
+                        if ((long) AVAIL.getVolatile(avail, pIdx) == expectedAvail) return true;
+                        Thread.onSpinWait();
+                    }
+                    return false;
                 }
                 // Previous gen hasn't written CLEARED yet. Brief spin.
                 Thread.onSpinWait();
@@ -178,14 +199,22 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
                 try {
                     gateWaiters.getAndAdd(this, 1);
                     currentAvail = (long) AVAIL.getVolatile(avail, pIdx);
-                    if (currentAvail != expectedAvail && currentAvail != prevStep) {
+                    if (currentAvail == expectedAvail) {
+                        gateWaiters.getAndAdd(this, -1);
+                        return true;
+                    }
+                    if (currentAvail == CANCELLED_AVAIL) {
+                        gateWaiters.getAndAdd(this, -1);
+                        return false;
+                    }
+                    if (currentAvail != prevStep) {
                         gate.await();
                     }
                     gateWaiters.getAndAdd(this, -1);
                 } catch (InterruptedException e) {
                     gateWaiters.getAndAdd(this, -1);
                     Thread.currentThread().interrupt();
-                    return;
+                    return false;
                 } finally {
                     gateLock.unlock();
                 }
@@ -196,23 +225,38 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
         // Tier 2: Registered — Dekker park.
         // Spin a bit before parking for real
         for (int i = 0; i < SPIN_LIMIT; i++) {
-            if ((long) AVAIL.getVolatile(avail, pIdx) == expectedAvail) {
+            long a = (long) AVAIL.getVolatile(avail, pIdx);
+            if (a == expectedAvail) {
                 OBJ_ARRAY.setVolatile(registry, pIdx, CLEARED);
-                return;
+                return true;
             }
+            if (a == CANCELLED_AVAIL) return false;
             Thread.onSpinWait();
         }
 
-        while ((long) AVAIL.getVolatile(avail, pIdx) != expectedAvail) {
+        while (true) {
+            long a = (long) AVAIL.getVolatile(avail, pIdx);
+            if (a == expectedAvail) break;
+            if (a == CANCELLED_AVAIL) return false;
             LockSupport.park(this);
+            // Check if our registration was replaced (seal/cancel)
+            if (OBJ_ARRAY.getVolatile(registry, pIdx) != self) {
+                // Spin briefly for in-flight counterpart
+                for (int i = 0; i < SPIN_LIMIT; i++) {
+                    if ((long) AVAIL.getVolatile(avail, pIdx) == expectedAvail) return true;
+                    Thread.onSpinWait();
+                }
+                return false;
+            }
         }
         // Clear: write CLEARED so next generation can CAS in.
         OBJ_ARRAY.setVolatile(registry, pIdx, CLEARED);
+        return true;
     }
 
     protected void tryWake(Object[] registry, int pIdx) {
         Object occupant = OBJ_ARRAY.getVolatile(registry, pIdx);
-        if (occupant != CLEARED) {
+        if (occupant != CLEARED && occupant != IChannel.CANCELLED) {
             LockSupport.unpark((Thread) occupant);
         }
     }
@@ -230,26 +274,61 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
         }
     }
 
-    // ---- IChannel: Lifecycle (stubs — cancellation deferred) ----
+    // ---- IChannel: Lifecycle ----
 
     @Override
     public boolean cancel(String msg) {
-        throw new UnsupportedOperationException("Cancellation not yet implemented");
+        long prev = (long) CONSUMER_SEQ.getAndSet(this, Long.MIN_VALUE);
+        if (prev < 0) return false; // already cancelled
+        PRODUCER_SEQ.setVolatile(this, Long.MIN_VALUE);
+
+        // Fill avail[] with cancel sentinel
+        for (int i = 0; i < avail.length; i += (1 << ashft)) {
+            AVAIL.setVolatile(avail, i, CANCELLED_AVAIL);
+        }
+
+        // Wake all parked threads
+        wakeAllAndPoison(producerThreads);
+        wakeAllAndPoison(consumerThreads);
+        signalGate(producerGateLock, producerGate, PRODUCER_GATE_WAITERS);
+        signalGate(consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS);
+        return true;
     }
 
     @Override
     public boolean seal() {
-        throw new UnsupportedOperationException("Seal not yet implemented");
+        long prev = (long) PRODUCER_SEQ.getAndSet(this, Long.MIN_VALUE);
+        if (prev < 0) return false; // already sealed or cancelled
+
+        // Poison consumerThreads — blocks new consumer parking after drain
+        wakeAllAndPoison(consumerThreads);
+
+        // Wake parked producers — they'll see poisoned producerSeq
+        wakeAllAndPoison(producerThreads);
+
+        signalGate(producerGateLock, producerGate, PRODUCER_GATE_WAITERS);
+        signalGate(consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS);
+        return true;
+    }
+
+    private void wakeAllAndPoison(Object[] registry) {
+        int stride = 1 << ashft;
+        for (int i = 0; i < registry.length; i += stride) {
+            Object t = OBJ_ARRAY.getAndSet(registry, i, IChannel.CANCELLED);
+            if (t != CLEARED && t != IChannel.CANCELLED) {
+                LockSupport.unpark((Thread) t);
+            }
+        }
     }
 
     @Override
     public boolean isCancelled() {
-        return false;
+        return (long) CONSUMER_SEQ.getVolatile(this) < 0;
     }
 
     @Override
     public boolean isSealed() {
-        return false;
+        return (long) PRODUCER_SEQ.getVolatile(this) < 0;
     }
 
     // ---- IBuffered ----
@@ -261,9 +340,9 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
 
     @Override
     public int count() {
-        // Approximate: claimed-but-not-yet-published slots are counted
         long p = (long) PRODUCER_SEQ.getVolatile(this);
         long c = (long) CONSUMER_SEQ.getVolatile(this);
+        if (p < 0 || c < 0) return 0; // cancelled or sealed
         long diff = p - c;
         if (diff < 0) return 0;
         if (diff > size) return size;

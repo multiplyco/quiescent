@@ -49,8 +49,10 @@ public class BoundedChannelXf extends AbstractBoundedChannel {
 
     @Override
     public boolean put(Object value) {
+        if ((long) PRODUCER_SEQ.getVolatile(this) < 0) return false;
         xfLock.lock();
         try {
+            if ((long) PRODUCER_SEQ.getVolatile(this) < 0) return false;
             Object result = rf.invoke(this, value);
             if (RT.isReduced(result)) {
                 rf.invoke(this); // xform complete (flush)
@@ -73,39 +75,52 @@ public class BoundedChannelXf extends AbstractBoundedChannel {
         // instead of the more expensive volatile/XADD operations.
         long slot = (long) PRODUCER_SEQ.getOpaque(this);
         PRODUCER_SEQ.setOpaque(this, slot + 1);
-        
+
         int idx = (int) (slot & mask);
         int pIdx = idx << ashft;
         long gen = slot >>> sizeShift;
 
         // Spin-wait for slot to become free
-        if ((long) AVAIL.getVolatile(avail, pIdx) != -gen) {
+        long a = (long) AVAIL.getVolatile(avail, pIdx);
+        if (a != -gen) {
+            if (a == CANCELLED_AVAIL) return; // cancelled
+
             boolean ready = false;
             // Brief spin first
             for (int i = 0; i < SPIN_LIMIT; i++) {
-                if ((long) AVAIL.getVolatile(avail, pIdx) == -gen) {
-                    ready = true;
-                    break;
-                }
+                a = (long) AVAIL.getVolatile(avail, pIdx);
+                if (a == -gen) { ready = true; break; }
+                if (a == CANCELLED_AVAIL) return;
                 Thread.onSpinWait();
             }
 
             // Park if still blocked — single producer, no CAS needed
             if (!ready) {
-                OBJ_ARRAY.setVolatile(producerThreads, pIdx, Thread.currentThread());
-                
+                Thread self = Thread.currentThread();
+                OBJ_ARRAY.setVolatile(producerThreads, pIdx, self);
+
                 // Spin a bit after registration before parking
                 for (int i = 0; i < SPIN_LIMIT; i++) {
-                    if ((long) AVAIL.getVolatile(avail, pIdx) == -gen) {
-                        ready = true;
-                        break;
+                    a = (long) AVAIL.getVolatile(avail, pIdx);
+                    if (a == -gen) { ready = true; break; }
+                    if (a == CANCELLED_AVAIL) {
+                        OBJ_ARRAY.setVolatile(producerThreads, pIdx, CLEARED);
+                        return;
                     }
                     Thread.onSpinWait();
                 }
-                
+
                 if (!ready) {
-                    while ((long) AVAIL.getVolatile(avail, pIdx) != -gen) {
+                    while (true) {
+                        a = (long) AVAIL.getVolatile(avail, pIdx);
+                        if (a == -gen) break;
+                        if (a == CANCELLED_AVAIL) {
+                            OBJ_ARRAY.setVolatile(producerThreads, pIdx, CLEARED);
+                            return;
+                        }
                         LockSupport.park(this);
+                        // Check if our registration was replaced (cancel)
+                        if (OBJ_ARRAY.getVolatile(producerThreads, pIdx) != self) return;
                     }
                 }
                 OBJ_ARRAY.setVolatile(producerThreads, pIdx, CLEARED);
