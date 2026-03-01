@@ -22,14 +22,18 @@ public class BoundedChannel extends AbstractBoundedChannel {
     @Override
     public boolean put(Object value) {
         long slot = (long) PRODUCER_SEQ.getAndAdd(this, 1L);
+        if (slot < 0) return false; // sealed or cancelled
+
         int idx = (int) (slot & mask);
         int pIdx = idx << ashft;
         long gen = slot >>> sizeShift;
 
         // Check if slot is free for our generation
         if ((long) AVAIL.getVolatile(avail, pIdx) != -gen) {
-            park(producerThreads, pIdx, -gen, gen - 1,
-                 producerGateLock, producerGate, PRODUCER_GATE_WAITERS);
+            if (!park(producerThreads, pIdx, -gen, gen - 1,
+                      producerGateLock, producerGate, PRODUCER_GATE_WAITERS)) {
+                return false;
+            }
         }
 
         // Write value and publish

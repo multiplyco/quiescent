@@ -49,6 +49,34 @@
   (IChannel/.take ch))
 
 
+;; # Lifecycle
+;; ################################################################################
+(defn cancel!
+  "Cancel the channel. Discards buffered values, wakes all parked
+   threads. Returns true if this call performed the cancellation."
+  ([ch] (IChannel/.cancel ch nil))
+  ([ch msg] (IChannel/.cancel ch msg)))
+
+
+(defn seal!
+  "Seal the channel. No more puts accepted; existing values drain
+   normally. Returns true if this call performed the seal."
+  [ch]
+  (IChannel/.seal ch))
+
+
+(defn cancelled?
+  "True if the channel has been cancelled."
+  [ch]
+  (IChannel/.isCancelled ch))
+
+
+(defn sealed?
+  "True if the channel has been sealed (includes cancelled channels)."
+  [ch]
+  (IChannel/.isSealed ch))
+
+
 ;; # Query
 ;; ################################################################################
 (defn capacity

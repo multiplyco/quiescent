@@ -705,46 +705,81 @@ is already in free state (negative avail + CLEARED registry).
 
 ## Open Questions
 
-- **Cancellation** (deferred): A consumer or producer that claimed a
-  slot via `getAndAdd` and gets cancelled has a stale `Thread` in
-  the registry. Counterpart encounters it, unparks a cancelled
-  thread (no-op). The value in `values[pIdx]` is never read. Similar
-  dynamics to a burned alt slot. Parked for now — the core operations
-  will be internally uninterruptible first. Cancellation checks at
-  defined breakoff points (before slot claim, after wake from park)
-  will be layered on top once the core protocol is solid.
+- **Cancellation and sealing**: The channel is a state machine that
+  emits sentinel values. Callers (`take!`/`put!`, `offer`/`poll`)
+  are responsible for interpreting the sentinel and translating it
+  into the appropriate response (throw, return nil, etc.). The
+  channel itself does not know about callsites.
 
-  **Known issue: interrupt spin.** `LockSupport.park()` returns
-  immediately when the thread's interrupt flag is set — it does not
-  throw. The interrupt flag is sticky (not cleared by `park`). A
-  cancelled thread parked in the `while` loop (waiting for a slot
-  to free or a value to arrive) will spin indefinitely: `park`
-  returns immediately, the condition is still false, `park` again,
-  returns again, etc. This must be addressed when cancellation is
-  implemented — the park loop needs to check for interruption and
-  bail out cleanly (recycle the slot, throw CancellationException).
+  **Cancellation** — stop everything, discard buffered values.
 
-  **Proposed resolution: handle interruption alongside alt.** The
-  alt design introduces burned slot mechanics — a slot claimed but
-  never consumed/produced, restored to free by the opposite side.
-  Interrupted threads reuse this same mechanism:
+  Signals are inserted into data paths already read on the hot path,
+  so non-cancelled operations pay only for branch prediction on
+  always-false conditions (zero new memory access).
 
-    - *Interrupted producer*: wakes from park, checks interrupt flag,
-      writes a burned marker (alt-style payload), exits. Consumer
-      arriving at the slot sees the marker, restores slot to free,
-      moves on.
+  1. Poison both `producerSeq` and `consumerSeq` with
+     `Long.MIN_VALUE`. New arrivals: `slot = SEQ.getAndAdd(1)` →
+     negative → return CANCELLED sentinel. One sign check on a
+     value already in a register.
 
-    - *Interrupted consumer*: the producer arriving at the slot writes
-      its value, then checks `Thread.isInterrupted()` on the parked
-      consumer thread. If interrupted: treat as burned — restore
-      `avail[pIdx] = -(gen+1)`, clear registry, loop with the value
-      to the next slot. If not interrupted: unpark as normal. The race
-      (interrupted between check and unpark) is harmless — consumer
-      wakes, takes the value, discovers interruption on its next
-      operation. Value delivered, no loss. Post-delivery interruption
-      is the consumer's responsibility, not the channel's.
+  2. Fill all `avail[]` slots with a sentinel value (e.g.
+     `Long.MIN_VALUE`). Already-parked threads wake and see the
+     sentinel on the existing `avail[pIdx]` read — no new volatile
+     load. The park loop becomes:
 
-  Implement after alt, since the burned slot codepath is shared.
+     ```
+     a = avail[pIdx]
+     if a == expected: break     // value ready
+     if a == CANCELLED: bail     // channel cancelled
+     // else: park as usual
+     ```
+
+  3. Unpark all threads: iterate both `producerThreads[]` and
+     `consumerThreads[]`, unpark any thread found. `signalAll()` on
+     both gates (wake tier-3 threads).
+
+  Every check is a branch on a value already loaded — the seq
+  counter from `getAndAdd`, the avail value from the existing
+  volatile read. No new cache lines, no new fences.
+
+  **Sealing** — no more puts, drain buffered values.
+
+  1. Poison `producerSeq` with `Long.MIN_VALUE`. New puts return
+     CANCELLED sentinel immediately (sign check on getAndAdd result).
+
+  2. Fill `consumerThreads[]` with a CANCELLED sentinel object.
+     Unpark any parked producers (they check seq, bail). `signalAll`
+     on producer gate.
+
+  3. Consumers drain published values normally — `avail[pIdx]`
+     matches, tier 1, no parking. Published values are untouched.
+
+  4. Once drained, a new consumer claims a slot, `avail[pIdx]`
+     doesn't match, enters tier 2 Dekker. `compareAndExchange(
+     consumerThreads[pIdx], CLEARED, self)` returns CANCELLED
+     (not CLEARED) → consumer returns CANCELLED sentinel.
+     (`compareAndExchange` is the same hardware instruction as
+     `compareAndSet` — no additional cost.)
+
+  5. Already-parked consumers (woken in step 2): after `park()`
+     returns, check `consumerThreads[pIdx] != self` → true
+     (canceller replaced their entry) → return CANCELLED sentinel.
+     In normal operation this is always false (counterpart only
+     reads the registry, never writes), so branch prediction is
+     free.
+
+  Cancel uses `avail[]` — the one array every parking tier reads.
+  Seal uses `consumerThreads[]` — preserves published values while
+  blocking new parks. Both insert signals into existing reads.
+
+  **Interrupt spin** (known issue): `LockSupport.park()` returns
+  immediately when the interrupt flag is set, causing a spin loop
+  in `while(avail != expected) park()`. Both cancel and seal
+  resolve this: the avail sentinel (cancel) or registry sentinel
+  (seal) is detected on the next loop iteration after the spurious
+  wake, breaking the loop. For non-cancelled interruption, the
+  park loop should additionally check `Thread.interrupted()` and
+  bail — to be addressed alongside alt's burned slot mechanics.
 
 - **Slot oversubscription** (partially addressed): When concurrent
   producers (or consumers) exceed buffer size, multiple logical slots
@@ -775,6 +810,18 @@ is already in free state (negative avail + CLEARED registry).
   using modulo indexing, transparently upgrading to the fast
   `bounded` implementation when the requested size happens to be a
   power of 2. Until a real use case surfaces, only `bounded` exists.
+
+- **Pipeline composition** (deferred): `pipe` transfers values from
+  one channel to another, enabling staged pipelines like
+  4P → ch-a → pipe → ch-b → 4C. Interesting because 4P1C and 1P4C
+  are strong Quiescent cases individually; composing them tests
+  whether the advantage holds through a serialization point (the pipe
+  task). Variants to benchmark: single pipe task (bottleneck at 1P1C
+  handoff), multi-pipe (N tasks bridging, effectively NP-NC on both
+  channels), and with transducers on either or both stages. Requires
+  close/seal semantics for a proper `pipe` that terminates — count-
+  bounded `pipe` suffices for benchmarking. Implement after
+  cancellation/seal.
 
 - **Rendezvous channel (buffer = 0)** (deferred): Separate
   implementation — no value buffer, purely direct handoff. Dual

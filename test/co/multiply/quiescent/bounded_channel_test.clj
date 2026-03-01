@@ -1,9 +1,14 @@
 (ns co.multiply.quiescent.bounded-channel-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]])
+    [co.multiply.quiescent :as q]
+    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]
+    [co.multiply.quiescent.test-support :refer [allow-platform-park]])
   (:import
     [co.multiply.quiescent.impl.channel IChannel]))
+
+
+(allow-platform-park)
 
 
 ;; # Construction
@@ -51,11 +56,10 @@
       (put! ch :a)
       (put! ch :b)
       ;; Attempt 3rd put (Gen 2, slot 0) — must park because slot 0 is occupied
-      (Thread/startVirtualThread
-        #(do
-           (deliver parked true)
-           (put! ch :c)
-           (deliver woken true)))
+      (q/task
+        (deliver parked true)
+        (put! ch :c)
+        (deliver woken true))
       @parked
       (Thread/sleep 10)
       (is (not (realized? woken)) "Producer should be parked on generation wrap")
@@ -118,10 +122,10 @@
         done    (promise)]
     (put! ch :first)
     ;; Second put should park — buffer is full
-    (Thread/startVirtualThread
-      #(do (deliver started true)
-         (put! ch :second)
-         (deliver done true)))
+    (q/task
+      (deliver started true)
+      (put! ch :second)
+      (deliver done true))
     @started
     (Thread/sleep 10)
     (is (not (realized? done)) "Producer should be parked")
@@ -133,8 +137,7 @@
 (deftest consumer-parks-when-empty-test
   (let [ch     (chan 4)
         result (promise)]
-    (Thread/startVirtualThread
-      #(deliver result (take! ch)))
+    (q/task (deliver result (take! ch)))
     (Thread/sleep 10)
     (is (not (realized? result)) "Consumer should be parked")
     (put! ch :value)
@@ -150,19 +153,20 @@
   [n-producers n-consumers per-thread buf-size]
   (let [ch      (chan buf-size)
         total   (* n-producers per-thread)
-        results (java.util.concurrent.ConcurrentLinkedQueue.)
-        cs      (mapv (fn [_]
-                        (Thread/startVirtualThread
-                          #(dotimes [_ (quot total n-consumers)]
-                             (.add results (take! ch)))))
+        results (java.util.concurrent.ConcurrentLinkedQueue.)]
+    @(q/task
+       (let [cs (mapv (fn [_]
+                        (q/task
+                          (dotimes [_ (quot total n-consumers)]
+                            (.add results (take! ch)))))
                   (range n-consumers))
-        ps      (mapv (fn [p]
-                        (Thread/startVirtualThread
-                          #(dotimes [i per-thread]
-                             (put! ch (+ (* p per-thread) i)))))
+             ps (mapv (fn [p]
+                        (q/task
+                          (dotimes [i per-thread]
+                            (put! ch (+ (* p per-thread) i)))))
                   (range n-producers))]
-    (run! #(.join % 10000) ps)
-    (run! #(.join % 10000) cs)
+         (run! deref ps)
+         (run! deref cs)))
     (is (= total (.size results))
       (str n-producers "P" n-consumers "C: expected " total " values"))))
 
@@ -190,10 +194,10 @@
         done    (promise)]
     (put! ch :a)
     (put! ch :b)
-    (Thread/startVirtualThread
-      #(do (deliver started true)
-         (put! ch :c)
-         (deliver done true)))
+    (q/task
+      (deliver started true)
+      (put! ch :c)
+      (deliver done true))
     @started
     (Thread/sleep 10)
     (is (not (realized? done)) "Producer should be parked")
@@ -203,18 +207,106 @@
     (is (= :c (take! ch)))))
 
 
-;; # Lifecycle stubs
+;; # Cancellation
 ;; ################################################################################
 
-(deftest lifecycle-stubs-test
+(deftest cancel-stops-new-puts-test
   (let [ch (chan 4)]
-    (testing "cancel throws"
-      (is (thrown? UnsupportedOperationException
-            (IChannel/.cancel ch "msg"))))
-    (testing "seal throws"
-      (is (thrown? UnsupportedOperationException
-            (IChannel/.seal ch))))
-    (testing "isCancelled returns false"
-      (is (false? (IChannel/.isCancelled ch))))
-    (testing "isSealed returns false"
-      (is (false? (IChannel/.isSealed ch))))))
+    (put! ch :before)
+    (is (true? (IChannel/.cancel ch nil)))
+    (is (false? (put! ch :after)))))
+
+
+(deftest cancel-stops-new-takes-test
+  (let [ch (chan 4)]
+    (put! ch :v)
+    (IChannel/.cancel ch nil)
+    (is (identical? IChannel/CANCELLED (take! ch)))))
+
+
+(deftest cancel-wakes-parked-consumer-test
+  (let [ch     (chan 4)
+        result (promise)]
+    (q/task (deliver result (take! ch)))
+    (Thread/sleep 10)
+    (is (not (realized? result)) "Consumer should be parked")
+    (IChannel/.cancel ch nil)
+    (is (identical? IChannel/CANCELLED (deref result 1000 :timeout)))))
+
+
+(deftest cancel-wakes-parked-producer-test
+  (let [ch     (chan 1)
+        result (promise)]
+    (put! ch :fill)
+    (q/task (deliver result (put! ch :blocked)))
+    (Thread/sleep 10)
+    (is (not (realized? result)) "Producer should be parked")
+    (IChannel/.cancel ch nil)
+    (is (false? (deref result 1000 :timeout)))))
+
+
+(deftest cancel-idempotent-test
+  (let [ch (chan 4)]
+    (is (true? (IChannel/.cancel ch nil)))
+    (is (false? (IChannel/.cancel ch nil)))))
+
+
+(deftest cancel-query-test
+  (let [ch (chan 4)]
+    (is (false? (IChannel/.isCancelled ch)))
+    (is (false? (IChannel/.isSealed ch)))
+    (IChannel/.cancel ch nil)
+    (is (true? (IChannel/.isCancelled ch)))
+    (is (true? (IChannel/.isSealed ch)))))
+
+
+;; # Sealing
+;; ################################################################################
+
+(deftest seal-stops-new-puts-test
+  (let [ch (chan 4)]
+    (is (true? (IChannel/.seal ch)))
+    (is (false? (put! ch :after)))))
+
+
+(deftest seal-drains-buffered-values-test
+  (let [ch (chan 8)]
+    (put! ch :a)
+    (put! ch :b)
+    (put! ch :c)
+    (IChannel/.seal ch)
+    (is (= :a (take! ch)))
+    (is (= :b (take! ch)))
+    (is (= :c (take! ch)))
+    (is (identical? IChannel/CANCELLED (take! ch)))))
+
+
+(deftest seal-wakes-parked-producer-test
+  (let [ch     (chan 1)
+        result (promise)]
+    (put! ch :fill)
+    (q/task (deliver result (put! ch :blocked)))
+    (Thread/sleep 10)
+    (is (not (realized? result)) "Producer should be parked")
+    (IChannel/.seal ch)
+    (is (false? (deref result 1000 :timeout)))))
+
+
+(deftest seal-idempotent-test
+  (let [ch (chan 4)]
+    (is (true? (IChannel/.seal ch)))
+    (is (false? (IChannel/.seal ch)))))
+
+
+(deftest seal-query-test
+  (let [ch (chan 4)]
+    (IChannel/.seal ch)
+    (is (false? (IChannel/.isCancelled ch)))
+    (is (true? (IChannel/.isSealed ch)))))
+
+
+(deftest cancel-after-seal-test
+  (let [ch (chan 4)]
+    (IChannel/.seal ch)
+    (is (true? (IChannel/.cancel ch nil)))
+    (is (true? (IChannel/.isCancelled ch)))))

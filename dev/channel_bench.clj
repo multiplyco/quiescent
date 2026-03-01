@@ -3,6 +3,7 @@
     [clojure.core.async :as a]
     [clojure.pprint :as pp]
     [clojure.string :as str]
+    [co.multiply.quiescent :as q :refer [qdo qfor]]
     [co.multiply.quiescent.channel :refer [chan put! take!]]
     [criterium.core :as c]))
 
@@ -16,11 +17,14 @@
   [{:keys [n producers consumers buffer]}]
   (let [ch    (chan buffer)
         per-p (quot n producers)
-        per-c (quot n consumers)
-        cs    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [_ per-c] (take! ch)))) (range consumers))
-        ps    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [i per-p] (put! ch i)))) (range producers))]
-    (run! #(.join %) ps)
-    (run! #(.join %) cs)))
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task
+           (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task
+           (dotimes [i per-p] (put! ch i)))))))
 
 
 (defmethod run-scenario [:throughput :core-async]
@@ -35,11 +39,10 @@
 (defmethod run-scenario [:ping-pong :quiescent]
   [{:keys [n buffer]}]
   (let [ch-a (chan buffer)
-        ch-b (chan buffer)
-        pong (Thread/startVirtualThread #(dotimes [_ n] (put! ch-b (take! ch-a))))
-        ping (Thread/startVirtualThread #(dotimes [_ n] (put! ch-a :ping) (take! ch-b)))]
-    (.join ping)
-    (.join pong)))
+        ch-b (chan buffer)]
+    @(qdo
+       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
+       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
 
 
 (defmethod run-scenario [:ping-pong :core-async]
@@ -54,24 +57,22 @@
 
 (defmethod run-scenario [:parallel :quiescent]
   [{:keys [workloads]}]
-  (let [fns     (into []
-                  (mapcat (fn [{:keys [count] :as w}]
-                            (let [cfg (assoc w :framework :quiescent)]
-                              (repeat count #(run-scenario cfg)))))
-                  workloads)
-        threads (mapv #(Thread/startVirtualThread %) fns)]
-    (run! #(.join %) threads)))
+  (let [fns (into []
+              (mapcat (fn [{:keys [count] :as w}]
+                        (let [cfg (assoc w :framework :quiescent)]
+                          (repeat count #(run-scenario cfg)))))
+              workloads)]
+    @(qfor [f fns] (q/task (f)))))
 
 
 (defmethod run-scenario [:parallel :core-async]
   [{:keys [workloads]}]
-  (let [fns     (into []
-                  (mapcat (fn [{:keys [count] :as w}]
-                            (let [cfg (assoc w :framework :core-async)]
-                              (repeat count #(run-scenario cfg)))))
-                  workloads)
-        threads (mapv #(Thread/startVirtualThread %) fns)]
-    (run! #(.join %) threads)))
+  (let [fns (into []
+              (mapcat (fn [{:keys [count] :as w}]
+                        (let [cfg (assoc w :framework :core-async)]
+                          (repeat count #(run-scenario cfg)))))
+              workloads)]
+    @(qfor [f fns] (q/task (f)))))
 
 
 ;; -- Transducer scenarios --
@@ -80,11 +81,12 @@
   [{:keys [n producers consumers buffer xf]}]
   (let [ch    (chan buffer xf)
         per-p (quot n producers)
-        per-c (quot n consumers)
-        cs    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [_ per-c] (take! ch)))) (range consumers))
-        ps    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [i per-p] (put! ch i)))) (range producers))]
-    (run! #(.join %) ps)
-    (run! #(.join %) cs)))
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task (dotimes [i per-p] (put! ch i)))))))
 
 
 (defmethod run-scenario [:xform :core-async]
@@ -100,12 +102,12 @@
   [{:keys [n producers consumers buffer xf expand-factor]}]
   (let [ch    (chan buffer xf)
         per-p (quot n producers)
-        ;; Each put produces expand-factor values
-        per-c (quot (* n expand-factor) consumers)
-        cs    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [_ per-c] (take! ch)))) (range consumers))
-        ps    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [i per-p] (put! ch i)))) (range producers))]
-    (run! #(.join %) ps)
-    (run! #(.join %) cs)))
+        per-c (quot (* n expand-factor) consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task (dotimes [i per-p] (put! ch i)))))))
 
 
 (defmethod run-scenario [:xform-mapcat :core-async]
@@ -121,11 +123,12 @@
   [{:keys [n producers consumers buffer xf pass-ratio]}]
   (let [ch    (chan buffer xf)
         per-p (quot n producers)
-        per-c (quot (long (* n pass-ratio)) consumers)
-        cs    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [_ per-c] (take! ch)))) (range consumers))
-        ps    (mapv (fn [_] (Thread/startVirtualThread #(dotimes [i per-p] (put! ch i)))) (range producers))]
-    (run! #(.join %) ps)
-    (run! #(.join %) cs)))
+        per-c (quot (long (* n pass-ratio)) consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task (dotimes [i per-p] (put! ch i)))))))
 
 
 (defmethod run-scenario [:xform-filter :core-async]
@@ -141,39 +144,39 @@
 
 (def scenarios
   [;; --- Isolated (single channel, buf=1024) ---
-   {:scenario "1P1C" :producers 1 :consumers 1 :n 1000000 :buffer 1024}
-   {:scenario "1P4C" :producers 1 :consumers 4 :n 1000000 :buffer 1024}
-   {:scenario "4P1C" :producers 4 :consumers 1 :n 1000000 :buffer 1024}
-   {:scenario "4P4C" :producers 4 :consumers 4 :n 1000000 :buffer 1024}
-   {:scenario "Ping-pong" :type :ping-pong :n 100000 :buffer 1}
+   {:scenario "1P1C" :group :isolated :producers 1 :consumers 1 :n 1000000 :buffer 1024}
+   {:scenario "1P4C" :group :isolated :producers 1 :consumers 4 :n 1000000 :buffer 1024}
+   {:scenario "4P1C" :group :isolated :producers 4 :consumers 1 :n 1000000 :buffer 1024}
+   {:scenario "4P4C" :group :isolated :producers 4 :consumers 4 :n 1000000 :buffer 1024}
+   {:scenario "Ping-pong" :group :isolated :type :ping-pong :n 100000 :buffer 1}
 
    ;; --- Small buffer (parking-heavy) ---
-   {:scenario "1P1C" :producers 1 :consumers 1 :n 1000000 :buffer 1}
-   {:scenario "1P1C" :producers 1 :consumers 1 :n 1000000 :buffer 16}
-   {:scenario "4P4C" :producers 4 :consumers 4 :n 1000000 :buffer 1}
-   {:scenario "4P4C" :producers 4 :consumers 4 :n 1000000 :buffer 16}
+   {:scenario "1P1C" :group :small-buffer :producers 1 :consumers 1 :n 1000000 :buffer 1}
+   {:scenario "1P1C" :group :small-buffer :producers 1 :consumers 1 :n 1000000 :buffer 16}
+   {:scenario "4P4C" :group :small-buffer :producers 4 :consumers 4 :n 1000000 :buffer 1}
+   {:scenario "4P4C" :group :small-buffer :producers 4 :consumers 4 :n 1000000 :buffer 16}
 
-   ;; --- Parallel (contention) ---
-   {:scenario  "50×1P1C" :type :parallel
+   ;; --- System (parallel contention) ---
+   {:scenario  "50×1P1C" :group :system :type :parallel
     :workloads [{:count 50 :producers 1 :consumers 1 :n 100000 :buffer 64}]}
-   {:scenario  "50×4P4C" :type :parallel
+   {:scenario  "50×4P4C" :group :system :type :parallel
     :workloads [{:count 50 :producers 4 :consumers 4 :n 100000 :buffer 64}]}
-   {:scenario  "Mixed (40 ch)" :type :parallel
+   {:scenario  "Mixed (40 ch)" :group :system :type :parallel
     :workloads [{:count 20 :producers 1 :consumers 1 :n 100000 :buffer 64}
                 {:count 10 :producers 4 :consumers 4 :n 100000 :buffer 64}
                 {:count 10 :type :ping-pong :n 10000 :buffer 1}]}
-   {:scenario  "200×1P1C" :type :parallel
+   {:scenario  "200×1P1C" :group :system :type :parallel
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 64}]}
 
    ;; --- Transducer ---
-   {:scenario "XF map 1P1C"     :type :xform :xf (map inc)
-    :producers 1 :consumers 1   :n 1000000 :buffer 1024}
-   {:scenario "XF map 4P4C"     :type :xform :xf (map inc)
-    :producers 4 :consumers 4   :n 1000000 :buffer 1024}
-   {:scenario "XF filter 1P1C"  :type :xform-filter :xf (filter even?) :pass-ratio 0.5
-    :producers 1 :consumers 1   :n 1000000 :buffer 1024}
-   {:scenario "XF mapcat 1P1C"  :type :xform-mapcat :xf (mapcat #(vector % %)) :expand-factor 2
-    :producers 1 :consumers 1   :n 500000 :buffer 1024}])
+   {:scenario  "XF map 1P1C" :group :transducer :type :xform :xf (map inc)
+    :producers 1 :consumers 1 :n 1000000 :buffer 1024}
+   {:scenario  "XF map 4P4C" :group :transducer :type :xform :xf (map inc)
+    :producers 4 :consumers 4 :n 1000000 :buffer 1024}
+   {:scenario  "XF filter 1P1C" :group :transducer :type :xform-filter :xf (filter even?) :pass-ratio 0.5
+    :producers 1 :consumers 1 :n 1000000 :buffer 1024}
+   {:scenario  "XF mapcat 1P1C" :group :transducer :type :xform-mapcat :xf (mapcat #(vector % %)) :expand-factor 2
+    :producers 1 :consumers 1 :n 500000 :buffer 1024}])
 
 
 ;; -- Bench harness --
@@ -189,12 +192,14 @@
 
 
 (defn bench-one
-  [cfg framework]
+  [cfg framework verbose]
   (let [run-cfg (assoc cfg :framework framework)
         label   (:scenario cfg)
         ch-name (case framework :quiescent "BoundedChannel" :core-async "core.async")]
     (println (str "\nRunning: " label " — " ch-name))
-    (let [res         (c/with-progress-reporting (c/benchmark (run-scenario run-cfg) {}))
+    (let [res         (if verbose
+                        (c/with-progress-reporting (c/benchmark (run-scenario run-cfg) {}))
+                        (c/benchmark (run-scenario run-cfg) {}))
           mean        (first (:mean res))
           variance    (first (:variance res))
           std-dev     (Math/sqrt (double variance))
@@ -214,12 +219,15 @@
 
 
 (defn run-all-benchmarks
-  []
-  (let [results      (into []
-                       (mapcat (fn [cfg]
-                                 [(bench-one cfg :quiescent)
-                                  (bench-one cfg :core-async)]))
+  [& {:keys [only verbose]}]
+  (let [active       (if only
+                       (filterv #(contains? only (:group %)) scenarios)
                        scenarios)
+        results      (into []
+                       (mapcat (fn [cfg]
+                                 [(bench-one cfg :quiescent verbose)
+                                  (bench-one cfg :core-async verbose)]))
+                       active)
         ;; Compute speedup: pair by scenario + buffer (both needed for uniqueness)
         pair-key     (fn [r] [(:label r) (:buffer r)])
         paired       (into {}
@@ -247,8 +255,27 @@
     with-speedup))
 
 
+(defn -main
+  [& args]
+  (q/throw-on-platform-park! false)
+  (let [args     (vec args)
+        verbose  (boolean (some #{"--verbose" "-v"} args))
+        only-idx (.indexOf args "--only")
+        only     (when (nat-int? only-idx)
+                   (into #{}
+                     (comp (drop (inc only-idx))
+                       (take-while #(not (str/starts-with? % "--")))
+                       (map #(keyword (str/replace % ":" ""))))
+                     args))]
+    (run-all-benchmarks :only only :verbose verbose)))
+
+
 (comment
 
   (def results (run-all-benchmarks))
+
+  (def results (run-all-benchmarks :only #{:transducer}))
+
+  (def results (run-all-benchmarks :only #{:system :transducer} :verbose true))
 
   #__)

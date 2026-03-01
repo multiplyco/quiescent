@@ -1,7 +1,14 @@
 (ns co.multiply.quiescent.bounded-channel-xf-test
   (:require
     [clojure.test :refer [deftest is testing]]
-    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]))
+    [co.multiply.quiescent :as q]
+    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]
+    [co.multiply.quiescent.test-support :refer [allow-platform-park]])
+  (:import
+    [co.multiply.quiescent.impl.channel IChannel]))
+
+
+(allow-platform-park)
 
 
 ;; # map
@@ -24,7 +31,7 @@
   (let [ch   (chan 16 (filter even?))
         done (promise)]
     ;; Consumer waiting for one value
-    (Thread/startVirtualThread #(deliver done (take! ch)))
+    (q/task (deliver done (take! ch)))
     ;; Odd values are filtered out
     (is (true? (put! ch 1)) "put! returns true even for filtered values")
     (is (true? (put! ch 3)))
@@ -59,8 +66,7 @@
     (let [ch   (chan 2 (mapcat #(repeat 4 %)))
           done (promise)]
       ;; Consumer drains all 4 values
-      (Thread/startVirtualThread
-        #(deliver done (mapv (fn [_] (take! ch)) (range 4))))
+      (q/task (deliver done (mapv (fn [_] (take! ch)) (range 4))))
       ;; Single put produces 4 values into a buffer of 2
       (put! ch :x)
       (is (= [:x :x :x :x] (deref done 1000 :timeout))))))
@@ -116,16 +122,14 @@
   (testing "Multiple producers with map xform — all values transformed"
     (let [n       10000
           ch      (chan 64 (map inc))
-          results (java.util.concurrent.ConcurrentLinkedQueue.)
-          c       (Thread/startVirtualThread
-                    #(dotimes [_ n] (.add results (take! ch))))
-          ps      (mapv (fn [_]
-                          (Thread/startVirtualThread
-                            #(dotimes [i (quot n 4)]
-                               (put! ch i))))
+          results (java.util.concurrent.ConcurrentLinkedQueue.)]
+      @(q/task
+         (let [c  (q/task (dotimes [_ n] (.add results (take! ch))))
+               ps (mapv (fn [_]
+                          (q/task (dotimes [i (quot n 4)] (put! ch i))))
                     (range 4))]
-      (run! #(.join % 10000) ps)
-      (.join c 10000)
+           (run! deref ps)
+           @c))
       (is (= n (.size results)))
       ;; Every value should be incremented (no raw values)
       (is (every? pos-int? (iterator-seq (.iterator results)))))))
@@ -148,7 +152,7 @@
 (deftest padded-xf-filter-test
   (let [ch   (chan 16 {:xf (filter even?) :padded true})
         done (promise)]
-    (Thread/startVirtualThread #(deliver done (take! ch)))
+    (q/task (deliver done (take! ch)))
     (put! ch 1)
     (put! ch 3)
     (put! ch 4)
@@ -177,3 +181,26 @@
     (is (= 0.0 (saturation ch)))
     (dotimes [i 4] (put! ch i))
     (is (= 1.0 (saturation ch)))))
+
+
+;; # Cancellation and sealing
+;; ################################################################################
+
+(deftest cancel-xf-channel-test
+  (let [ch (chan 16 (map inc))]
+    (put! ch 1)
+    (put! ch 2)
+    (IChannel/.cancel ch nil)
+    (is (false? (put! ch 3)))
+    (is (identical? IChannel/CANCELLED (take! ch)))))
+
+
+(deftest seal-xf-drains-test
+  (let [ch (chan 16 (map inc))]
+    (put! ch 1)
+    (put! ch 2)
+    (IChannel/.seal ch)
+    (is (false? (put! ch 3)))
+    (is (= 2 (take! ch)))
+    (is (= 3 (take! ch)))
+    (is (identical? IChannel/CANCELLED (take! ch)))))
