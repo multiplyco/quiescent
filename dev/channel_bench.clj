@@ -369,18 +369,19 @@
 
 
 (defn bench-one
-  [cfg framework verbose]
+  [cfg framework {:keys [verbose quick]}]
   (let [run-cfg (assoc cfg :framework framework)
         label   (:scenario cfg)
         ch-name (case framework
                   :quiescent "BoundedChannel"
                   :quiescent-locked "Locked"
                   :quiescent-adaptive "Adaptive"
-                  :core-async "core.async")]
+                  :core-async "core.async")
+        bench-fn (if quick c/quick-benchmark c/benchmark)]
     (println (str "\nRunning: " label " — " ch-name))
     (let [res         (if verbose
-                        (c/with-progress-reporting (c/benchmark (run-scenario run-cfg) {}))
-                        (c/benchmark (run-scenario run-cfg) {}))
+                        (c/with-progress-reporting (bench-fn (run-scenario run-cfg) {}))
+                        (bench-fn (run-scenario run-cfg) {}))
           mean        (first (:mean res))
           variance    (first (:variance res))
           std-dev     (Math/sqrt (double variance))
@@ -400,17 +401,18 @@
 
 
 (defn run-all-benchmarks
-  [& {:keys [only verbose frameworks]}]
+  [& {:keys [only verbose quick frameworks]}]
   (let [active       (if only
                        (filterv #(contains? only (:group %)) scenarios)
                        scenarios)
         default-fws  [:quiescent :core-async]
+        opts         {:verbose verbose :quick quick}
         results      (into []
                        (mapcat (fn [cfg]
                                  (let [fws (or frameworks
                                              (:frameworks cfg)
                                              default-fws)]
-                                   (mapv #(bench-one cfg % verbose) fws))))
+                                   (mapv #(bench-one cfg % opts) fws))))
                        active)
         ;; Compute speedup: relative to fastest variant per scenario+buffer
         pair-key     (fn [r] [(:label r) (:buffer r)])
@@ -461,9 +463,10 @@
   (q/throw-on-platform-park! false)
   (let [args       (vec args)
         verbose    (boolean (some #{"--verbose" "-v"} args))
+        quick      (boolean (some #{"--quick" "-q"} args))
         only       (some-> (parse-kw-list args "--only") set)
         frameworks (parse-kw-list args "--frameworks")]
-    (run-all-benchmarks :only only :verbose verbose
+    (run-all-benchmarks :only only :verbose verbose :quick quick
       :frameworks (seq frameworks))))
 
 
