@@ -54,7 +54,7 @@
   format:fix        {:doc  "Fix code formatting"
                      :task (shell "cljstyle fix")}
 
-  bench             {:doc     "Run benchmarks (--only :group ... -v/--verbose)"
+  bench             {:doc     "Run benchmarks (-q/--quick --only :group ... -v/--verbose)"
                      :depends [compile:java]
                      :task    (do (apply shell "clj" "-M:dev" "-m" "channel-bench"
                                     *command-line-args*)
