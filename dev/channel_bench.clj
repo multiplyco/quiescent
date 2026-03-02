@@ -267,7 +267,25 @@
    {:scenario "16P1C"  :group :fan-in :producers 16  :consumers 1 :n 960000  :buffer 1024}
    {:scenario "32P1C"  :group :fan-in :producers 32  :consumers 1 :n 960000  :buffer 1024}
    {:scenario "64P1C"  :group :fan-in :producers 64  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 1024}])
+   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 1024}
+
+   ;; --- Fan-in XF (lock effect on producer contention) ---
+   {:scenario "XF 16P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 16  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "XF 32P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 32  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "XF 64P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 64  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 128 :consumers 1 :n 960000  :buffer 64}
+   {:scenario "XF 16P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 16  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "XF 32P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 32  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "XF 64P1C"  :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 64  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 128 :consumers 1 :n 960000  :buffer 1024}])
 
 
 ;; -- Bench harness --
