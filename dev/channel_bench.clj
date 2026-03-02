@@ -7,7 +7,7 @@
     [co.multiply.quiescent.channel :refer [chan pipe put! seal! take!]]
     [criterium.core :as c])
   (:import
-    [co.multiply.quiescent.impl.channel BoundedChannelLocked]))
+    [co.multiply.quiescent.impl.channel BoundedChannelAdaptive BoundedChannelLocked]))
 
 
 ;; -- Runners: dispatch on [:type :framework] --
@@ -32,6 +32,20 @@
 (defmethod run-scenario [:throughput :quiescent-locked]
   [{:keys [n producers consumers buffer]}]
   (let [ch    (BoundedChannelLocked. (int buffer))
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task
+           (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task
+           (dotimes [i per-p] (put! ch i)))))))
+
+
+(defmethod run-scenario [:throughput :quiescent-adaptive]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch    (BoundedChannelAdaptive. (int buffer))
         per-p (quot n producers)
         per-c (quot n consumers)]
     @(qdo
@@ -70,6 +84,15 @@
        (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
 
 
+(defmethod run-scenario [:ping-pong :quiescent-adaptive]
+  [{:keys [n buffer]}]
+  (let [ch-a (BoundedChannelAdaptive. (int buffer))
+        ch-b (BoundedChannelAdaptive. (int buffer))]
+    @(qdo
+       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
+       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
+
+
 (defmethod run-scenario [:ping-pong :core-async]
   [{:keys [n buffer]}]
   (let [ch-a (a/chan buffer)
@@ -95,6 +118,16 @@
   (let [fns (into []
               (mapcat (fn [{:keys [count] :as w}]
                         (let [cfg (assoc w :framework :quiescent-locked)]
+                          (repeat count #(run-scenario cfg)))))
+              workloads)]
+    @(qfor [f fns] (q/task (f)))))
+
+
+(defmethod run-scenario [:parallel :quiescent-adaptive]
+  [{:keys [workloads]}]
+  (let [fns (into []
+              (mapcat (fn [{:keys [count] :as w}]
+                        (let [cfg (assoc w :framework :quiescent-adaptive)]
                           (repeat count #(run-scenario cfg)))))
               workloads)]
     @(qfor [f fns] (q/task (f)))))
@@ -342,6 +375,7 @@
         ch-name (case framework
                   :quiescent "BoundedChannel"
                   :quiescent-locked "Locked"
+                  :quiescent-adaptive "Adaptive"
                   :core-async "core.async")]
     (println (str "\nRunning: " label " — " ch-name))
     (let [res         (if verbose
