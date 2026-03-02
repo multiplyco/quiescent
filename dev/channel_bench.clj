@@ -5,7 +5,9 @@
     [clojure.string :as str]
     [co.multiply.quiescent :as q :refer [qdo qfor]]
     [co.multiply.quiescent.channel :refer [chan pipe put! seal! take!]]
-    [criterium.core :as c]))
+    [criterium.core :as c])
+  (:import
+    [co.multiply.quiescent.impl.channel BoundedChannelLocked]))
 
 
 ;; -- Runners: dispatch on [:type :framework] --
@@ -16,6 +18,20 @@
 (defmethod run-scenario [:throughput :quiescent]
   [{:keys [n producers consumers buffer]}]
   (let [ch    (chan buffer)
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task
+           (dotimes [_ per-c] (take! ch))))
+       (qfor [_ (range producers)]
+         (q/task
+           (dotimes [i per-p] (put! ch i)))))))
+
+
+(defmethod run-scenario [:throughput :quiescent-locked]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch    (BoundedChannelLocked. (int buffer))
         per-p (quot n producers)
         per-c (quot n consumers)]
     @(qdo
@@ -45,6 +61,15 @@
        (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
 
 
+(defmethod run-scenario [:ping-pong :quiescent-locked]
+  [{:keys [n buffer]}]
+  (let [ch-a (BoundedChannelLocked. (int buffer))
+        ch-b (BoundedChannelLocked. (int buffer))]
+    @(qdo
+       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
+       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
+
+
 (defmethod run-scenario [:ping-pong :core-async]
   [{:keys [n buffer]}]
   (let [ch-a (a/chan buffer)
@@ -60,6 +85,16 @@
   (let [fns (into []
               (mapcat (fn [{:keys [count] :as w}]
                         (let [cfg (assoc w :framework :quiescent)]
+                          (repeat count #(run-scenario cfg)))))
+              workloads)]
+    @(qfor [f fns] (q/task (f)))))
+
+
+(defmethod run-scenario [:parallel :quiescent-locked]
+  [{:keys [workloads]}]
+  (let [fns (into []
+              (mapcat (fn [{:keys [count] :as w}]
+                        (let [cfg (assoc w :framework :quiescent-locked)]
                           (repeat count #(run-scenario cfg)))))
               workloads)]
     @(qfor [f fns] (q/task (f)))))
@@ -304,7 +339,10 @@
   [cfg framework verbose]
   (let [run-cfg (assoc cfg :framework framework)
         label   (:scenario cfg)
-        ch-name (case framework :quiescent "BoundedChannel" :core-async "core.async")]
+        ch-name (case framework
+                  :quiescent "BoundedChannel"
+                  :quiescent-locked "Locked"
+                  :core-async "core.async")]
     (println (str "\nRunning: " label " — " ch-name))
     (let [res         (if verbose
                         (c/with-progress-reporting (c/benchmark (run-scenario run-cfg) {}))
@@ -328,26 +366,34 @@
 
 
 (defn run-all-benchmarks
-  [& {:keys [only verbose]}]
+  [& {:keys [only verbose frameworks]}]
   (let [active       (if only
                        (filterv #(contains? only (:group %)) scenarios)
                        scenarios)
+        default-fws  [:quiescent :core-async]
         results      (into []
                        (mapcat (fn [cfg]
-                                 [(bench-one cfg :quiescent verbose)
-                                  (bench-one cfg :core-async verbose)]))
+                                 (let [fws (or frameworks
+                                             (:frameworks cfg)
+                                             default-fws)]
+                                   (mapv #(bench-one cfg % verbose) fws))))
                        active)
-        ;; Compute speedup: pair by scenario + buffer (both needed for uniqueness)
+        ;; Compute speedup: relative to fastest variant per scenario+buffer
         pair-key     (fn [r] [(:label r) (:buffer r)])
-        paired       (into {}
-                       (comp (filter #(= :quiescent (:framework %)))
-                         (map (fn [r] [(pair-key r) (:raw-mean r)])))
+        min-means    (reduce (fn [acc r]
+                               (let [k (pair-key r)
+                                     prev (get acc k)]
+                                 (if (or (nil? prev) (< (:raw-mean r) prev))
+                                   (assoc acc k (:raw-mean r))
+                                   acc)))
+                       {}
                        results)
         with-speedup (mapv (fn [r]
-                             (if-let [bc-mean (and (= :core-async (:framework r))
-                                                (get paired (pair-key r)))]
-                               (assoc r :speedup (format "%.1fx" (/ (:raw-mean r) bc-mean)))
-                               (assoc r :speedup "")))
+                             (let [min-mean (get min-means (pair-key r))
+                                   ratio    (/ (:raw-mean r) min-mean)]
+                               (if (< ratio 1.05)
+                                 (assoc r :speedup "")
+                                 (assoc r :speedup (format "%.1fx" ratio)))))
                        results)
         cols         [:label :buffer :channel :mean :std-dev :lower-q :upper-q :outlier-var :speedup]]
 
@@ -364,19 +410,27 @@
     with-speedup))
 
 
+(defn- parse-kw-list
+  "Parse a list of keyword args after a flag like --only or --frameworks."
+  [args flag]
+  (let [idx (.indexOf args flag)]
+    (when (nat-int? idx)
+      (into []
+        (comp (drop (inc idx))
+          (take-while #(not (str/starts-with? % "--")))
+          (map #(keyword (str/replace % ":" ""))))
+        args))))
+
+
 (defn -main
   [& args]
   (q/throw-on-platform-park! false)
-  (let [args     (vec args)
-        verbose  (boolean (some #{"--verbose" "-v"} args))
-        only-idx (.indexOf args "--only")
-        only     (when (nat-int? only-idx)
-                   (into #{}
-                     (comp (drop (inc only-idx))
-                       (take-while #(not (str/starts-with? % "--")))
-                       (map #(keyword (str/replace % ":" ""))))
-                     args))]
-    (run-all-benchmarks :only only :verbose verbose)))
+  (let [args       (vec args)
+        verbose    (boolean (some #{"--verbose" "-v"} args))
+        only       (some-> (parse-kw-list args "--only") set)
+        frameworks (parse-kw-list args "--frameworks")]
+    (run-all-benchmarks :only only :verbose verbose
+      :frameworks (seq frameworks))))
 
 
 (comment
@@ -386,5 +440,10 @@
   (def results (run-all-benchmarks :only #{:transducer}))
 
   (def results (run-all-benchmarks :only #{:system :transducer} :verbose true))
+
+  ;; Three-way comparison: XADD vs Locked vs core.async
+  (def results (run-all-benchmarks
+                 :only #{:isolated :small-buffer :fan-in :system}
+                 :frameworks [:quiescent :quiescent-locked :core-async]))
 
   #__)
