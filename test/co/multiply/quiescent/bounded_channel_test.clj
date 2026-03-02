@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [co.multiply.quiescent :as q]
-    [co.multiply.quiescent.channel :refer [buf-count cancel! capacity chan poll put! seal! saturation take!]]
+    [co.multiply.quiescent.channel :refer [buf-count cancel! cancelled? capacity chan pipe poll put! seal! sealed? saturation take!]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park]])
   (:import
     [co.multiply.quiescent.impl.channel IChannel]
@@ -347,3 +347,74 @@
   (let [ch (chan 4)]
     (cancel! ch)
     (is (= :done (poll [v ch] v :done)))))
+
+
+;; # pipe
+;; ################################################################################
+
+(deftest pipe-transfers-values-test
+  (let [src  (chan 8)
+        sink (chan 8)
+        p    (pipe src sink)]
+    (put! src 1 false)
+    (put! src 2 false)
+    (put! src 3 false)
+    (seal! src)
+    @p
+    (is (= 1 (take! sink)))
+    (is (= 2 (take! sink)))
+    (is (= 3 (take! sink)))))
+
+
+(deftest pipe-propagates-seal-test
+  (let [src  (chan 8)
+        sink (chan 8)
+        p    (pipe src sink)]
+    (put! src :a false)
+    (seal! src)
+    @p
+    (is (true? (sealed? sink)))
+    (is (false? (cancelled? sink)))))
+
+
+(deftest pipe-propagates-cancel-test
+  (let [src  (chan 8)
+        sink (chan 8)
+        p    (pipe src sink)]
+    (put! src :a false)
+    (cancel! src)
+    @p
+    (is (true? (cancelled? sink)))))
+
+
+(deftest pipe-no-close-test
+  (let [src  (chan 8)
+        sink (chan 8)
+        p    (pipe src sink false)]
+    (put! src :a false)
+    (seal! src)
+    @p
+    (is (false? (sealed? sink)))
+    (is (false? (cancelled? sink)))))
+
+
+(deftest pipe-returns-task-test
+  (let [src (chan 4)
+        sink (chan 4)
+        p   (pipe src sink)]
+    (seal! src)
+    (is (deref p 1000 :timeout) "Pipe task should complete")))
+
+
+(deftest pipe-with-xf-test
+  (let [src  (chan 8 (map inc))
+        sink (chan 8)
+        p    (pipe src sink)]
+    (put! src 1 false)
+    (put! src 2 false)
+    (put! src 3 false)
+    (seal! src)
+    @p
+    (is (= 2 (take! sink)))
+    (is (= 3 (take! sink)))
+    (is (= 4 (take! sink)))))

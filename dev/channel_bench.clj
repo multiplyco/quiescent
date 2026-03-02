@@ -4,7 +4,7 @@
     [clojure.pprint :as pp]
     [clojure.string :as str]
     [co.multiply.quiescent :as q :refer [qdo qfor]]
-    [co.multiply.quiescent.channel :refer [chan put! take!]]
+    [co.multiply.quiescent.channel :refer [chan pipe put! seal! take!]]
     [criterium.core :as c]))
 
 
@@ -140,6 +140,66 @@
     (run! a/<!! gos)))
 
 
+;; -- Pipe scenarios --
+
+(defmethod run-scenario [:pipe :quiescent]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch-a  (chan buffer)
+        ch-b  (chan buffer)
+        p     (pipe ch-a ch-b)
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch-b))))
+       (q/task
+         @(qfor [_ (range producers)]
+            (q/task (dotimes [i per-p] (put! ch-a i))))
+         (seal! ch-a)
+         @p))))
+
+
+(defmethod run-scenario [:pipe :core-async]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch-a (a/chan buffer)
+        ch-b (a/chan buffer)
+        _    (a/pipe ch-a ch-b)
+        cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
+        ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
+    (run! a/<!! ps)
+    (a/close! ch-a)
+    (run! a/<!! cs)))
+
+
+(defmethod run-scenario [:pipe-xf :quiescent]
+  [{:keys [n producers consumers buffer xf]}]
+  (let [ch-a  (chan buffer xf)
+        ch-b  (chan buffer)
+        p     (pipe ch-a ch-b)
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch-b))))
+       (q/task
+         @(qfor [_ (range producers)]
+            (q/task (dotimes [i per-p] (put! ch-a i))))
+         (seal! ch-a)
+         @p))))
+
+
+(defmethod run-scenario [:pipe-xf :core-async]
+  [{:keys [n producers consumers buffer xf]}]
+  (let [ch-a (a/chan buffer xf)
+        ch-b (a/chan buffer)
+        _    (a/pipe ch-a ch-b)
+        cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
+        ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
+    (run! a/<!! ps)
+    (a/close! ch-a)
+    (run! a/<!! cs)))
+
+
 ;; -- Scenario definitions --
 
 (def scenarios
@@ -176,7 +236,38 @@
    {:scenario  "XF filter 1P1C" :group :transducer :type :xform-filter :xf (filter even?) :pass-ratio 0.5
     :producers 1 :consumers 1 :n 1000000 :buffer 1024}
    {:scenario  "XF mapcat 1P1C" :group :transducer :type :xform-mapcat :xf (mapcat #(vector % %)) :expand-factor 2
-    :producers 1 :consumers 1 :n 500000 :buffer 1024}])
+    :producers 1 :consumers 1 :n 500000 :buffer 1024}
+
+   ;; --- Pipeline (pipe) ---
+   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+    :producers 4 :consumers 4 :n 1000000 :buffer 16}
+   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+    :producers 4 :consumers 4 :n 1000000 :buffer 16}
+   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+    :producers 4 :consumers 4 :n 1000000 :buffer 64}
+   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+    :producers 4 :consumers 4 :n 1000000 :buffer 64}
+   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+    :producers 4 :consumers 4 :n 1000000 :buffer 1024}
+   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+    :producers 4 :consumers 4 :n 1000000 :buffer 1024}
+
+   ;; --- Pipeline (parallel contention) ---
+   {:scenario "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
+    :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000 :buffer 64}]}
+   {:scenario "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
+    :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000 :buffer 1024}]}
+
+   ;; --- Fan-in (many producers, 1 consumer) ---
+   ;; n must be divisible by producer count to avoid deadlock from truncation
+   {:scenario "16P1C"  :group :fan-in :producers 16  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "32P1C"  :group :fan-in :producers 32  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "64P1C"  :group :fan-in :producers 64  :consumers 1 :n 960000  :buffer 64}
+   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 64}
+   {:scenario "16P1C"  :group :fan-in :producers 16  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "32P1C"  :group :fan-in :producers 32  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "64P1C"  :group :fan-in :producers 64  :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 1024}])
 
 
 ;; -- Bench harness --

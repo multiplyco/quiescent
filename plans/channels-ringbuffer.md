@@ -114,7 +114,7 @@ compact vs ~164 KB padded.
 
 ### When to use `:padded true`
 
-Benchmark findings (1M ops, M3 Max):
+Benchmark findings (1M ops, M1 Max):
 
 | Scenario          | Compact | Padded | Effect              |
 |-------------------|---------|--------|---------------------|
@@ -154,6 +154,109 @@ critical and channel count is low.
 (chan 1024 {:xf (map inc) :padded true})   ; transducer + padded
 ```
 
+## Buffer Sizing and Throughput
+
+Buffer size controls more than capacity — it determines how often
+threads park and how well the system absorbs scheduling jitter.
+Larger buffers keep operations on the tier 1 fast path (volatile
+read matches → no parking), reducing park/wake cycles.
+
+### Isolated channels
+
+In isolation, buffer size has a dramatic effect on throughput.
+Benchmark: single 4P→pipe→4C pipeline, 1M ops (M1 Max):
+
+| Buffer | Mean     | vs core.async |
+|--------|----------|---------------|
+| 16     | 1481 ms  | 3.1×          |
+| 64     | 752 ms   | 3.9×          |
+| 1024   | 232 ms   | 9.6×          |
+
+Each 16× increase in buffer roughly halves latency. The pipe task
+(sole consumer of source, sole producer of sink) runs wait-free —
+the buffer determines how long producers and consumers run
+uninterrupted before the pipe must park waiting for more work or
+free slots.
+
+With a transducer on the source channel (`map inc`), throughput
+improves further — the xfLock serializes producers, reducing XADD
+contention on `producerSeq`:
+
+| Buffer | Plain    | XF       |
+|--------|----------|----------|
+| 16     | 1481 ms  | 1168 ms  |
+| 64     | 752 ms   | 630 ms   |
+| 1024   | 232 ms   | 209 ms   |
+
+### Under contention
+
+In a contended system (many channels, many threads), the buffer
+size advantage narrows. The scheduler is already interrupting
+sequential runs for other work, and cache lines are being evicted
+by unrelated channels. The buffer still helps but with diminishing
+returns.
+
+Benchmark: 20 concurrent 4P→pipe→4C pipelines, 100K ops each
+(180 virtual threads total):
+
+| Buffer | Mean    | vs core.async |
+|--------|---------|---------------|
+| 64     | 55 ms   | 73×           |
+| 1024   | 25 ms   | 29×           |
+
+buf=1024 is still 2× faster in absolute terms, but the speedup
+ratio over core.async is actually higher at buf=64 (73× vs 29×).
+This is because core.async's mutex-based implementation degrades
+catastrophically under thread contention — 20 pipelines × 9 go
+blocks each overwhelm the lock. Quiescent's lock-free XADD scales
+cleanly.
+
+### Aggregate throughput ceiling
+
+Across different topologies, the system saturates around 80–90M
+ops/sec aggregate on M1 Max:
+
+| Scenario          | Total ops | Time   | Ops/sec |
+|-------------------|-----------|--------|---------|
+| 1P1C buf=1024     | 1M        | 32 ms  | 31M     |
+| 50×4P4C buf=64    | 5M        | 57 ms  | 88M     |
+| 20×pipe buf=1024  | 2M        | 25 ms  | 80M     |
+
+Single-channel throughput peaks at ~31M ops/sec. Multi-channel
+workloads reach ~80–90M ops/sec by keeping all cores fed via the
+ForkJoinPool work-stealing scheduler. Beyond this point, the
+channel implementation is no longer the bottleneck — the virtual
+thread scheduler is.
+
+For reference, the LMAX Disruptor advertises ~100M ops/sec with
+dedicated pinned threads and busy-spinning (no parking). Reaching
+80–90% of that throughput on virtual threads with park/unpark
+scheduling overhead suggests the channel design is efficient enough
+that further gains require scheduler-level changes, not channel-
+level changes.
+
+### Guidance
+
+Two regimes:
+
+**Dedicated pipelines** (isolated, high-throughput, few channels):
+large buffers (256–1024+) and `:padded true`. The channel is a
+system-level conveyor belt with dedicated threads feeding it.
+Buffer size and stride padding compound — larger buffers reduce
+parking, padding eliminates adjacent-slot false sharing. This is
+the regime where the channel approaches Disruptor-class throughput.
+
+**Regular channels** (many channels, shared virtual thread pool):
+modest buffers (32–128), no stride padding. The scheduler is
+already interrupting sequential runs for other work, and cache
+lines are evicted by unrelated channels. Larger buffers still help
+but with diminishing returns, and stride padding adds memory
+pressure without measurable benefit.
+
+In both cases, buffer size should be at least the expected
+concurrency level (number of concurrent producers + consumers) to
+avoid tier 3 gate contention.
+
 ## Producer Side (BoundedChannel)
 
 Always MPMC from the start. `getAndAdd` (XADD) claims a unique slot
@@ -162,14 +265,17 @@ in one atomic instruction — wait-free, no CAS loop:
 ```
 put(V):
   slot = PRODUCER_SEQ.getAndAdd(this, 1)  // XADD, claim unique slot
+  if slot < 0: return false               // sealed or cancelled
   pIdx = (slot & mask) << ashft
   gen  = slot >>> sizeShift
   if avail[pIdx] != -gen:                  // slot not yet freed
-    park(producerThreads, ...)             // three-tier parking
+    if !park(producerThreads, ...):        // three-tier parking (returns false on cancel)
+      return false
   values[pIdx] = V                         // volatile write
   avail[pIdx] = gen                        // volatile write (publish)
   tryWake(consumerThreads, pIdx)           // Dekker: wake parked consumer
   signalGate(consumerGate)                 // wake gated consumers
+  return true
 ```
 
 Each producer claims a unique slot via `getAndAdd`, then waits for
@@ -184,10 +290,12 @@ Same structure. Always XADD:
 ```
 take():
   slot = CONSUMER_SEQ.getAndAdd(this, 1)   // XADD, claim unique slot
+  if slot < 0: return CANCELLED            // cancelled
   pIdx = (slot & mask) << ashft
   gen  = slot >>> sizeShift
   if avail[pIdx] != gen:                    // not published for my generation
-    park(consumerThreads, ...)              // three-tier parking
+    if !park(consumerThreads, ...):         // three-tier parking (returns false on cancel/seal)
+      return CANCELLED
   V = values[pIdx]                          // volatile read
   avail[pIdx] = -(gen + 1)                  // volatile write (consumed, free for next gen)
   tryWake(producerThreads, pIdx)            // Dekker: wake parked producer
@@ -238,19 +346,25 @@ The counterpart calls `signalGate`: volatile read on a waiter count
 tier 1.
 
 ```
-park(registry, pIdx, expectedAvail, prevStep, gateLock, gate, gateWaiters):
+park(registry, pIdx, expectedAvail, prevStep, gateLock, gate, gateWaiters) → boolean:
   spins = 0
   loop:
     current = avail[pIdx]                              // volatile read
-    if current == expectedAvail: return                 // Tier 1: ready
+    if current == expectedAvail: return true            // Tier 1: ready
+    if current == CANCELLED_AVAIL: return false         // cancelled
 
     if current == prevStep:                             // Tier 2: next in line
-      if CAS(registry[pIdx], CLEARED, self): break      //   register for Dekker
-      onSpinWait(); continue                            //   prev gen clearing, brief spin
+      witness = CEX(registry[pIdx], CLEARED, self)     //   compareAndExchange
+      if witness == CLEARED: break                     //   registered for Dekker
+      if witness == CANCELLED:                         //   sealed — spin for in-flight
+        spin SPIN_LIMIT checking avail[pIdx]
+        return avail[pIdx] == expectedAvail
+      onSpinWait(); continue                           //   prev gen clearing, brief spin
 
     if spins < SPIN_LIMIT: spins++; onSpinWait; continue
     gateLock.lock()                                     // Tier 3: gate
     gateWaiters++
+    if avail[pIdx] == CANCELLED_AVAIL: return false     //   cancelled under lock
     if avail[pIdx] != expectedAvail && != prevStep:
       gate.await()
     gateWaiters--
@@ -259,8 +373,15 @@ park(registry, pIdx, expectedAvail, prevStep, gateLock, gate, gateWaiters):
 
   // Dekker park (registered):
   spin SPIN_LIMIT times checking avail[pIdx]
-  if still not ready: LockSupport.park()
+    if CANCELLED_AVAIL: clear registry, return false
+  if still not ready:
+    while true:
+      if avail[pIdx] == expectedAvail: break
+      if avail[pIdx] == CANCELLED_AVAIL: return false   // cancelled while parked
+      LockSupport.park()
+      if registry[pIdx] != self: return false            // seal replaced our entry
   registry[pIdx] = CLEARED                              // clear for next gen
+  return true
 ```
 
 ### tryWake and signalGate
@@ -268,7 +389,7 @@ park(registry, pIdx, expectedAvail, prevStep, gateLock, gate, gateWaiters):
 ```
 tryWake(registry, pIdx):
   occupant = registry[pIdx]          // volatile read
-  if occupant != CLEARED:
+  if occupant != CLEARED && occupant != CANCELLED:
     LockSupport.unpark(occupant)
 
 signalGate(gateLock, gate, gateWaiters):
@@ -327,14 +448,17 @@ invoke(baseRf);
 
 ```
 put(V):
+  if PRODUCER_SEQ < 0: return false   // sealed or cancelled (volatile read)
   xfLock.lock()
   try:
+    if PRODUCER_SEQ < 0: return false // re-check under lock
     result = rf.invoke(this, V)       // xform step — may call putDirect 0/1/N times
     if isReduced(result):
       rf.invoke(this)                 // xform complete (flush stateful xforms)
       seal channel                    // (stub: throws UnsupportedOperationException)
   finally:
     xfLock.unlock()
+  return true
 ```
 
 ### putDirect() — simplified single-producer ring buffer put
@@ -350,13 +474,18 @@ putDirect(V):
   gen  = slot >>> sizeShift
 
   if avail[pIdx] != -gen:                    // slot not yet freed
+    if avail[pIdx] == CANCELLED_AVAIL: return // cancelled
     spin SPIN_LIMIT times
+      if CANCELLED_AVAIL: return
     if still blocked:
       producerThreads[pIdx] = self           // volatile write (no CAS — single producer)
       spin SPIN_LIMIT times                  // spin after registration
+        if CANCELLED_AVAIL: clear, return
       if still blocked:
         while avail[pIdx] != -gen:
+          if avail[pIdx] == CANCELLED_AVAIL: clear, return
           LockSupport.park()
+          if producerThreads[pIdx] != self: return  // cancel replaced entry
       producerThreads[pIdx] = CLEARED
 
   values[pIdx] = V                           // volatile write
@@ -703,83 +832,113 @@ is already in free state (negative avail + CLEARED registry).
   only on the opposite side encountering an alt waiter (`AltWaiter`
   or `AltProducerWaiter`).
 
+## Cancellation and Sealing
+
+The channel is a state machine that emits sentinel values. The
+Clojure API layer (`take!`/`put!`, `poll`) interprets sentinels and
+translates them into the appropriate response. The channel itself
+does not know about callsites.
+
+### Sentinels
+
+- `CANCELLED_AVAIL = Long.MIN_VALUE` — long sentinel for `avail[]`
+- `IChannel.CANCELLED` — Object sentinel for registry arrays and
+  `take()` return value
+
+### Cancel — stop everything, discard buffered values
+
+Signals are inserted into data paths already read on the hot path,
+so non-cancelled operations pay only for branch prediction on
+always-false conditions (zero new memory access).
+
+```
+cancel(msg):
+  prev = CONSUMER_SEQ.getAndSet(Long.MIN_VALUE)
+  if prev < 0: return false          // already cancelled
+  PRODUCER_SEQ.setVolatile(Long.MIN_VALUE)
+  fill avail[] with CANCELLED_AVAIL  // volatile writes, strided
+  wakeAllAndPoison(producerThreads)  // getAndSet(CANCELLED), unpark
+  wakeAllAndPoison(consumerThreads)
+  signalAll on both gates
+  return true
+```
+
+Detection points (all on existing reads):
+
+1. `slot = SEQ.getAndAdd(1)` → negative → bail. Sign check on a
+   value already in a register.
+2. `avail[pIdx]` in every park tier → `CANCELLED_AVAIL` → bail.
+   No new volatile load.
+3. `compareAndExchange(registry, CLEARED, self)` → witness is
+   `CANCELLED` → bail.
+
+### Seal — no more puts, drain buffered values
+
+```
+seal():
+  prev = PRODUCER_SEQ.getAndSet(Long.MIN_VALUE)
+  if prev < 0: return false          // already sealed or cancelled
+  wakeAllAndPoison(consumerThreads)  // blocks new consumer parking
+  wakeAllAndPoison(producerThreads)  // wake parked producers
+  signalAll on both gates
+  return true
+```
+
+1. New puts: `slot = producerSeq.getAndAdd(1)` → negative → return
+   false.
+2. Published values drain normally — `avail[pIdx]` matches, tier 1.
+3. Once drained: consumer enters tier 2, `compareAndExchange(
+   consumerThreads[pIdx], CLEARED, self)` returns `CANCELLED` →
+   return CANCELLED sentinel. Same hardware instruction as CAS.
+4. Already-parked consumers: after `park()`, `registry[pIdx] != self`
+   → true (canceller replaced entry) → return CANCELLED.
+
+Cancel uses `avail[]` — the one array every parking tier reads.
+Seal uses `consumerThreads[]` — preserves published values while
+blocking new consumer parks. Both insert signals into existing reads.
+
+### Query
+
+```
+isCancelled(): CONSUMER_SEQ < 0
+isSealed():    PRODUCER_SEQ < 0    // true for both seal and cancel
+count():       if p < 0 || c < 0: return 0; else: existing logic
+```
+
+### Clojure API Semantics
+
+**Cancellation-propagating (default):**
+
+- `(take! ch)` — parks, returns value. On CANCELLED: cancels
+  `impl/*this*` (the current task, if any), throws
+  `CancellationException`.
+- `(put! ch v)` — parks, returns true. On sealed/cancelled: cancels
+  `impl/*this*`, throws `CancellationException`.
+- `(put! ch v false)` — opt out: returns false instead of throwing.
+
+**Non-propagating:**
+
+- `(poll [v ch] then else)` — macro, if-let shape. Binds `v` in
+  then-branch when value available, evaluates else-branch (no binding)
+  on CANCELLED. No cancellation propagation, no throw.
+
+**Lifecycle:**
+
+- `(cancel! ch)` / `(cancel! ch msg)` — cancel, returns boolean
+- `(seal! ch)` — seal, returns boolean
+- `(cancelled? ch)` / `(sealed? ch)` — query
+
+### Interrupt spin (known issue)
+
+`LockSupport.park()` returns immediately when the interrupt flag is
+set, causing a spin loop in `while(avail != expected) park()`. Both
+cancel and seal resolve this: the avail sentinel (cancel) or registry
+sentinel (seal) is detected on the next loop iteration after the
+spurious wake, breaking the loop. For non-cancelled interruption, the
+park loop should additionally check `Thread.interrupted()` and bail —
+to be addressed alongside alt's burned slot mechanics.
+
 ## Open Questions
-
-- **Cancellation and sealing**: The channel is a state machine that
-  emits sentinel values. Callers (`take!`/`put!`, `offer`/`poll`)
-  are responsible for interpreting the sentinel and translating it
-  into the appropriate response (throw, return nil, etc.). The
-  channel itself does not know about callsites.
-
-  **Cancellation** — stop everything, discard buffered values.
-
-  Signals are inserted into data paths already read on the hot path,
-  so non-cancelled operations pay only for branch prediction on
-  always-false conditions (zero new memory access).
-
-  1. Poison both `producerSeq` and `consumerSeq` with
-     `Long.MIN_VALUE`. New arrivals: `slot = SEQ.getAndAdd(1)` →
-     negative → return CANCELLED sentinel. One sign check on a
-     value already in a register.
-
-  2. Fill all `avail[]` slots with a sentinel value (e.g.
-     `Long.MIN_VALUE`). Already-parked threads wake and see the
-     sentinel on the existing `avail[pIdx]` read — no new volatile
-     load. The park loop becomes:
-
-     ```
-     a = avail[pIdx]
-     if a == expected: break     // value ready
-     if a == CANCELLED: bail     // channel cancelled
-     // else: park as usual
-     ```
-
-  3. Unpark all threads: iterate both `producerThreads[]` and
-     `consumerThreads[]`, unpark any thread found. `signalAll()` on
-     both gates (wake tier-3 threads).
-
-  Every check is a branch on a value already loaded — the seq
-  counter from `getAndAdd`, the avail value from the existing
-  volatile read. No new cache lines, no new fences.
-
-  **Sealing** — no more puts, drain buffered values.
-
-  1. Poison `producerSeq` with `Long.MIN_VALUE`. New puts return
-     CANCELLED sentinel immediately (sign check on getAndAdd result).
-
-  2. Fill `consumerThreads[]` with a CANCELLED sentinel object.
-     Unpark any parked producers (they check seq, bail). `signalAll`
-     on producer gate.
-
-  3. Consumers drain published values normally — `avail[pIdx]`
-     matches, tier 1, no parking. Published values are untouched.
-
-  4. Once drained, a new consumer claims a slot, `avail[pIdx]`
-     doesn't match, enters tier 2 Dekker. `compareAndExchange(
-     consumerThreads[pIdx], CLEARED, self)` returns CANCELLED
-     (not CLEARED) → consumer returns CANCELLED sentinel.
-     (`compareAndExchange` is the same hardware instruction as
-     `compareAndSet` — no additional cost.)
-
-  5. Already-parked consumers (woken in step 2): after `park()`
-     returns, check `consumerThreads[pIdx] != self` → true
-     (canceller replaced their entry) → return CANCELLED sentinel.
-     In normal operation this is always false (counterpart only
-     reads the registry, never writes), so branch prediction is
-     free.
-
-  Cancel uses `avail[]` — the one array every parking tier reads.
-  Seal uses `consumerThreads[]` — preserves published values while
-  blocking new parks. Both insert signals into existing reads.
-
-  **Interrupt spin** (known issue): `LockSupport.park()` returns
-  immediately when the interrupt flag is set, causing a spin loop
-  in `while(avail != expected) park()`. Both cancel and seal
-  resolve this: the avail sentinel (cancel) or registry sentinel
-  (seal) is detected on the next loop iteration after the spurious
-  wake, breaking the loop. For non-cancelled interruption, the
-  park loop should additionally check `Thread.interrupted()` and
-  bail — to be addressed alongside alt's burned slot mechanics.
 
 - **Slot oversubscription** (partially addressed): When concurrent
   producers (or consumers) exceed buffer size, multiple logical slots
@@ -811,17 +970,28 @@ is already in free state (negative avail + CLEARED registry).
   `bounded` implementation when the requested size happens to be a
   power of 2. Until a real use case surfaces, only `bounded` exists.
 
-- **Pipeline composition** (deferred): `pipe` transfers values from
-  one channel to another, enabling staged pipelines like
-  4P → ch-a → pipe → ch-b → 4C. Interesting because 4P1C and 1P4C
-  are strong Quiescent cases individually; composing them tests
-  whether the advantage holds through a serialization point (the pipe
-  task). Variants to benchmark: single pipe task (bottleneck at 1P1C
-  handoff), multi-pipe (N tasks bridging, effectively NP-NC on both
-  channels), and with transducers on either or both stages. Requires
-  close/seal semantics for a proper `pipe` that terminates — count-
-  bounded `pipe` suffices for benchmarking. Implement after
-  cancellation/seal.
+- **Pipeline composition**: `pipe` is implemented. Transfers values
+  from source to sink via a `poll`/`put!` loop on a virtual thread.
+  Propagates lifecycle: seal source → seal sink, cancel source →
+  cancel sink. Configurable via `(pipe src sink false)` to leave
+  sink open.
+
+  ```clojure
+  (pipe source sink)         ; propagates seal/cancel (default)
+  (pipe source sink false)   ; transfer only, sink stays open
+  ```
+
+  Returns the pipe task (deref to wait, cancel to stop).
+
+  The pipe task is wait-free when it is the sole consumer of source
+  and sole producer of sink — every `take`/`put` hits tier 1. Under
+  contention the pipe competes via XADD like any other participant.
+
+  For parallel pipes, create N pipes with `qfor`:
+  `(qfor [_ (range 4)] (pipe source sink))`. Ordering is lost but
+  throughput scales. The channel's MPMC design handles it natively.
+
+  See "Buffer Sizing and Throughput" for pipe benchmark results.
 
 - **Rendezvous channel (buffer = 0)** (deferred): Separate
   implementation — no value buffer, purely direct handoff. Dual

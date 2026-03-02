@@ -5,12 +5,19 @@
    virtual threads. `put` writes a value, `take` reads one. Both
    park the virtual thread when the buffer is full or empty."
   (:require
-    [co.multiply.quiescent.impl :as impl]
+    [co.multiply.quiescent.impl :as impl :refer [do-runner]]
+    [co.multiply.quiescent.impl.executor :refer [delegate-virtual]]
     [co.multiply.quiescent.type.call :as call]
     [co.multiply.scoped :refer [ask]])
   (:import
     [co.multiply.quiescent.impl.channel BoundedChannel BoundedChannelXf IBuffered IChannel]
     [java.util.concurrent CancellationException]))
+
+
+(def n-cpus
+  "Number of available processors. Useful as a buffer size heuristic
+   when sizing channels to concurrency rather than throughput."
+  (.availableProcessors (Runtime/getRuntime)))
 
 
 ;; # Construction
@@ -114,6 +121,30 @@
   "True if the channel has been sealed (includes cancelled channels)."
   [ch]
   (IChannel/.isSealed ch))
+
+
+;; # Composition
+;; ################################################################################
+(defn pipe
+  "Transfer values from source to sink. Spawns a virtual thread task
+   that drains source via poll and forwards each value with put!.
+
+   When `close?` is true (default), propagates lifecycle: seals sink
+   when source is sealed+drained, cancels sink when source is cancelled.
+   When false, the pipe completes without affecting sink lifecycle.
+
+   Returns the pipe task. Deref to wait for completion."
+  ([source sink]
+   (pipe source sink true))
+  ([source sink close?]
+   (do-runner delegate-virtual
+     (loop []
+       (poll [v source]
+         (do (put! sink v) (recur))
+         (when close?
+           (if (cancelled? source)
+             (cancel! sink)
+             (seal! sink))))))))
 
 
 ;; # Query
