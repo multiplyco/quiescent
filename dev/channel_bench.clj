@@ -376,12 +376,15 @@
                   :quiescent "BoundedChannel"
                   :quiescent-locked "Locked"
                   :quiescent-adaptive "Adaptive"
-                  :core-async "core.async")
-        bench-fn (if quick c/quick-benchmark c/benchmark)]
+                  :core-async "core.async")]
     (println (str "\nRunning: " label " — " ch-name))
-    (let [res         (if verbose
-                        (c/with-progress-reporting (bench-fn (run-scenario run-cfg) {}))
-                        (bench-fn (run-scenario run-cfg) {}))
+    (let [res         (if quick
+                        (if verbose
+                          (c/with-progress-reporting (c/quick-benchmark (run-scenario run-cfg) {}))
+                          (c/quick-benchmark (run-scenario run-cfg) {}))
+                        (if verbose
+                          (c/with-progress-reporting (c/benchmark (run-scenario run-cfg) {}))
+                          (c/benchmark (run-scenario run-cfg) {})))
           mean        (first (:mean res))
           variance    (first (:variance res))
           std-dev     (Math/sqrt (double variance))
