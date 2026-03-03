@@ -150,6 +150,11 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
         // Signal gated producers — a generation transition happened
         signalGate(producerGateLock, producerGate, PRODUCER_GATE_WAITERS);
 
+        // Also signal gated consumers. A consumer far ahead may now see `prevStep`
+        // and proceed to Tier 2 without waiting for a producer publish, especially
+        // at tail end where no more producers will arrive.
+        signalGate(consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS);
+
         return value;
     }
 

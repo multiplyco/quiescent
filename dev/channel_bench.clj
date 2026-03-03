@@ -10,396 +10,122 @@
     [co.multiply.quiescent.impl.channel BoundedChannelAdaptive BoundedChannelAdaptiveXf BoundedChannelLocked BoundedChannelLockedXf]))
 
 
-;; -- Runners: dispatch on [:type :framework] --
+;; -- Channel factories --
+;;
+;; A framework is: a channel constructor (1-arity plain, 2-arity with xf),
+;; an execution model (:quiescent or :core-async), and a display name.
+;; Adding a new channel implementation = adding one map entry.
 
-(defmulti run-scenario (fn [cfg] [(:type cfg :throughput) (:framework cfg)]))
+(def frameworks
+  {:quiescent          {:model :quiescent :make-ch chan :name "BoundedChannel"}
 
+   :quiescent-locked   {:model   :quiescent
+                        :make-ch (fn
+                                   ([buf] (BoundedChannelLocked. (int buf)))
+                                   ([buf xf] (BoundedChannelLockedXf. (int buf) xf)))
+                        :name    "Locked"}
 
-(defmethod run-scenario [:throughput :quiescent]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch    (chan buffer)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
+   :quiescent-adaptive {:model   :quiescent
+                        :make-ch (fn
+                                   ([buf] (BoundedChannelAdaptive. (int buf)))
+                                   ([buf xf] (BoundedChannelAdaptiveXf. (int buf) xf)))
+                        :name    "Adaptive"}
 
-
-(defmethod run-scenario [:throughput :quiescent-locked]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch    (BoundedChannelLocked. (int buffer))
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
+   :core-async         {:model :core-async :name "core.async"}})
 
 
-(defmethod run-scenario [:throughput :quiescent-adaptive]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch    (BoundedChannelAdaptive. (int buffer))
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
+;; -- Runners --
+;;
+;; Topology (throughput, ping-pong, pipe) is orthogonal to channel
+;; construction. The quiescent runner covers all quiescent variants
+;; through the factory. core.async is a genuinely different execution
+;; model and gets its own runner.
+
+(declare run-scenario)
+
+(defn- run-quiescent
+  [{:keys [type n producers consumers buffer make-ch xf]}]
+  (case (or type :throughput)
+    (:throughput :xform :xform-mapcat :xform-filter)
+    (let [ch    (if xf (make-ch buffer xf) (make-ch buffer))
+          per-p (quot n producers)]
+      @(qdo
+         (qfor [_ (range consumers)]
+           (q/task (loop [] (poll [_ ch] (recur) nil))))
+         (q/task
+           @(qfor [_ (range producers)]
+              (q/task (dotimes [i per-p] (put! ch i))))
+           (seal! ch))))
+
+    :ping-pong
+    (let [ch-a (make-ch buffer)
+          ch-b (make-ch buffer)]
+      @(qdo
+         (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
+         (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b)))))
+
+    (:pipe :pipe-xf)
+    (let [ch-a  (if xf (make-ch buffer xf) (make-ch buffer))
+          ch-b  (make-ch buffer)
+          per-p (quot n producers)]
+      @(qdo
+         (pipe ch-a ch-b)
+         (qfor [_ (range consumers)]
+           (q/task (loop [] (poll [_ ch-b] (recur) nil))))
+         (q/task
+           @(qfor [_ (range producers)]
+              (q/task (dotimes [i per-p] (put! ch-a i))))
+           (seal! ch-a))))))
 
 
-(defmethod run-scenario [:throughput :core-async]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch  (a/chan buffer)
-        gos (into
-              (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch)))) (range consumers))
-              (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
-    (run! a/<!! gos)))
+(defn- run-core-async
+  [{:keys [type n producers consumers buffer xf expand-factor pass-ratio]}]
+  (case (or type :throughput)
+    (:throughput :xform :xform-mapcat :xform-filter)
+    (let [ch     (if xf (a/chan buffer xf) (a/chan buffer))
+          take-n (quot (long (* n (or expand-factor 1) (or pass-ratio 1))) consumers)
+          gos    (into
+                   (mapv (fn [_] (a/go (dotimes [_ take-n] (a/<! ch)))) (range consumers))
+                   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
+      (run! a/<!! gos))
+
+    :ping-pong
+    (let [ch-a (a/chan buffer)
+          ch-b (a/chan buffer)
+          pong (a/go (dotimes [_ n] (a/>! ch-b (a/<! ch-a))))
+          ping (a/go (dotimes [_ n] (a/>! ch-a :ping) (a/<! ch-b)))]
+      (a/<!! ping)
+      (a/<!! pong))
+
+    (:pipe :pipe-xf)
+    (let [ch-a (if xf (a/chan buffer xf) (a/chan buffer))
+          ch-b (a/chan buffer)
+          _    (a/pipe ch-a ch-b)
+          cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
+          ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
+      (run! a/<!! ps)
+      (a/close! ch-a)
+      (run! a/<!! cs))))
 
 
-(defmethod run-scenario [:ping-pong :quiescent]
-  [{:keys [n buffer]}]
-  (let [ch-a (chan buffer)
-        ch-b (chan buffer)]
-    @(qdo
-       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
-       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
+(defn- run-parallel
+  [{:keys [workloads framework]}]
+  @(qfor [w workloads]
+     (qfor [_ (range (:count w))]
+       (q/task (run-scenario (assoc w :framework framework))))))
 
 
-(defmethod run-scenario [:ping-pong :quiescent-locked]
-  [{:keys [n buffer]}]
-  (let [ch-a (BoundedChannelLocked. (int buffer))
-        ch-b (BoundedChannelLocked. (int buffer))]
-    @(qdo
-       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
-       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
-
-
-(defmethod run-scenario [:ping-pong :quiescent-adaptive]
-  [{:keys [n buffer]}]
-  (let [ch-a (BoundedChannelAdaptive. (int buffer))
-        ch-b (BoundedChannelAdaptive. (int buffer))]
-    @(qdo
-       (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
-       (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))))
-
-
-(defmethod run-scenario [:ping-pong :core-async]
-  [{:keys [n buffer]}]
-  (let [ch-a (a/chan buffer)
-        ch-b (a/chan buffer)
-        pong (a/go (dotimes [_ n] (a/>! ch-b (a/<! ch-a))))
-        ping (a/go (dotimes [_ n] (a/>! ch-a :ping) (a/<! ch-b)))]
-    (a/<!! ping)
-    (a/<!! pong)))
-
-
-(defmethod run-scenario [:parallel :quiescent]
-  [{:keys [workloads]}]
-  (let [fns (into []
-              (mapcat (fn [{:keys [count] :as w}]
-                        (let [cfg (assoc w :framework :quiescent)]
-                          (repeat count #(run-scenario cfg)))))
-              workloads)]
-    @(qfor [f fns] (q/task (f)))))
-
-
-(defmethod run-scenario [:parallel :quiescent-locked]
-  [{:keys [workloads]}]
-  (let [fns (into []
-              (mapcat (fn [{:keys [count] :as w}]
-                        (let [cfg (assoc w :framework :quiescent-locked)]
-                          (repeat count #(run-scenario cfg)))))
-              workloads)]
-    @(qfor [f fns] (q/task (f)))))
-
-
-(defmethod run-scenario [:parallel :quiescent-adaptive]
-  [{:keys [workloads]}]
-  (let [fns (into []
-              (mapcat (fn [{:keys [count] :as w}]
-                        (let [cfg (assoc w :framework :quiescent-adaptive)]
-                          (repeat count #(run-scenario cfg)))))
-              workloads)]
-    @(qfor [f fns] (q/task (f)))))
-
-
-(defmethod run-scenario [:parallel :core-async]
-  [{:keys [workloads]}]
-  (let [fns (into []
-              (mapcat (fn [{:keys [count] :as w}]
-                        (let [cfg (assoc w :framework :core-async)]
-                          (repeat count #(run-scenario cfg)))))
-              workloads)]
-    @(qfor [f fns] (q/task (f)))))
-
-
-;; -- Transducer scenarios --
-
-(defmethod run-scenario [:xform :quiescent]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (chan buffer xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-
-(defmethod run-scenario [:xform :core-async]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch  (a/chan buffer xf)
-        gos (into
-              (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch)))) (range consumers))
-              (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
-    (run! a/<!! gos)))
-
-
-(defmethod run-scenario [:xform-mapcat :quiescent]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (chan buffer xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-
-(defmethod run-scenario [:xform-mapcat :core-async]
-  [{:keys [n producers consumers buffer xf expand-factor]}]
-  (let [ch  (a/chan buffer xf)
-        gos (into
-              (mapv (fn [_] (a/go (dotimes [_ (quot (* n expand-factor) consumers)] (a/<! ch)))) (range consumers))
-              (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
-    (run! a/<!! gos)))
-
-
-(defmethod run-scenario [:xform-filter :quiescent]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (chan buffer xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-
-(defmethod run-scenario [:xform-filter :core-async]
-  [{:keys [n producers consumers buffer xf pass-ratio]}]
-  (let [ch  (a/chan buffer xf)
-        gos (into
-              (mapv (fn [_] (a/go (dotimes [_ (quot (long (* n pass-ratio)) consumers)] (a/<! ch)))) (range consumers))
-              (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
-    (run! a/<!! gos)))
-
-
-;; -- Pipe scenarios --
-
-(defmethod run-scenario [:pipe :quiescent]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch-a  (chan buffer)
-        ch-b  (chan buffer)
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
-
-
-(defmethod run-scenario [:pipe :core-async]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch-a (a/chan buffer)
-        ch-b (a/chan buffer)
-        _    (a/pipe ch-a ch-b)
-        cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
-        ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
-    (run! a/<!! ps)
-    (a/close! ch-a)
-    (run! a/<!! cs)))
-
-
-(defmethod run-scenario [:pipe :quiescent-locked]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch-a  (BoundedChannelLocked. (int buffer))
-        ch-b  (BoundedChannelLocked. (int buffer))
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
-
-
-(defmethod run-scenario [:pipe :quiescent-adaptive]
-  [{:keys [n producers consumers buffer]}]
-  (let [ch-a  (BoundedChannelAdaptive. (int buffer))
-        ch-b  (BoundedChannelAdaptive. (int buffer))
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
-
-
-(defmethod run-scenario [:pipe-xf :quiescent]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch-a  (chan buffer xf)
-        ch-b  (chan buffer)
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
-
-
-(defmethod run-scenario [:pipe-xf :core-async]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch-a (a/chan buffer xf)
-        ch-b (a/chan buffer)
-        _    (a/pipe ch-a ch-b)
-        cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
-        ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
-    (run! a/<!! ps)
-    (a/close! ch-a)
-    (run! a/<!! cs)))
+(defn- run-scenario
+  [{:keys [framework] :as cfg}]
+  (let [cfg (merge cfg (get frameworks framework))]
+    (if (= (:type cfg) :parallel)
+      (run-parallel cfg)
+      (case (:model cfg)
+        :quiescent (run-quiescent cfg)
+        :core-async (run-core-async cfg)))))
 
 
 ;; -- Scenario definitions --
-(defmethod run-scenario [:xform :quiescent-locked]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:xform :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:xform-mapcat :quiescent-locked]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:xform-mapcat :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:xform-filter :quiescent-locked]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:xform-filter :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-           (q/task (dotimes [i per-p] (put! ch i))))
-         (seal! ch)))))
-
-(defmethod run-scenario [:pipe-xf :quiescent-locked]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch-a  (BoundedChannelLockedXf. (int buffer) xf)
-        ch-b  (BoundedChannelLocked. (int buffer))
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
-
-(defmethod run-scenario [:pipe-xf :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf]}]
-  (let [ch-a  (BoundedChannelAdaptiveXf. (int buffer) xf)
-        ch-b  (BoundedChannelAdaptive. (int buffer))
-        p     (pipe ch-a ch-b)
-        per-p (quot n producers)]
-    @(qdo
-       (qfor [_ (range consumers)]
-         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-       (q/task
-         @(qfor [_ (range producers)]
-            (q/task (dotimes [i per-p] (put! ch-a i))))
-         (seal! ch-a)
-         @p))))
 
 (def scenarios
   [;; --- Isolated (single channel, buf=1024) ---
@@ -438,53 +164,53 @@
     :producers 1 :consumers 1 :n 500000 :buffer 1024}
 
    ;; --- Pipeline (pipe) ---
-   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+   {:scenario  "Pipe 4P→1P→4C" :group :pipe :type :pipe
     :producers 4 :consumers 4 :n 1000000 :buffer 16}
-   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+   {:scenario  "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
     :producers 4 :consumers 4 :n 1000000 :buffer 16}
-   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+   {:scenario  "Pipe 4P→1P→4C" :group :pipe :type :pipe
     :producers 4 :consumers 4 :n 1000000 :buffer 64}
-   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+   {:scenario  "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
     :producers 4 :consumers 4 :n 1000000 :buffer 64}
-   {:scenario "Pipe 4P→1P→4C" :group :pipe :type :pipe
+   {:scenario  "Pipe 4P→1P→4C" :group :pipe :type :pipe
     :producers 4 :consumers 4 :n 1000000 :buffer 1024}
-   {:scenario "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
+   {:scenario  "Pipe XF 4P→1P→4C" :group :pipe :type :pipe-xf :xf (map inc)
     :producers 4 :consumers 4 :n 1000000 :buffer 1024}
 
    ;; --- Pipeline (parallel contention) ---
-   {:scenario "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
+   {:scenario  "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
     :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000 :buffer 64}]}
-   {:scenario "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
+   {:scenario  "20×Pipe 4P→1P→4C" :group :pipe :type :parallel
     :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000 :buffer 1024}]}
 
    ;; --- Fan-in (many producers, 1 consumer) ---
    ;; n must be divisible by producer count to avoid deadlock from truncation
-   {:scenario "16P1C"  :group :fan-in :producers 16  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "32P1C"  :group :fan-in :producers 32  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "64P1C"  :group :fan-in :producers 64  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 64}
-   {:scenario "16P1C"  :group :fan-in :producers 16  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "32P1C"  :group :fan-in :producers 32  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "64P1C"  :group :fan-in :producers 64  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000  :buffer 1024}
+   {:scenario "16P1C" :group :fan-in :producers 16 :consumers 1 :n 960000 :buffer 64}
+   {:scenario "32P1C" :group :fan-in :producers 32 :consumers 1 :n 960000 :buffer 64}
+   {:scenario "64P1C" :group :fan-in :producers 64 :consumers 1 :n 960000 :buffer 64}
+   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000 :buffer 64}
+   {:scenario "16P1C" :group :fan-in :producers 16 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario "32P1C" :group :fan-in :producers 32 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario "64P1C" :group :fan-in :producers 64 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario "128P1C" :group :fan-in :producers 128 :consumers 1 :n 960000 :buffer 1024}
 
    ;; --- Fan-in XF (lock effect on producer contention) ---
-   {:scenario "XF 16P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 16  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "XF 32P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 32  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "XF 64P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 64  :consumers 1 :n 960000  :buffer 64}
-   {:scenario "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 128 :consumers 1 :n 960000  :buffer 64}
-   {:scenario "XF 16P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 16  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "XF 32P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 32  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "XF 64P1C"  :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 64  :consumers 1 :n 960000  :buffer 1024}
-   {:scenario "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
-    :producers 128 :consumers 1 :n 960000  :buffer 1024}])
+   {:scenario  "XF 16P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 16 :consumers 1 :n 960000 :buffer 64}
+   {:scenario  "XF 32P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 32 :consumers 1 :n 960000 :buffer 64}
+   {:scenario  "XF 64P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 64 :consumers 1 :n 960000 :buffer 64}
+   {:scenario  "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 128 :consumers 1 :n 960000 :buffer 64}
+   {:scenario  "XF 16P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 16 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario  "XF 32P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 32 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario  "XF 64P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 64 :consumers 1 :n 960000 :buffer 1024}
+   {:scenario  "XF 128P1C" :group :fan-in-xf :type :xform :xf (map identity)
+    :producers 128 :consumers 1 :n 960000 :buffer 1024}])
 
 
 ;; -- Bench harness --
@@ -503,11 +229,7 @@
   [cfg framework {:keys [verbose quick]}]
   (let [run-cfg (assoc cfg :framework framework)
         label   (:scenario cfg)
-        ch-name (case framework
-                  :quiescent "BoundedChannel"
-                  :quiescent-locked "Locked"
-                  :quiescent-adaptive "Adaptive"
-                  :core-async "core.async")]
+        ch-name (:name (get frameworks framework))]
     (println (str "\nRunning: " label " — " ch-name))
     (let [res         (if quick
                         (if verbose
@@ -534,65 +256,64 @@
          :outlier-var (format-pct outlier-var)}))))
 
 
+(def ^:private cols [:label :buffer :channel :mean :std-dev :lower-q :upper-q :outlier-var :speedup])
+
+
+(defn- row-str
+  [r]
+  (str "|" (str/join "|" (map #(get r %) cols)) "|"))
+
+
+(defn- add-speedup
+  [cohort]
+  (let [min-mean (transduce (map :raw-mean) min Double/MAX_VALUE cohort)]
+    (mapv (fn [r]
+            (let [ratio (/ (:raw-mean r) min-mean)]
+              (if (< ratio 1.05)
+                (assoc r :speedup "")
+                (assoc r :speedup (format "%.1fx" ratio)))))
+      cohort)))
+
+
+(defn- emit-header
+  [out-file]
+  (spit out-file
+    (str "## Benchmark Results\n\n"
+      "|" (str/join "|" (map name cols)) "|\n"
+      "|" (str/join "|" (repeat (count cols) "---")) "|\n")))
+
+
+(defn- emit-rows
+  [out-file cohort]
+  (doseq [r cohort]
+    (spit out-file (str (row-str r) "\n") :append true)))
+
+
 (defn run-all-benchmarks
   [& {:keys [only verbose quick frameworks]}]
-  (let [active       (if only
-                       (filterv #(contains? only (:group %)) scenarios)
-                       scenarios)
-        default-fws  [:quiescent :core-async]
-        opts         {:verbose verbose :quick quick}
-        out-file     "benchmark_results.md"
-        cols-partial [:label :buffer :channel :mean :std-dev :lower-q :upper-q :outlier-var]
-        cols         (conj cols-partial :speedup)
-        row-str      (fn [cs r] (str "|" (str/join "|" (map #(get r %) cs)) "|"))]
+  (let [active      (if only
+                      (filterv #(contains? only (:group %)) scenarios)
+                      scenarios)
+        default-fws [:quiescent :core-async]
+        opts        {:verbose verbose :quick quick}
+        out-file    "benchmark_results.md"]
 
-    ;; Write header — results append incrementally
-    (spit out-file
-      (str "## Benchmark Results\n\n"
-        "|" (str/join "|" (map name cols-partial)) "|\n"
-        "|" (str/join "|" (repeat (count cols-partial) "---")) "|\n"))
+    (emit-header out-file)
 
     (let [results (into []
                     (mapcat (fn [cfg]
-                              (let [fws (or frameworks
-                                          (:frameworks cfg)
-                                          default-fws)]
-                                (mapv (fn [fw]
-                                        (let [r (bench-one cfg fw opts)]
-                                          (spit out-file (str (row-str cols-partial r) "\n") :append true)
-                                          r))
-                                  fws))))
-                    active)
-          ;; Compute speedup: relative to fastest variant per scenario+buffer
-          pair-key     (fn [r] [(:label r) (:buffer r)])
-          min-means    (reduce (fn [acc r]
-                                 (let [k (pair-key r)
-                                       prev (get acc k)]
-                                   (if (or (nil? prev) (< (:raw-mean r) prev))
-                                     (assoc acc k (:raw-mean r))
-                                     acc)))
-                         {}
-                         results)
-          with-speedup (mapv (fn [r]
-                               (let [min-mean (get min-means (pair-key r))
-                                     ratio    (/ (:raw-mean r) min-mean)]
-                                 (if (< ratio 1.05)
-                                   (assoc r :speedup "")
-                                   (assoc r :speedup (format "%.1fx" ratio)))))
-                         results)]
+                              (let [fws    (or frameworks
+                                             (:frameworks cfg)
+                                             default-fws)
+                                    cohort (-> (mapv #(bench-one cfg % opts) fws)
+                                             add-speedup)]
+                                (emit-rows out-file cohort)
+                                cohort)))
+                    active)]
 
       (println "\n\n=== BENCHMARK RESULTS ===")
-      (pp/print-table cols with-speedup)
-
-      ;; Rewrite with speedup column
-      (spit out-file
-        (with-out-str
-          (println "## Benchmark Results\n")
-          (println (str "|" (str/join "|" (map name cols)) "|"))
-          (println (str "|" (str/join "|" (repeat (count cols) "---")) "|"))
-          (doseq [row with-speedup]
-            (println (row-str cols row)))))
-      with-speedup)))
+      (pp/print-table cols results)
+      results)))
 
 
 (defn- parse-kw-list
@@ -617,19 +338,3 @@
         frameworks (parse-kw-list args "--frameworks")]
     (run-all-benchmarks :only only :verbose verbose :quick quick
       :frameworks (seq frameworks))))
-
-
-(comment
-
-  (def results (run-all-benchmarks))
-
-  (def results (run-all-benchmarks :only #{:transducer}))
-
-  (def results (run-all-benchmarks :only #{:system :transducer} :verbose true))
-
-  ;; Three-way comparison: XADD vs Locked vs core.async
-  (def results (run-all-benchmarks
-                 :only #{:isolated :small-buffer :fan-in :system}
-                 :frameworks [:quiescent :quiescent-locked :core-async]))
-
-  #__)
