@@ -6,8 +6,7 @@
     [co.multiply.quiescent :as q :refer [qdo qfor]]
     [co.multiply.quiescent.channel :refer [chan pipe poll put! seal! take!]]
     [criterium.core :as c])
-  (:import
-    [co.multiply.quiescent.impl.channel BoundedChannelAdaptive BoundedChannelAdaptiveXf BoundedChannelLocked BoundedChannelLockedXf]))
+)
 
 
 ;; -- Channel factories --
@@ -17,21 +16,8 @@
 ;; Adding a new channel implementation = adding one map entry.
 
 (def frameworks
-  {:quiescent          {:model :quiescent :make-ch chan :name "BoundedChannel"}
-
-   :quiescent-locked   {:model   :quiescent
-                        :make-ch (fn
-                                   ([buf] (BoundedChannelLocked. (int buf)))
-                                   ([buf xf] (BoundedChannelLockedXf. (int buf) xf)))
-                        :name    "Locked"}
-
-   :quiescent-adaptive {:model   :quiescent
-                        :make-ch (fn
-                                   ([buf] (BoundedChannelAdaptive. (int buf)))
-                                   ([buf xf] (BoundedChannelAdaptiveXf. (int buf) xf)))
-                        :name    "Adaptive"}
-
-   :core-async         {:model :core-async :name "core.async"}})
+  {:quiescent  {:model :quiescent :make-ch chan :name "Quiescent"}
+   :core-async {:model :core-async :name "core.async"}})
 
 
 ;; -- Runners --
@@ -266,12 +252,10 @@
 
 (defn- add-speedup
   [cohort]
-  (let [min-mean (transduce (map :raw-mean) min Double/MAX_VALUE cohort)]
+  (let [max-mean (transduce (map :raw-mean) max 0.0 cohort)]
     (mapv (fn [r]
-            (let [ratio (/ (:raw-mean r) min-mean)]
-              (if (< ratio 1.05)
-                (assoc r :speedup "")
-                (assoc r :speedup (format "%.1fx" ratio)))))
+            (let [ratio (/ max-mean (:raw-mean r))]
+              (assoc r :speedup (format "%.1fx" ratio))))
       cohort)))
 
 

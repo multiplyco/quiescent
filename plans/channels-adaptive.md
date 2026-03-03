@@ -4,7 +4,7 @@ Two-lock bounded channel with single-owner fast path. Trades the
 lock-free XADD design's isolated throughput for dramatically better
 fan-in scaling and competitive system-level performance.
 
-See `channels-ringbuffer.md` for the XADD ring buffer design.
+See `museum/channel/channels-ringbuffer.md` for the retired XADD ring buffer design.
 See `channels.md` for channel semantics.
 
 ## Motivation
@@ -62,14 +62,14 @@ and sole producer of sink — the fast path fires on both sides.
 ## Class Hierarchy
 
 ```
-AbstractBoundedChannelAdaptive  — buffer, count, adaptive take, putDirect, lifecycle
-  +- BoundedChannelAdaptive     — adaptive put with Dekker handshake
-  +- BoundedChannelAdaptiveXf   — transducer put, serialized through putLock
+AbstractBoundedChannel  — buffer, count, adaptive take, putDirect, lifecycle
+  +- BoundedChannel     — adaptive put with Dekker handshake
+  +- BoundedChannelXf   — transducer put, serialized through putLock
 ```
 
-`AbstractBoundedChannelAdaptive` owns all shared state, the full
-adaptive take implementation, and the `putDirect()` method for
-under-lock buffer writes. Subclasses provide only `put()`.
+`AbstractBoundedChannel` owns all shared state, the full adaptive
+take implementation, and the `putDirect()` method for under-lock
+buffer writes. Subclasses provide only `put()`.
 
 ## Core Structure
 
@@ -114,7 +114,7 @@ The upgrade is one-way: once `CONTENDED`, the channel never returns
 to single-owner mode. This simplifies reasoning — no ABA problems,
 no re-acquisition races.
 
-### Producer side (BoundedChannelAdaptive)
+### Producer side (BoundedChannel)
 
 ```
 put(value):
@@ -248,7 +248,7 @@ resolves in nanoseconds. The yield fallback handles scheduling delays
 
 ### Consumer side — mirror
 
-The consumer side in `AbstractBoundedChannelAdaptive` is identical in
+The consumer side in `AbstractBoundedChannel` is identical in
 structure: `consumerOwner`, `takeFastActive`, `takeFast()`,
 `takeFastPark()`, `takeSlow()`, `takeLocked()`,
 `spinOnTakeFastActive()`. The take side is `final` in the abstract
@@ -257,8 +257,8 @@ class — both subclasses share it.
 ## putDirect — shared locked put logic
 
 Called by `putFastPark`, `putSlow`, `putLocked` (in
-`BoundedChannelAdaptive`) and the transducer step function (in
-`BoundedChannelAdaptiveXf`). Caller holds `putLock`.
+`BoundedChannel`) and the transducer step function (in
+`BoundedChannelXf`). Caller holds `putLock`.
 
 ```
 putDirect(value):
@@ -278,7 +278,7 @@ sealed/cancelled/interrupted. The cascade signal
 (`notFull.signal()` when buffer not full) prevents producer
 starvation under fan-in.
 
-## Transducer Support (BoundedChannelAdaptiveXf)
+## Transducer Support (BoundedChannelXf)
 
 Transducer channels serialize all producers through `putLock` — the
 same lock used by the base class for the locked path. No separate
@@ -301,7 +301,7 @@ adaptive ownership tracking on the producer side. The consumer side
 retains the adaptive fast path from the base class.
 
 ```
-put(value):                          // BoundedChannelAdaptiveXf
+put(value):                          // BoundedChannelXf
   if state >= SEALED: return false   // volatile read, avoid lock
   putLock.lock()
   if state >= SEALED: return false   // re-check under lock
@@ -366,35 +366,17 @@ waiting (the `putFastActive` spin is only during ownership upgrade).
 Consumers drain remaining values, then see `state >= SEALED` and
 return `CANCELLED`.
 
-## Trade-offs vs XADD Ring Buffer
+## Historical: Trade-offs vs retired designs
 
-|                      | XADD                | Adaptive            |
-|----------------------|---------------------|---------------------|
-| 1P1C isolated        | Best (36-46 ms)     | 2.7x slower         |
-| Ping-pong (buf=1)    | Best (19-23 ms)     | 7x slower           |
-| Fan-in (128P)        | 21x slower          | Best                |
-| System (50-200 ch)   | 1.2x slower         | Best                |
-| Pipe                 | 1.7x slower         | Best                |
-| XF fan-in            | Best at low P       | Best at high P      |
-| Memory               | 4 arrays + padding  | 1 array + 2 locks   |
-| Complexity           | Three-tier parking  | Dekker handshake    |
+The XADD (Disruptor-style) and pure-locked designs were retired in
+favor of the adaptive channel. See `museum/channel/` for the
+implementations. Summary of the decision:
 
-### When to use which
-
-**XADD** (`BoundedChannel`): dedicated high-throughput pipelines
-with known low producer/consumer counts. The 2.7x advantage at 1P1C
-is significant for latency-sensitive conveyor belts.
-
-**Adaptive** (`BoundedChannelAdaptive`): general-purpose default.
-Best for system workloads with unknown or variable concurrency. Wins
-at fan-in, pipe, and multi-channel scenarios. The 1P1C penalty is
-acceptable when the channel might see contention.
-
-**Locked** (`BoundedChannelLocked`): simplest implementation,
-predictable performance. No fast path overhead, no ownership
-tracking. Slightly slower than Adaptive at fan-in (Adaptive's
-consumer fast path helps), slightly faster at isolated 1P1C in some
-runs. Useful as a baseline and for debugging.
+- XADD had catastrophic failure modes under contention (18x slower
+  at 128 producers, worse than core.async at 4P4C buffer=1)
+- Pure-locked was strictly dominated by adaptive in all benchmarks
+- Adaptive's worst-case losses (15-30% at isolated 1P1C) were
+  acceptable given 2-18x wins at fan-in, pipe, and system workloads
 
 ## Open Questions
 
@@ -403,6 +385,12 @@ runs. Useful as a baseline and for debugging.
   has exactly one `Condition`. Two `synchronized` blocks on separate
   monitor objects would be equivalent and potentially faster (JIT
   lock coarsening, biased locking on older JDKs). Worth benchmarking.
+  **However**: `Condition.awaitNanos` returns remaining time, making
+  timed operations (offer/poll with timeout) trivial to loop
+  correctly. `Object.wait(millis, nanos)` requires manual deadline
+  tracking with `System.nanoTime()` on each iteration — clumsy and
+  error-prone. Timed offer/poll is a planned feature, which favors
+  keeping `ReentrantLock`.
 
 - **Padding for fast-path fields**: `producerOwner` and
   `putFastActive` are adjacent to `putLock`. Under the adaptive
@@ -416,3 +404,48 @@ runs. Useful as a baseline and for debugging.
   single-producer would benefit from downgrade. This adds ABA
   complexity (the owner thread must re-verify after downgrade) and
   is deferred until benchmarks show it matters.
+
+- **`offer`/`poll` (non-blocking try-put/try-take)**: The adaptive
+  fast path makes these genuinely cheap. Owner path: no lock — read
+  `count`, check space/items, write buffer, bump count. Return false
+  instead of parking if full/empty. Non-owner path: `tryLock()`
+  instead of `lock()` — if acquired, do the operation; if not,
+  return false immediately. Strictly better than core.async's
+  `offer!`/`poll!`, which always take a mutex. Timed variants use
+  `Condition.awaitNanos` for bounded parking (see `synchronized`
+  vs `ReentrantLock` above).
+
+- **`alt` (select over multiple channels)**: Three approaches
+  considered:
+
+  1. **core.async style (handler registration)**: each channel
+     maintains a queue of pending alt-takers with a shared atomic
+     handler. `put` checks this queue when signaling. Pro: proven,
+     no extra threads. Con: braids alt awareness into every channel;
+     every `put` path pays for alt even when nobody is alt-ing.
+
+  2. **VT delegation**: spawn N virtual threads, each parks on one
+     channel using existing take infrastructure. Shared CAS slot
+     determines the winner (peek under lock, CAS before consuming,
+     losers signal `notEmpty` and exit). Pro: zero channel changes,
+     alt is purely external. Con: **hostile to the adaptive
+     protocol** — each alt spawns new thread identities, immediately
+     upgrading channels to CONTENDED. In a loop (the common `alt`
+     pattern), the consumer fast path is permanently burned on every
+     channel touched. Acceptable for one-shot use, not for repeated
+     alt.
+
+  3. **Custom lock primitive**: replace `ReentrantLock`/`Condition`
+     with a lock whose waiter queue entries carry a CAS slot. On
+     signal, the lock CASes the channel identity into the slot.
+     Waiter wakes knowing which channel it has access to. Regular
+     take is the same mechanism minus the CAS. Pro: channel unaware
+     of alt, no extra threads, no put-path overhead, signal path
+     does the CAS (no window between wake and claim). Con: replaces
+     `ReentrantLock` — must reimplement AQS-level functionality
+     (reentrance, `awaitNanos`, `tryLock`, etc.).
+
+  The custom lock is the most aligned with the adaptive design —
+  alt is in the lock, not in the channel, and the caller's thread
+  identity is preserved (no ownership pollution). But it is the
+  most intricate to implement.

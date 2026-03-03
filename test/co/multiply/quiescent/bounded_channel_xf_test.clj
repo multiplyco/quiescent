@@ -136,30 +136,6 @@
       (is (every? pos-int? (iterator-seq (.iterator results)))))))
 
 
-;; # Padded xf channels
-;; ################################################################################
-
-(deftest padded-xf-round-trip-test
-  (let [ch (chan 8 {:xf (map inc) :padded true})]
-    (is (= 8 (capacity ch)))
-    (put! ch 1)
-    (put! ch 2)
-    (put! ch 3)
-    (is (= 2 (take! ch)))
-    (is (= 3 (take! ch)))
-    (is (= 4 (take! ch)))))
-
-
-(deftest padded-xf-filter-test
-  (let [ch   (chan 16 {:xf (filter even?) :padded true})
-        done (promise)]
-    (q/task (deliver done (take! ch)))
-    (put! ch 1)
-    (put! ch 3)
-    (put! ch 4)
-    (is (= 4 (deref done 1000 :timeout)))))
-
-
 ;; # Construction and query
 ;; ################################################################################
 

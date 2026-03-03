@@ -37,13 +37,11 @@ default boolean seal(Iterable<?> coll) {
 ```
 
 Non-atomic defaults. Each `put()` is independent, interleaving is
-possible. Used by channel types that lack a producer lock (e.g., the
-XADD ring buffer). Locked and adaptive channels override with atomic
-versions.
+possible. Bounded channels override with atomic versions.
 
-## Adaptive Channel Hierarchy
+## Channel Hierarchy
 
-### AbstractBoundedChannelAdaptive
+### AbstractBoundedChannel
 
 **`ontoDirect(Iterable<?>)`** — caller holds `putLock`:
 
@@ -80,7 +78,7 @@ boolean sealInternal() {
 ```
 
 This also enables fixing the `Reduced` handling in
-`BoundedChannelAdaptiveXf` — replace
+`BoundedChannelXf` — replace
 `throw new UnsupportedOperationException("Seal not yet implemented")`
 with `rf.invoke(this); sealInternal(); return false`.
 
@@ -107,7 +105,7 @@ public boolean seal(Iterable<?> coll) {
 While we hold `putLock`, no other thread can seal or cancel (both
 acquire `putLock`). So `ontoDirect` can only fail if interrupted.
 
-### BoundedChannelAdaptive
+### BoundedChannel
 
 Mirrors `put()`'s three-path adaptive protocol. The Dekker
 handshake brackets the entire batch (one entry/exit for N elements).
@@ -181,7 +179,7 @@ Alternative for `seal(Iterable)`: always use the locked path since
 seal is a one-time terminal operation and lock overhead is
 negligible.
 
-### BoundedChannelAdaptiveXf
+### BoundedChannelXf
 
 Override `onto` and `seal(Iterable)` to route through the
 transducer. No adaptive fast path — producer side is always locked
@@ -261,22 +259,10 @@ the thread is interrupted during `notFull.await()` parking.
 ## Files to Modify
 
 1. `java/.../channel/IChannel.java` — default `onto`, `seal(Iterable)`
-2. `java/.../channel/AbstractBoundedChannelAdaptive.java` — `ontoDirect`, `sealInternal`, overrides
-3. `java/.../channel/BoundedChannelAdaptive.java` — adaptive three-path `onto`/`seal`
-4. `java/.../channel/BoundedChannelAdaptiveXf.java` — transducer `onto`/`seal`, fix Reduced
+2. `java/.../channel/AbstractBoundedChannel.java` — `ontoDirect`, `sealInternal`, overrides
+3. `java/.../channel/BoundedChannel.java` — adaptive three-path `onto`/`seal`
+4. `java/.../channel/BoundedChannelXf.java` — transducer `onto`/`seal`, fix Reduced
 5. `src/.../channel.clj` — `onto!`, 2-arity `seal!`
-
-## Future: Other Channel Types
-
-The Locked and XADD channel families will need their own overrides:
-
-- **BoundedChannelLocked**: extract `putDirect`, add atomic
-  `onto`/`seal(Iterable)` under `putLock`.
-- **BoundedChannelLockedXf**: override through transducer under
-  `xfLock`. Potential optimization: eliminate `xfLock` and use
-  `putLock` directly (same as `BoundedChannelAdaptiveXf`).
-- **BoundedChannelXf**: override through transducer under `xfLock`.
-- **BoundedChannel** (XADD): use non-atomic defaults from IChannel.
 
 ## Open Questions
 

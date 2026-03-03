@@ -1,51 +1,133 @@
 package co.multiply.quiescent.impl.channel;
 
 /**
- * Bounded channel with lock-free MPMC put.
+ * Bounded channel with lock-free single-producer fast path.
  * <p>
- * Uses XADD on both sides for slot claiming — wait-free, one atomic
- * instruction per operation. Three-tier parking for backpressure.
- * <p>
- * See {@link AbstractBoundedChannel} for ring buffer internals and
- * channels-ringbuffer.md for the full design.
+ * The producer side uses ownership tracking with a Dekker handshake
+ * to enable a lock-free fast path when a single thread is producing.
+ * When a second producer is detected, the side irreversibly upgrades
+ * to the locked path. The consumer side (in the superclass) uses the
+ * same adaptive protocol independently.
+ *
+ * @see AbstractBoundedChannel
  */
 public class BoundedChannel extends AbstractBoundedChannel {
 
+    private volatile Thread producerOwner;
+    private volatile int putFastActive;
+
     public BoundedChannel(int requestedSize) {
-        super(requestedSize, false);
+        super(requestedSize);
     }
 
-    public BoundedChannel(int requestedSize, boolean padded) {
-        super(requestedSize, padded);
-    }
+    // ================================================================
+    //  PUT — adaptive owner-tracking
+    // ================================================================
 
     @Override
     public boolean put(Object value) {
-        long slot = (long) PRODUCER_SEQ.getAndAdd(this, 1L);
-        if (slot < 0) return false; // sealed or cancelled
+        Thread owner = this.producerOwner;
+        if (owner == CONTENDED)
+            return putLocked(value);
 
-        int idx = (int) (slot & mask);
-        int pIdx = idx << ashft;
-        long gen = slot >>> sizeShift;
-
-        // Check if slot is free for our generation
-        if ((long) AVAIL.getVolatile(avail, pIdx) != -gen) {
-            if (!park(producerThreads, pIdx, -gen, gen - 1,
-                      producerGateLock, producerGate, PRODUCER_GATE_WAITERS)) {
-                return false;
+        Thread self = Thread.currentThread();
+        if (owner == self) {
+            // Dekker handshake: set flag, re-check owner
+            this.putFastActive = 1;
+            if (this.producerOwner == self) {
+                return putFast(value);
             }
+            // Upgraded between first read and re-check
+            this.putFastActive = 0;
+            return putLocked(value);
+        }
+        return putSlow(value, self);
+    }
+
+    /**
+     * Lock-free fast path — only the owner thread reaches here.
+     * Caller has already set putFastActive = 1.
+     */
+    private boolean putFast(Object value) {
+        if ((int) COUNT.getAcquire(this) >= capacity) {
+            this.putFastActive = 0;
+            return putFastPark(value);
         }
 
-        // Write value and publish
-        OBJ_ARRAY.setVolatile(values, pIdx, value);
-        AVAIL.setVolatile(avail, pIdx, gen);
+        if (this.state != OPEN) {
+            this.putFastActive = 0;
+            return false;
+        }
 
-        // Dekker: wake consumer parked on this slot
-        tryWake(consumerThreads, pIdx);
+        buffer[(int)(tail++ & mask)] = value;
+        int c = (int) COUNT.getAndAddRelease(this, 1);
+        this.putFastActive = 0;
 
-        // Signal gated consumers — a generation transition happened
-        signalGate(consumerGateLock, consumerGate, CONSUMER_GATE_WAITERS);
-
+        if (c == 0) signalNotEmpty();
         return true;
+    }
+
+    /**
+     * Fast-path owner detected buffer full. Flag is already cleared.
+     * Acquires putLock to park via Condition.
+     */
+    private boolean putFastPark(Object value) {
+        int c;
+        putLock.lock();
+        try {
+            c = putDirect(value);
+        } finally {
+            putLock.unlock();
+        }
+        if (c == 0) signalNotEmpty();
+        return c >= 0;
+    }
+
+    /**
+     * First use or contention detected. Always under putLock.
+     */
+    private boolean putSlow(Object value, Thread self) {
+        int c;
+        putLock.lock();
+        try {
+            Thread owner = this.producerOwner;
+            if (owner == null) {
+                this.producerOwner = self;
+            } else if (owner != CONTENDED) {
+                this.producerOwner = CONTENDED;
+                spinOnPutFastActive();
+            }
+
+            c = putDirect(value);
+        } finally {
+            putLock.unlock();
+        }
+        if (c == 0) signalNotEmpty();
+        return c >= 0;
+    }
+
+    /**
+     * Post-upgrade locked path.
+     */
+    private boolean putLocked(Object value) {
+        int c;
+        putLock.lock();
+        try {
+            c = putDirect(value);
+        } finally {
+            putLock.unlock();
+        }
+        if (c == 0) signalNotEmpty();
+        return c >= 0;
+    }
+
+    private void spinOnPutFastActive() {
+        for (int i = 0; i < 1024; i++) {
+            if (this.putFastActive == 0) return;
+            Thread.onSpinWait();
+        }
+        while (this.putFastActive != 0) {
+            Thread.yield();
+        }
     }
 }

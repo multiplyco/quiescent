@@ -56,6 +56,8 @@
 
   bench             {:doc     "Run benchmarks (-q/--quick --only :group ... -v/--verbose)"
                      :depends [compile:java]
-                     :task    (do (apply shell "clj" "-M:dev" "-m" "channel-bench"
-                                    *command-line-args*)
+                     :task    (do (apply shell "clj"
+                                          "-J-XX:+StartAttachListener"
+                                          "-M:dev" "-m" "channel-bench"
+                                          *command-line-args*)
                                 (println (slurp "benchmark_results.md")))}}}
