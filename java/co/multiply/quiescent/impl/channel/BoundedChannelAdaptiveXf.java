@@ -1,7 +1,5 @@
 package co.multiply.quiescent.impl.channel;
 
-import java.util.concurrent.locks.ReentrantLock;
-
 import clojure.lang.AFn;
 import clojure.lang.IFn;
 import clojure.lang.RT;
@@ -9,12 +7,16 @@ import clojure.lang.RT;
 /**
  * Adaptive bounded channel with transducer support.
  * <p>
- * Uses a separate ReentrantLock to serialize transducer execution,
- * preserving the inner channel's adaptive locking semantics.
+ * Producers are serialized through {@code putLock} (inherited from the
+ * base class) to protect stateful transducer state — no separate xfLock
+ * is needed. The transducer's step function calls {@link #putDirect(Object)}
+ * which writes directly to the buffer under the lock. The consumer side
+ * retains the adaptive fast path from the superclass.
+ *
+ * @see AbstractBoundedChannelAdaptive
  */
-public class BoundedChannelAdaptiveXf extends BoundedChannelAdaptive {
+public class BoundedChannelAdaptiveXf extends AbstractBoundedChannelAdaptive {
 
-    private final ReentrantLock xfLock = new ReentrantLock();
     private final IFn rf;
 
     public BoundedChannelAdaptiveXf(int requestedSize, IFn xf) {
@@ -22,14 +24,15 @@ public class BoundedChannelAdaptiveXf extends BoundedChannelAdaptive {
     }
 
     public BoundedChannelAdaptiveXf(int requestedSize, IFn xf, boolean padded) {
-        super(requestedSize, padded);
+        super(requestedSize);
 
         AFn baseRf = new AFn() {
             public Object invoke(Object acc) {
                 return acc;
             }
             public Object invoke(Object acc, Object val) {
-                BoundedChannelAdaptiveXf.super.put(val);
+                int c = putDirect(val);
+                if (c == 0) signalNotEmpty();
                 return acc;
             }
         };
@@ -38,17 +41,17 @@ public class BoundedChannelAdaptiveXf extends BoundedChannelAdaptive {
 
     @Override
     public boolean put(Object value) {
-        if (isSealed() || isCancelled()) return false;
-        xfLock.lock();
+        if (state >= SEALED) return false;
+        putLock.lock();
         try {
-            if (isSealed() || isCancelled()) return false;
+            if (state >= SEALED) return false;
             Object result = rf.invoke(this, value);
             if (RT.isReduced(result)) {
                 rf.invoke(this); // flush
                 throw new UnsupportedOperationException("Seal not yet implemented");
             }
         } finally {
-            xfLock.unlock();
+            putLock.unlock();
         }
         return true;
     }
