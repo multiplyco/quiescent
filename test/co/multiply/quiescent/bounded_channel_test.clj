@@ -178,36 +178,6 @@
 (deftest mpmc-4p4c-test (mpmc-test 4 4 2500 64))
 
 
-;; # Padded channels
-;; ################################################################################
-
-(deftest padded-channel-round-trip-test
-  (let [ch (chan 8 {:padded true})]
-    (is (= 8 (capacity ch)))
-    (doseq [i (range 5)]
-      (put! ch i))
-    (is (= [0 1 2 3 4] (mapv (fn [_] (take! ch)) (range 5))))))
-
-
-(deftest padded-channel-backpressure-test
-  (let [ch      (chan 2 {:padded true})
-        started (promise)
-        done    (promise)]
-    (put! ch :a)
-    (put! ch :b)
-    (q/task
-      (deliver started true)
-      (put! ch :c)
-      (deliver done true))
-    @started
-    (Thread/sleep 10)
-    (is (not (realized? done)) "Producer should be parked")
-    (is (= :a (take! ch)))
-    (is (= true (deref done 1000 :timeout)))
-    (is (= :b (take! ch)))
-    (is (= :c (take! ch)))))
-
-
 ;; # Cancellation
 ;; ################################################################################
 

@@ -28,21 +28,12 @@
    Buffer size is rounded up to the next power of 2. The channel
    supports multiple concurrent producers and consumers.
 
-   Second arg is either a transducer or an opts map:
-
-   (chan 8)                              ; plain buffer
-   (chan 16 (map inc))                   ; with transducer
-   (chan 16 {:padded true})              ; cache-line padded arrays (~8× memory)
-   (chan 16 {:xf (map inc) :padded true}) ; both"
+   (chan 8)          ; plain buffer
+   (chan 16 (map inc)) ; with transducer"
   ([n]
    (BoundedChannel. (int n)))
-  ([n xf-or-opts]
-   (if (map? xf-or-opts)
-     (let [{:keys [xf padded]} xf-or-opts]
-       (if xf
-         (BoundedChannelXf. (int n) xf (boolean padded))
-         (BoundedChannel. (int n) (boolean padded))))
-     (BoundedChannelXf. (int n) xf-or-opts))))
+  ([n xf]
+   (BoundedChannelXf. (int n) xf)))
 
 
 ;; # Core operations
