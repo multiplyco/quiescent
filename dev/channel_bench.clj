@@ -239,6 +239,40 @@
     (run! a/<!! cs)))
 
 
+(defmethod run-scenario [:pipe :quiescent-locked]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch-a  (BoundedChannelLocked. (int buffer))
+        ch-b  (BoundedChannelLocked. (int buffer))
+        p     (pipe ch-a ch-b)
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch-b))))
+       (q/task
+         @(qfor [_ (range producers)]
+            (q/task (dotimes [i per-p] (put! ch-a i))))
+         (seal! ch-a)
+         @p))))
+
+
+(defmethod run-scenario [:pipe :quiescent-adaptive]
+  [{:keys [n producers consumers buffer]}]
+  (let [ch-a  (BoundedChannelAdaptive. (int buffer))
+        ch-b  (BoundedChannelAdaptive. (int buffer))
+        p     (pipe ch-a ch-b)
+        per-p (quot n producers)
+        per-c (quot n consumers)]
+    @(qdo
+       (qfor [_ (range consumers)]
+         (q/task (dotimes [_ per-c] (take! ch-b))))
+       (q/task
+         @(qfor [_ (range producers)]
+            (q/task (dotimes [i per-p] (put! ch-a i))))
+         (seal! ch-a)
+         @p))))
+
+
 (defmethod run-scenario [:pipe-xf :quiescent]
   [{:keys [n producers consumers buffer xf]}]
   (let [ch-a  (chan buffer xf)
