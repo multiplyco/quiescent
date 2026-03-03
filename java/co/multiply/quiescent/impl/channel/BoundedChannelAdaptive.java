@@ -1,5 +1,7 @@
 package co.multiply.quiescent.impl.channel;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -8,9 +10,17 @@ import java.util.concurrent.locks.ReentrantLock;
  * for single-owner scenarios and irreversibly upgrades to a two-lock
  * path when contention is detected.
  * <p>
- * Optimized to remove shared AtomicInteger count and instead use
- * separated putCount and takeCount to prevent cache line bouncing
- * in single-threaded fast paths.
+ * Each side (producer/consumer) independently tracks an owner thread:
+ * <ul>
+ *   <li>{@code null} — unclaimed; first thread claims ownership under the lock.</li>
+ *   <li>{@code Thread} — that thread uses the lock-free fast path.</li>
+ *   <li>{@code CONTENDED} — all threads use the locked path (irreversible).</li>
+ * </ul>
+ * <p>
+ * Transition safety: a volatile {@code putFastActive} flag brackets the
+ * fast-path write. The owner sets it to 1 and re-reads {@code producerOwner}
+ * (Dekker handshake) before entering the fast path. The upgrading thread,
+ * under the lock, spins on this flag after setting {@code CONTENDED}.
  */
 public class BoundedChannelAdaptive implements IChannel, IBuffered {
 
@@ -18,19 +28,30 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     private static final int SEALED = 1;
     private static final int CANCELLED = 2;
 
+    /** Sentinel indicating the side has been upgraded to the locked path. */
     private static final Thread CONTENDED = new Thread("CONTENDED-SENTINEL");
+
+    private static final VarHandle COUNT;
+    static {
+        try {
+            COUNT = MethodHandles.lookup().findVarHandle(BoundedChannelAdaptive.class, "count", int.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
 
     // ---- Producer-side fields ----
     private final ReentrantLock putLock = new ReentrantLock();
     private final Condition notFull = putLock.newCondition();
     private volatile Thread producerOwner;
     private volatile int putFastActive;
-    private volatile long putCount;
+    private long tail;
 
     // ---- Padding between producer and shared ----
     @SuppressWarnings("unused") private long pp01, pp02, pp03, pp04, pp05, pp06, pp07, pp08;
 
-    // ---- Shared fields ----
+    // ---- Shared coordination ----
+    @SuppressWarnings("unused") private volatile int count;
     private volatile int state;
 
     // ---- Padding between shared and consumer ----
@@ -41,12 +62,14 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     private final Condition notEmpty = takeLock.newCondition();
     private volatile Thread consumerOwner;
     private volatile int takeFastActive;
-    private volatile long takeCount;
+    private long head;
 
     // ---- Buffer ----
     private final Object[] buffer;
     private final int capacity;
     private final int mask;
+
+    // ---- Constructor ----
 
     public BoundedChannelAdaptive(int requestedSize) {
         if (requestedSize < 1)
@@ -57,7 +80,7 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     }
 
     public BoundedChannelAdaptive(int requestedSize, boolean padded) {
-        this(requestedSize);
+        this(requestedSize); // padded flag accepted for API compat
     }
 
     private static int nextPowerOf2(int n) {
@@ -73,138 +96,129 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     public boolean put(Object value) {
         Thread owner = this.producerOwner;
         if (owner == CONTENDED)
-            return putContended(value);
-        
+            return putLocked(value);
+
         Thread self = Thread.currentThread();
         if (owner == self) {
+            // Dekker handshake: set flag, re-check owner
             this.putFastActive = 1;
             if (this.producerOwner == self) {
                 return putFast(value);
             }
+            // Upgraded between first read and re-check
             this.putFastActive = 0;
-            return putContended(value);
+            return putLocked(value);
         }
         return putSlow(value, self);
     }
 
+    /**
+     * Lock-free fast path — only the owner thread reaches here.
+     * Caller has already set putFastActive = 1.
+     */
     private boolean putFast(Object value) {
-        long p = this.putCount;
-        if (p - this.takeCount >= capacity) {
+        if ((int) COUNT.getVolatile(this) >= capacity) {
             this.putFastActive = 0;
             return putFastPark(value);
         }
-        
+
         if (this.state != OPEN) {
             this.putFastActive = 0;
             return false;
         }
 
-        buffer[(int)(p & mask)] = value;
-        this.putCount = p + 1;
+        buffer[(int)(tail++ & mask)] = value;
+        int c = (int) COUNT.getAndAdd(this, 1);
         this.putFastActive = 0;
 
-        if (p == this.takeCount) {
-            signalNotEmpty();
-        }
+        if (c == 0) signalNotEmpty();
         return true;
     }
 
+    /**
+     * Fast-path owner detected buffer full. Flag is already cleared.
+     * Acquires putLock to park via Condition — same as the locked path.
+     */
     private boolean putFastPark(Object value) {
-        boolean wasEmpty = false;
+        int c;
         putLock.lock();
         try {
-            while (this.putCount - this.takeCount >= capacity) {
+            while ((int) COUNT.getVolatile(this) >= capacity) {
                 if (this.state != OPEN) return false;
                 notFull.await();
             }
             if (this.state != OPEN) return false;
-            
-            long p = this.putCount;
-            buffer[(int)(p & mask)] = value;
-            this.putCount = p + 1;
-            
-            if (p + 1 - this.takeCount < capacity) {
+            buffer[(int)(tail++ & mask)] = value;
+            c = (int) COUNT.getAndAdd(this, 1);
+            if (c + 1 < capacity)
                 notFull.signal();
-            }
-            if (p == this.takeCount) {
-                wasEmpty = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
         } finally {
             putLock.unlock();
         }
-        if (wasEmpty) signalNotEmpty();
+        if (c == 0) signalNotEmpty();
         return true;
     }
 
+    /**
+     * First use or contention detected. Always under putLock.
+     */
     private boolean putSlow(Object value, Thread self) {
-        boolean wasEmpty = false;
+        int c;
         putLock.lock();
         try {
             Thread owner = this.producerOwner;
-
             if (owner == null) {
                 this.producerOwner = self;
             } else if (owner != CONTENDED) {
                 this.producerOwner = CONTENDED;
-                spinOnFastActive(true);
+                spinOnPutFastActive();
             }
 
-            while (this.putCount - this.takeCount >= capacity) {
+            while ((int) COUNT.getVolatile(this) >= capacity) {
                 if (this.state != OPEN) return false;
                 notFull.await();
             }
             if (this.state != OPEN) return false;
-            
-            long p = this.putCount;
-            buffer[(int)(p & mask)] = value;
-            this.putCount = p + 1;
-            
-            if (p + 1 - this.takeCount < capacity) {
+            buffer[(int)(tail++ & mask)] = value;
+            c = (int) COUNT.getAndAdd(this, 1);
+            if (c + 1 < capacity)
                 notFull.signal();
-            }
-            if (p == this.takeCount) {
-                wasEmpty = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
         } finally {
             putLock.unlock();
         }
-        if (wasEmpty) signalNotEmpty();
+        if (c == 0) signalNotEmpty();
         return true;
     }
 
-    private boolean putContended(Object value) {
-        boolean wasEmpty = false;
+    /**
+     * Post-upgrade locked path — identical to BoundedChannelLocked.put().
+     */
+    private boolean putLocked(Object value) {
+        int c;
         putLock.lock();
         try {
-            while (this.putCount - this.takeCount >= capacity) {
+            while ((int) COUNT.getVolatile(this) >= capacity) {
                 if (this.state != OPEN) return false;
                 notFull.await();
             }
             if (this.state != OPEN) return false;
-            
-            long p = this.putCount;
-            buffer[(int)(p & mask)] = value;
-            this.putCount = p + 1;
-            
-            if (p + 1 - this.takeCount < capacity) {
+            buffer[(int)(tail++ & mask)] = value;
+            c = (int) COUNT.getAndAdd(this, 1);
+            if (c + 1 < capacity)
                 notFull.signal();
-            }
-            if (p == this.takeCount) {
-                wasEmpty = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
         } finally {
             putLock.unlock();
         }
-        if (wasEmpty) signalNotEmpty();
+        if (c == 0) signalNotEmpty();
         return true;
     }
 
@@ -216,8 +230,8 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     public Object take() {
         Thread owner = this.consumerOwner;
         if (owner == CONTENDED)
-            return takeContended();
-        
+            return takeLocked();
+
         Thread self = Thread.currentThread();
         if (owner == self) {
             this.takeFastActive = 1;
@@ -225,15 +239,17 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
                 return takeFast();
             }
             this.takeFastActive = 0;
-            return takeContended();
+            return takeLocked();
         }
         return takeSlow(self);
     }
 
+    /**
+     * Lock-free fast path — only the owner thread reaches here.
+     * Caller has already set takeFastActive = 1.
+     */
     private Object takeFast() {
-        long t = this.takeCount;
-
-        if (t == this.putCount) {
+        if ((int) COUNT.getVolatile(this) == 0) {
             this.takeFastActive = 0;
             return takeFastPark();
         }
@@ -243,117 +259,101 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
             return IChannel.CANCELLED;
         }
 
-        Object value = buffer[(int)(t & mask)];
-        buffer[(int)(t & mask)] = null;
-
-        this.takeCount = t + 1;
+        Object value = buffer[(int)(head & mask)];
+        buffer[(int)(head++ & mask)] = null;
+        int c = (int) COUNT.getAndAdd(this, -1);
         this.takeFastActive = 0;
 
-        if (this.putCount - t == capacity) {
-            signalNotFull();
-        }
+        if (c == capacity) signalNotFull();
         return value;
     }
 
+    /**
+     * Fast-path owner detected buffer empty. Flag is already cleared.
+     */
     private Object takeFastPark() {
+        int c;
         Object value;
-        boolean wasFull = false;
         takeLock.lock();
         try {
-            while (this.takeCount == this.putCount) {
+            while ((int) COUNT.getVolatile(this) == 0) {
                 if (this.state >= SEALED) return IChannel.CANCELLED;
                 notEmpty.await();
             }
-            
-            long t = this.takeCount;
-            value = buffer[(int)(t & mask)];
-            buffer[(int)(t & mask)] = null;
-            this.takeCount = t + 1;
-            
-            if (this.putCount - (t + 1) > 0) {
+            value = buffer[(int)(head & mask)];
+            buffer[(int)(head++ & mask)] = null;
+            c = (int) COUNT.getAndAdd(this, -1);
+            if (c > 1)
                 notEmpty.signal();
-            }
-            if (this.putCount - t == capacity) {
-                wasFull = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return IChannel.CANCELLED;
         } finally {
             takeLock.unlock();
         }
-        if (wasFull) signalNotFull();
+        if (c == capacity) signalNotFull();
         return value;
     }
 
+    /**
+     * First use or contention detected. Always under takeLock.
+     */
     private Object takeSlow(Thread self) {
+        int c;
         Object value;
-        boolean wasFull = false;
         takeLock.lock();
         try {
             Thread owner = this.consumerOwner;
-
             if (owner == null) {
                 this.consumerOwner = self;
             } else if (owner != CONTENDED) {
                 this.consumerOwner = CONTENDED;
-                spinOnFastActive(false);
+                spinOnTakeFastActive();
             }
 
-            while (this.takeCount == this.putCount) {
+            while ((int) COUNT.getVolatile(this) == 0) {
                 if (this.state >= SEALED) return IChannel.CANCELLED;
                 notEmpty.await();
             }
-            
-            long t = this.takeCount;
-            value = buffer[(int)(t & mask)];
-            buffer[(int)(t & mask)] = null;
-            this.takeCount = t + 1;
-            
-            if (this.putCount - (t + 1) > 0) {
+            value = buffer[(int)(head & mask)];
+            buffer[(int)(head++ & mask)] = null;
+            c = (int) COUNT.getAndAdd(this, -1);
+            if (c > 1)
                 notEmpty.signal();
-            }
-            if (this.putCount - t == capacity) {
-                wasFull = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return IChannel.CANCELLED;
         } finally {
             takeLock.unlock();
         }
-        if (wasFull) signalNotFull();
+        if (c == capacity) signalNotFull();
         return value;
     }
 
-    private Object takeContended() {
+    /**
+     * Post-upgrade locked path — identical to BoundedChannelLocked.take().
+     */
+    private Object takeLocked() {
+        int c;
         Object value;
-        boolean wasFull = false;
         takeLock.lock();
         try {
-            while (this.takeCount == this.putCount) {
+            while ((int) COUNT.getVolatile(this) == 0) {
                 if (this.state >= SEALED) return IChannel.CANCELLED;
                 notEmpty.await();
             }
-            
-            long t = this.takeCount;
-            value = buffer[(int)(t & mask)];
-            buffer[(int)(t & mask)] = null;
-            this.takeCount = t + 1;
-            
-            if (this.putCount - (t + 1) > 0) {
+            value = buffer[(int)(head & mask)];
+            buffer[(int)(head++ & mask)] = null;
+            c = (int) COUNT.getAndAdd(this, -1);
+            if (c > 1)
                 notEmpty.signal();
-            }
-            if (this.putCount - t == capacity) {
-                wasFull = true;
-            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return IChannel.CANCELLED;
         } finally {
             takeLock.unlock();
         }
-        if (wasFull) signalNotFull();
+        if (c == capacity) signalNotFull();
         return value;
     }
 
@@ -361,12 +361,22 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     //  Fast-active spin + Cross-lock signaling
     // ================================================================
 
-    private void spinOnFastActive(boolean isProducer) {
+    private void spinOnPutFastActive() {
         for (int i = 0; i < 1024; i++) {
-            if (isProducer ? this.putFastActive == 0 : this.takeFastActive == 0) return;
+            if (this.putFastActive == 0) return;
             Thread.onSpinWait();
         }
-        while (isProducer ? this.putFastActive != 0 : this.takeFastActive != 0) {
+        while (this.putFastActive != 0) {
+            Thread.yield();
+        }
+    }
+
+    private void spinOnTakeFastActive() {
+        for (int i = 0; i < 1024; i++) {
+            if (this.takeFastActive == 0) return;
+            Thread.onSpinWait();
+        }
+        while (this.takeFastActive != 0) {
             Thread.yield();
         }
     }
@@ -395,6 +405,7 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
 
     @Override
     public boolean cancel(String msg) {
+        // Lock ordering: putLock → takeLock
         putLock.lock();
         try {
             takeLock.lock();
@@ -422,6 +433,7 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
         } finally {
             putLock.unlock();
         }
+        // Wake consumers so they can detect sealed + empty
         takeLock.lock();
         try {
             notEmpty.signalAll();
@@ -452,11 +464,11 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
 
     @Override
     public int count() {
-        return (int) (this.putCount - this.takeCount);
+        return (int) COUNT.getVolatile(this);
     }
 
     @Override
     public double saturation() {
-        return (double) count() / capacity;
+        return (double) (int) COUNT.getVolatile(this) / capacity;
     }
 }
