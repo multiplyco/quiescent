@@ -4,7 +4,7 @@
     [clojure.pprint :as pp]
     [clojure.string :as str]
     [co.multiply.quiescent :as q :refer [qdo qfor]]
-    [co.multiply.quiescent.channel :refer [chan pipe put! seal! take!]]
+    [co.multiply.quiescent.channel :refer [chan pipe poll put! seal! take!]]
     [criterium.core :as c])
   (:import
     [co.multiply.quiescent.impl.channel BoundedChannelAdaptive BoundedChannelAdaptiveXf BoundedChannelLocked BoundedChannelLockedXf]))
@@ -18,43 +18,40 @@
 (defmethod run-scenario [:throughput :quiescent]
   [{:keys [n producers consumers buffer]}]
   (let [ch    (chan buffer)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task
-           (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task
-           (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:throughput :quiescent-locked]
   [{:keys [n producers consumers buffer]}]
   (let [ch    (BoundedChannelLocked. (int buffer))
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task
-           (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task
-           (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:throughput :quiescent-adaptive]
   [{:keys [n producers consumers buffer]}]
   (let [ch    (BoundedChannelAdaptive. (int buffer))
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task
-           (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task
-           (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:throughput :core-async]
@@ -148,13 +145,14 @@
 (defmethod run-scenario [:xform :quiescent]
   [{:keys [n producers consumers buffer xf]}]
   (let [ch    (chan buffer xf)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:xform :core-async]
@@ -167,15 +165,16 @@
 
 
 (defmethod run-scenario [:xform-mapcat :quiescent]
-  [{:keys [n producers consumers buffer xf expand-factor]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (chan buffer xf)
-        per-p (quot n producers)
-        per-c (quot (* n expand-factor) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:xform-mapcat :core-async]
@@ -188,15 +187,16 @@
 
 
 (defmethod run-scenario [:xform-filter :quiescent]
-  [{:keys [n producers consumers buffer xf pass-ratio]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (chan buffer xf)
-        per-p (quot n producers)
-        per-c (quot (long (* n pass-ratio)) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 
 (defmethod run-scenario [:xform-filter :core-async]
@@ -215,11 +215,10 @@
   (let [ch-a  (chan buffer)
         ch-b  (chan buffer)
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -244,11 +243,10 @@
   (let [ch-a  (BoundedChannelLocked. (int buffer))
         ch-b  (BoundedChannelLocked. (int buffer))
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -261,11 +259,10 @@
   (let [ch-a  (BoundedChannelAdaptive. (int buffer))
         ch-b  (BoundedChannelAdaptive. (int buffer))
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -278,11 +275,10 @@
   (let [ch-a  (chan buffer xf)
         ch-b  (chan buffer)
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -306,79 +302,84 @@
 (defmethod run-scenario [:xform :quiescent-locked]
   [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:xform :quiescent-adaptive]
   [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:xform-mapcat :quiescent-locked]
-  [{:keys [n producers consumers buffer xf expand-factor]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot (* n expand-factor) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:xform-mapcat :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf expand-factor]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot (* n expand-factor) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:xform-filter :quiescent-locked]
-  [{:keys [n producers consumers buffer xf pass-ratio]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelLockedXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot (long (* n pass-ratio)) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:xform-filter :quiescent-adaptive]
-  [{:keys [n producers consumers buffer xf pass-ratio]}]
+  [{:keys [n producers consumers buffer xf]}]
   (let [ch    (BoundedChannelAdaptiveXf. (int buffer) xf)
-        per-p (quot n producers)
-        per-c (quot (long (* n pass-ratio)) consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch))))
-       (qfor [_ (range producers)]
-         (q/task (dotimes [i per-p] (put! ch i)))))))
+         (q/task (loop [] (poll [_ ch] (recur) nil))))
+       (q/task
+         @(qfor [_ (range producers)]
+           (q/task (dotimes [i per-p] (put! ch i))))
+         (seal! ch)))))
 
 (defmethod run-scenario [:pipe-xf :quiescent-locked]
   [{:keys [n producers consumers buffer xf]}]
   (let [ch-a  (BoundedChannelLockedXf. (int buffer) xf)
         ch-b  (BoundedChannelLocked. (int buffer))
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -390,11 +391,10 @@
   (let [ch-a  (BoundedChannelAdaptiveXf. (int buffer) xf)
         ch-b  (BoundedChannelAdaptive. (int buffer))
         p     (pipe ch-a ch-b)
-        per-p (quot n producers)
-        per-c (quot n consumers)]
+        per-p (quot n producers)]
     @(qdo
        (qfor [_ (range consumers)]
-         (q/task (dotimes [_ per-c] (take! ch-b))))
+         (q/task (loop [] (poll [_ ch-b] (recur) nil))))
        (q/task
          @(qfor [_ (range producers)]
             (q/task (dotimes [i per-p] (put! ch-a i))))
@@ -541,43 +541,58 @@
                        scenarios)
         default-fws  [:quiescent :core-async]
         opts         {:verbose verbose :quick quick}
-        results      (into []
-                       (mapcat (fn [cfg]
-                                 (let [fws (or frameworks
-                                             (:frameworks cfg)
-                                             default-fws)]
-                                   (mapv #(bench-one cfg % opts) fws))))
-                       active)
-        ;; Compute speedup: relative to fastest variant per scenario+buffer
-        pair-key     (fn [r] [(:label r) (:buffer r)])
-        min-means    (reduce (fn [acc r]
-                               (let [k (pair-key r)
-                                     prev (get acc k)]
-                                 (if (or (nil? prev) (< (:raw-mean r) prev))
-                                   (assoc acc k (:raw-mean r))
-                                   acc)))
-                       {}
-                       results)
-        with-speedup (mapv (fn [r]
-                             (let [min-mean (get min-means (pair-key r))
-                                   ratio    (/ (:raw-mean r) min-mean)]
-                               (if (< ratio 1.05)
-                                 (assoc r :speedup "")
-                                 (assoc r :speedup (format "%.1fx" ratio)))))
-                       results)
-        cols         [:label :buffer :channel :mean :std-dev :lower-q :upper-q :outlier-var :speedup]]
+        out-file     "benchmark_results.md"
+        cols-partial [:label :buffer :channel :mean :std-dev :lower-q :upper-q :outlier-var]
+        cols         (conj cols-partial :speedup)
+        row-str      (fn [cs r] (str "|" (str/join "|" (map #(get r %) cs)) "|"))]
 
-    (println "\n\n=== BENCHMARK RESULTS ===")
-    (pp/print-table cols with-speedup)
+    ;; Write header — results append incrementally
+    (spit out-file
+      (str "## Benchmark Results\n\n"
+        "|" (str/join "|" (map name cols-partial)) "|\n"
+        "|" (str/join "|" (repeat (count cols-partial) "---")) "|\n"))
 
-    (spit "benchmark_results.md"
-      (with-out-str
-        (println "## Benchmark Results\n")
-        (println (str "|" (str/join "|" (map name cols)) "|"))
-        (println (str "|" (str/join "|" (repeat (count cols) "---")) "|"))
-        (doseq [row with-speedup]
-          (println (str "|" (str/join "|" (map #(get row %) cols)) "|")))))
-    with-speedup))
+    (let [results (into []
+                    (mapcat (fn [cfg]
+                              (let [fws (or frameworks
+                                          (:frameworks cfg)
+                                          default-fws)]
+                                (mapv (fn [fw]
+                                        (let [r (bench-one cfg fw opts)]
+                                          (spit out-file (str (row-str cols-partial r) "\n") :append true)
+                                          r))
+                                  fws))))
+                    active)
+          ;; Compute speedup: relative to fastest variant per scenario+buffer
+          pair-key     (fn [r] [(:label r) (:buffer r)])
+          min-means    (reduce (fn [acc r]
+                                 (let [k (pair-key r)
+                                       prev (get acc k)]
+                                   (if (or (nil? prev) (< (:raw-mean r) prev))
+                                     (assoc acc k (:raw-mean r))
+                                     acc)))
+                         {}
+                         results)
+          with-speedup (mapv (fn [r]
+                               (let [min-mean (get min-means (pair-key r))
+                                     ratio    (/ (:raw-mean r) min-mean)]
+                                 (if (< ratio 1.05)
+                                   (assoc r :speedup "")
+                                   (assoc r :speedup (format "%.1fx" ratio)))))
+                         results)]
+
+      (println "\n\n=== BENCHMARK RESULTS ===")
+      (pp/print-table cols with-speedup)
+
+      ;; Rewrite with speedup column
+      (spit out-file
+        (with-out-str
+          (println "## Benchmark Results\n")
+          (println (str "|" (str/join "|" (map name cols)) "|"))
+          (println (str "|" (str/join "|" (repeat (count cols) "---")) "|"))
+          (doseq [row with-speedup]
+            (println (row-str cols row)))))
+      with-speedup)))
 
 
 (defn- parse-kw-list

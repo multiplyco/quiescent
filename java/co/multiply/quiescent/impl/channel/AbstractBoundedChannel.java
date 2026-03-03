@@ -234,6 +234,19 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
             Thread.onSpinWait();
         }
 
+        // Seal/cancel race guard: if our registration was replaced while spinning
+        // (e.g. seal() ran wakeAllAndPoison), bail out instead of parking forever.
+        // Without this guard, a thread that registers just before seal() and reaches
+        // park() just after wakeAllAndPoison() could miss its unpark signal and wedge.
+        if (OBJ_ARRAY.getVolatile(registry, pIdx) != self) {
+            // Spin briefly for an in-flight counterpart publish; otherwise treat as cancelled.
+            for (int i = 0; i < SPIN_LIMIT; i++) {
+                if ((long) AVAIL.getVolatile(avail, pIdx) == expectedAvail) return true;
+                Thread.onSpinWait();
+            }
+            return false;
+        }
+
         while (true) {
             long a = (long) AVAIL.getVolatile(avail, pIdx);
             if (a == expectedAvail) break;
