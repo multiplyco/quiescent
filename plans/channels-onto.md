@@ -1,10 +1,11 @@
 # Atomic `onto(Iterable)` and `seal(Iterable)` Design
 
-Batch put and batch-put-then-seal operations with single-lock-acquisition
-atomicity. The entire batch appears as a contiguous sequence in the
-buffer with no interleaving from other producers.
+Batch put and batch-put-then-seal operations with atomicity. The
+entire batch appears as a contiguous sequence with no interleaving
+from other producers.
 
-See `channels-adaptive.md` for the adaptive channel design this builds on.
+See `channels-adaptive.md` for the adaptive channel design and
+`channels-small.md` for the dual queue design.
 
 ## Motivation
 
@@ -263,6 +264,45 @@ the thread is interrupted during `notFull.await()` parking.
 3. `java/.../channel/BoundedChannel.java` — adaptive three-path `onto`/`seal`
 4. `java/.../channel/BoundedChannelXf.java` — transducer `onto`/`seal`, fix Reduced
 5. `src/.../channel.clj` — `onto!`, 2-arity `seal!`
+
+## Dual Queue Channels (Buffer 0–2)
+
+For channels backed by the dual queue (see `channels-small.md`),
+`onto` and `seal(coll)` have a fundamentally different — and
+simpler — atomicity mechanism: a pre-built node chain, single CAS.
+
+**`onto(coll)`**: build the entire collection as a linked list of
+nodes. CAS the chain onto the producer side in one operation.
+Thread reference on the last node only. Single park/unpark cycle.
+
+```
+onto([a, b, c]):
+  Node(a, null) → Node(b, null) → Node(c, thread=self)
+  CAS chain onto producer side
+  park()
+```
+
+**`seal(coll)`**: append a ClosedNode sentinel to the chain tail.
+
+```
+seal([a, b]):
+  Node(a, null) → Node(b, thread=self) → ClosedNode(sealed)
+  CAS chain onto producer side
+  park()
+```
+
+No locks needed. Atomicity comes from the single CAS — the entire
+chain appears in the queue at once. No window for interleaving.
+The sentinel is part of the chain, so no gap between the last value
+and the seal.
+
+This is structurally simpler than the lock-based approach above.
+If the dual queue replaces locks in the adaptive channel (buffer 4+)
+as well, the chain-based `onto` could potentially be used at all
+buffer sizes. The ring buffer fast path would be skipped for `onto`
+(batch always goes through the queue), same as how `onto` already
+skips the Dekker fast path in the current lock-based design by
+holding `putLock` for the entire batch.
 
 ## Open Questions
 
