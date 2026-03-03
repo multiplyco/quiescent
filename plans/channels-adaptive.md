@@ -380,17 +380,11 @@ implementations. Summary of the decision:
 
 ## Open Questions
 
-- **`synchronized` vs `ReentrantLock`**: the two-lock design uses
-  `ReentrantLock` for multiple `Condition` support, but each lock
-  has exactly one `Condition`. Two `synchronized` blocks on separate
-  monitor objects would be equivalent and potentially faster (JIT
-  lock coarsening, biased locking on older JDKs). Worth benchmarking.
-  **However**: `Condition.awaitNanos` returns remaining time, making
-  timed operations (offer/poll with timeout) trivial to loop
-  correctly. `Object.wait(millis, nanos)` requires manual deadline
-  tracking with `System.nanoTime()` on each iteration — clumsy and
-  error-prone. Timed offer/poll is a planned feature, which favors
-  keeping `ReentrantLock`.
+- **`synchronized` vs `ReentrantLock`**: moot if the dual queue
+  replaces both. The dual queue uses `LockSupport.park/unpark`
+  directly — no lock construct needed for the parking path.
+  Timed operations (offer/poll with timeout) use
+  `LockSupport.parkNanos` + deadline tracking.
 
 - **Padding for fast-path fields**: `producerOwner` and
   `putFastActive` are adjacent to `putLock`. Under the adaptive
@@ -415,37 +409,42 @@ implementations. Summary of the decision:
   `Condition.awaitNanos` for bounded parking (see `synchronized`
   vs `ReentrantLock` above).
 
-- **`alt` (select over multiple channels)**: Three approaches
-  considered:
+- **`alt` and the dual queue**: The planned direction is to replace
+  `ReentrantLock` + `Condition` with a lock-free dual queue for the
+  overflow/parking path. See `channels-small.md` for the full design.
 
-  1. **core.async style (handler registration)**: each channel
-     maintains a queue of pending alt-takers with a shared atomic
-     handler. `put` checks this queue when signaling. Pro: proven,
-     no extra threads. Con: braids alt awareness into every channel;
-     every `put` path pays for alt even when nobody is alt-ing.
+  The dual queue uses intrusive nodes with CAS-able state fields.
+  This enables `alt` naturally: a consumer enqueues nodes on multiple
+  channels' queues sharing a single `altState` atomic. Whichever
+  channel matches first CAS's `altState` from PENDING to MATCHED;
+  losing channels' nodes are stale and skipped. No handler
+  registration in the channel, no extra threads, no ownership
+  pollution.
 
-  2. **VT delegation**: spawn N virtual threads, each parks on one
-     channel using existing take infrastructure. Shared CAS slot
-     determines the winner (peek under lock, CAS before consuming,
-     losers signal `notEmpty` and exit). Pro: zero channel changes,
-     alt is purely external. Con: **hostile to the adaptive
-     protocol** — each alt spawns new thread identities, immediately
-     upgrading channels to CONTENDED. In a loop (the common `alt`
-     pattern), the consumer fast path is permanently burned on every
-     channel touched. Acceptable for one-shot use, not for repeated
-     alt.
+  This is option 3 from the original analysis (custom lock primitive)
+  but reframed: the dual queue IS the custom lock. It uses the same
+  primitives as `ReentrantLock`/AQS (CAS on tail, park/unpark) but
+  exposes the wait node as the coordination primitive rather than
+  hiding it behind an opaque API. The exchange happens *in* the queue
+  rather than *after acquiring a lock obtained through* a queue.
 
-  3. **Custom lock primitive**: replace `ReentrantLock`/`Condition`
-     with a lock whose waiter queue entries carry a CAS slot. On
-     signal, the lock CASes the channel identity into the slot.
-     Waiter wakes knowing which channel it has access to. Regular
-     take is the same mechanism minus the CAS. Pro: channel unaware
-     of alt, no extra threads, no put-path overhead, signal path
-     does the CAS (no window between wake and claim). Con: replaces
-     `ReentrantLock` — must reimplement AQS-level functionality
-     (reentrance, `awaitNanos`, `tryLock`, etc.).
+  The Dekker fast path is unaffected — it fires when buffer has
+  space/items (no parking needed, no alt hook needed). The dual queue
+  handles overflow parking, which is exactly where alt must hook in.
 
-  The custom lock is the most aligned with the adaptive design —
-  alt is in the lock, not in the channel, and the caller's thread
-  identity is preserved (no ownership pollution). But it is the
-  most intricate to implement.
+  Previously considered approaches and why the dual queue supersedes
+  them:
+
+  1. **core.async style (handler registration)**: braids alt
+     awareness into every channel; every put path pays for alt.
+     The dual queue keeps alt in the queue node, invisible to put.
+
+  2. **VT delegation**: hostile to the adaptive protocol — spawns
+     new thread identities, permanently upgrades channels to
+     CONTENDED. The dual queue preserves the caller's thread.
+
+  The dual queue also enables atomic `onto(coll)` (batch put as a
+  pre-built node chain, single CAS) and sentinel-based lifecycle
+  (seal/cancel as terminal nodes in the queue). These compose
+  naturally because they're all nodes in the same linked structure.
+  See `channels-small.md` and `channels-onto.md`.
