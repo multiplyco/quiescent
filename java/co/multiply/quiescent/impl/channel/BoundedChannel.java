@@ -75,6 +75,11 @@ public class BoundedChannel implements IChannel, IBuffered {
     final int mask;
     final IFn rf; // null for plain channels
 
+    private static final class PutFailedException extends RuntimeException {
+        static final PutFailedException INSTANCE = new PutFailedException();
+        private PutFailedException() { super(null, null, false, false); }
+    }
+
     // ---- Constructors ----
 
     public BoundedChannel(int requestedSize) {
@@ -101,6 +106,8 @@ public class BoundedChannel implements IChannel, IBuffered {
             }
             public Object invoke(Object acc, Object val) {
                 int c = putDirect(val);
+                if (c < 0) throw PutFailedException.INSTANCE;
+                VarHandle.fullFence();
                 if (c == 0) wakeConsumer();
                 return acc;
             }
@@ -155,7 +162,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     final void producerEnqueueNode(QNode node) {
         while (true) {
             QNode head = (QNode) PRODUCER_NEXT.getAcquire(this);
-            QNode tail = findTail(head);
+            QNode hint = producerTailHint;
+            QNode tail = findTail(hint != null ? hint : head);
             if (QNODE_NEXT.compareAndSet(tail, null, node)) {
                 producerTailHint = node;
                 return;
@@ -210,7 +218,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     final void consumerEnqueueNode(QNode node) {
         while (true) {
             QNode head = (QNode) CONSUMER_NEXT.getAcquire(this);
-            QNode tail = findTail(head);
+            QNode hint = consumerTailHint;
+            QNode tail = findTail(hint != null ? hint : head);
             if (QNODE_NEXT.compareAndSet(tail, null, node)) {
                 consumerTailHint = node;
                 return;
@@ -258,13 +267,20 @@ public class BoundedChannel implements IChannel, IBuffered {
     private void producerWait(Thread self) {
         QNode node = new QNode(self, null);
         producerEnqueueNode(node);
+        boolean wasInterrupted = false;
         while (true) {
             Thread owner = (Thread) PRODUCER_OWNER.getVolatile(this);
-            if (owner == self) return;
+            if (owner == self) break;
             if (owner == null) {
-                if (producerSelfPromote(self, node)) return;
+                if (producerSelfPromote(self, node)) break;
             }
             LockSupport.park(this);
+            if (Thread.interrupted()) {
+                wasInterrupted = true;
+            }
+        }
+        if (wasInterrupted) {
+            self.interrupt();
         }
     }
 
@@ -284,6 +300,8 @@ public class BoundedChannel implements IChannel, IBuffered {
                 throw new UnsupportedOperationException("Seal not yet implemented");
             }
             return true;
+        } catch (PutFailedException e) {
+            return false;
         } finally {
             producerRelease();
         }
@@ -318,13 +336,20 @@ public class BoundedChannel implements IChannel, IBuffered {
     private void consumerWait(Thread self) {
         QNode node = new QNode(self, null);
         consumerEnqueueNode(node);
+        boolean wasInterrupted = false;
         while (true) {
             Thread owner = (Thread) CONSUMER_OWNER.getVolatile(this);
-            if (owner == self) return;
+            if (owner == self) break;
             if (owner == null) {
-                if (consumerSelfPromote(self, node)) return;
+                if (consumerSelfPromote(self, node)) break;
             }
             LockSupport.park(this);
+            if (Thread.interrupted()) {
+                wasInterrupted = true;
+            }
+        }
+        if (wasInterrupted) {
+            self.interrupt();
         }
     }
 
