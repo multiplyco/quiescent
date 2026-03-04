@@ -84,6 +84,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
         this.rf = null;
+        PRODUCER_NEXT.setVolatile(this, new QNode(null, null));
+        CONSUMER_NEXT.setVolatile(this, new QNode(null, null));
     }
 
     public BoundedChannel(int requestedSize, IFn xf) {
@@ -104,6 +106,8 @@ public class BoundedChannel implements IChannel, IBuffered {
             }
         };
         this.rf = (IFn) xf.invoke(baseRf);
+        PRODUCER_NEXT.setVolatile(this, new QNode(null, null));
+        CONSUMER_NEXT.setVolatile(this, new QNode(null, null));
     }
 
     private static int nextPowerOf2(int n) {
@@ -116,7 +120,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     final void producerRelease() {
-        QNode succ = (QNode) PRODUCER_NEXT.getVolatile(this);
+        QNode head = (QNode) PRODUCER_NEXT.getVolatile(this);
+        QNode succ = head.next;
         if (succ != null) {
             producerHandover(succ);
             return;
@@ -124,38 +129,32 @@ public class BoundedChannel implements IChannel, IBuffered {
         // No successor — clear owner (volatile for Dekker)
         PRODUCER_OWNER.setVolatile(this, null);
         // Dekker re-check: someone may have queued after our read
-        succ = (QNode) PRODUCER_NEXT.getVolatile(this);
+        succ = head.next;
         if (succ != null) {
             LockSupport.unpark(succ.thread); // let them self-promote
         }
     }
 
     private void producerHandover(QNode succ) {
-        // Unlink successor: advance producerNext to successor's next
-        PRODUCER_NEXT.setRelease(this, succ.next);
-        // Write successor's thread onto owner — plain store, single writer
-        PRODUCER_OWNER.setRelease(this, succ.thread);
-        LockSupport.unpark(succ.thread);
+        Thread t = succ.thread;
+        succ.thread = null;
+        PRODUCER_NEXT.setRelease(this, succ);
+        PRODUCER_OWNER.setRelease(this, t);
+        LockSupport.unpark(t);
     }
 
     final boolean producerSelfPromote(Thread self, QNode node) {
         QNode head = (QNode) PRODUCER_NEXT.getVolatile(this);
-        if (head != node) return false;
+        if (head.next != node) return false;
         if (!PRODUCER_OWNER.compareAndSet(this, null, self)) return false;
-        PRODUCER_NEXT.setVolatile(this, node.next);
+        node.thread = null;
+        PRODUCER_NEXT.setVolatile(this, node);
         return true;
     }
 
     final void producerEnqueueNode(QNode node) {
         while (true) {
             QNode head = (QNode) PRODUCER_NEXT.getAcquire(this);
-            if (head == null) {
-                if (PRODUCER_NEXT.compareAndSet(this, null, node)) {
-                    producerTailHint = node;
-                    return;
-                }
-                continue;
-            }
             QNode tail = findTail(head);
             if (QNODE_NEXT.compareAndSet(tail, null, node)) {
                 producerTailHint = node;
@@ -177,43 +176,40 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     final void consumerRelease() {
-        QNode succ = (QNode) CONSUMER_NEXT.getVolatile(this);
+        QNode head = (QNode) CONSUMER_NEXT.getVolatile(this);
+        QNode succ = head.next;
         if (succ != null) {
             consumerHandover(succ);
             return;
         }
         CONSUMER_OWNER.setVolatile(this, null);
         // Dekker re-check: someone may have queued after our read
-        succ = (QNode) CONSUMER_NEXT.getVolatile(this);
+        succ = head.next;
         if (succ != null) {
             LockSupport.unpark(succ.thread); // let them self-promote
         }
     }
 
     private void consumerHandover(QNode succ) {
-        CONSUMER_NEXT.setRelease(this, succ.next);
-        CONSUMER_OWNER.setRelease(this, succ.thread);
-        LockSupport.unpark(succ.thread);
+        Thread t = succ.thread;
+        succ.thread = null;
+        CONSUMER_NEXT.setRelease(this, succ);
+        CONSUMER_OWNER.setRelease(this, t);
+        LockSupport.unpark(t);
     }
 
     final boolean consumerSelfPromote(Thread self, QNode node) {
         QNode head = (QNode) CONSUMER_NEXT.getVolatile(this);
-        if (head != node) return false;
+        if (head.next != node) return false;
         if (!CONSUMER_OWNER.compareAndSet(this, null, self)) return false;
-        CONSUMER_NEXT.setVolatile(this, node.next);
+        node.thread = null;
+        CONSUMER_NEXT.setVolatile(this, node);
         return true;
     }
 
     final void consumerEnqueueNode(QNode node) {
         while (true) {
             QNode head = (QNode) CONSUMER_NEXT.getAcquire(this);
-            if (head == null) {
-                if (CONSUMER_NEXT.compareAndSet(this, null, node)) {
-                    consumerTailHint = node;
-                    return;
-                }
-                continue;
-            }
             QNode tail = findTail(head);
             if (QNODE_NEXT.compareAndSet(tail, null, node)) {
                 consumerTailHint = node;
