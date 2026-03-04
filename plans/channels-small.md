@@ -345,6 +345,9 @@ the fast path can't help.
 
 ### Why Not ReentrantLock
 
+See `channels-queuelock.md` for the full queue lock design that
+replaces `ReentrantLock` + `Condition`.
+
 `ReentrantLock` and the dual queue use the same underlying
 primitives: CAS on a tail pointer to enqueue, `LockSupport.park/
 unpark` to sleep/wake. Both allocate per-wait (AQS nodes vs queue
@@ -360,6 +363,13 @@ coordination primitive.
 
 This also makes `onto`, `seal(coll)`, and sentinels compose
 naturally — they're all just nodes in the same linked structure.
+
+The queue lock embeds the adaptive ownership protocol in the queue
+head: claiming the head thread slot is ownership, clearing it is
+release, writing a successor's thread is handover. No separate
+`producerOwner` field, no Dekker flag, no irreversible CONTENDED
+upgrade. The same mechanism handles uncontended (one CAS to claim)
+and contended (CAS-enqueue, park, wake into head ownership).
 
 ## Channel Tier Summary
 

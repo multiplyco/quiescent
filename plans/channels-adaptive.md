@@ -380,10 +380,11 @@ implementations. Summary of the decision:
 
 ## Open Questions
 
-- **`synchronized` vs `ReentrantLock`**: moot if the dual queue
-  replaces both. The dual queue uses `LockSupport.park/unpark`
-  directly — no lock construct needed for the parking path.
-  Timed operations (offer/poll with timeout) use
+- **`synchronized` vs `ReentrantLock`**: moot if the queue lock
+  replaces both. See `channels-queuelock.md` for the design. The
+  queue lock uses `LockSupport.park/unpark` directly, embeds the
+  ownership protocol in the queue head, and eliminates cross-lock
+  signaling. Timed operations (offer/poll with timeout) use
   `LockSupport.parkNanos` + deadline tracking.
 
 - **Padding for fast-path fields**: `producerOwner` and

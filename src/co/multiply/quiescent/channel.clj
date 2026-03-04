@@ -10,7 +10,7 @@
     [co.multiply.quiescent.type.call :as call]
     [co.multiply.scoped :refer [ask]])
   (:import
-    [co.multiply.quiescent.impl.channel BoundedChannel BoundedChannelXf IBuffered IChannel]
+    [co.multiply.quiescent.impl.channel BoundedChannel IBuffered IChannel]
     [java.util.concurrent CancellationException]))
 
 
@@ -33,7 +33,7 @@
   ([n]
    (BoundedChannel. (int n)))
   ([n xf]
-   (BoundedChannelXf. (int n) xf)))
+   (BoundedChannel. (int n) xf)))
 
 
 ;; # Core operations

@@ -3,6 +3,6 @@
                                :ns-patterns [".*-test$"]}]
 
             :plugins         [:kaocha.plugin/capture-output]
-            #_#_:kaocha/reporter [kaocha.report/documentation]
+            :kaocha/reporter [kaocha.report/documentation]
 
             :capture-output? true}
