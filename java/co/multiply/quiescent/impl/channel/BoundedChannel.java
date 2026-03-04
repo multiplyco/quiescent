@@ -115,10 +115,6 @@ public class BoundedChannel implements IChannel, IBuffered {
     //  Queue lock — producer side helpers
     // ================================================================
 
-    final boolean producerClaim(Thread self) {
-        return PRODUCER_OWNER.compareAndSet(this, null, self);
-    }
-
     final void producerRelease() {
         QNode succ = (QNode) PRODUCER_NEXT.getVolatile(this);
         if (succ != null) {
@@ -151,7 +147,7 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     final void producerEnqueueNode(QNode node) {
-        for (;;) {
+        while (true) {
             QNode head = (QNode) PRODUCER_NEXT.getAcquire(this);
             if (head == null) {
                 if (PRODUCER_NEXT.compareAndSet(this, null, node)) {
@@ -179,10 +175,6 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
     //  Queue lock — consumer side helpers
     // ================================================================
-
-    final boolean consumerClaim(Thread self) {
-        return CONSUMER_OWNER.compareAndSet(this, null, self);
-    }
 
     final void consumerRelease() {
         QNode succ = (QNode) CONSUMER_NEXT.getVolatile(this);
@@ -213,7 +205,7 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     final void consumerEnqueueNode(QNode node) {
-        for (;;) {
+        while (true) {
             QNode head = (QNode) CONSUMER_NEXT.getAcquire(this);
             if (head == null) {
                 if (CONSUMER_NEXT.compareAndSet(this, null, node)) {
@@ -256,28 +248,35 @@ public class BoundedChannel implements IChannel, IBuffered {
     public boolean put(Object value) {
         Thread self = Thread.currentThread();
 
-        // Try to claim the producer lock
-        if (producerClaim(self)) {
-            if (rf != null) {
-                return putXf(value);
-            } else {
-                return putPlain(value);
-            }
+        if (!PRODUCER_OWNER.compareAndSet(this, null, self)) {
+            producerWait(self);
         }
 
-        // Contended — enqueue and park
-        return putEnqueue(value, self);
+        if (rf == null) {
+            return putPlain(value);
+        } else {
+            return putXf(value);
+        }
+    }
+
+    private void producerWait(Thread self) {
+        QNode node = new QNode(self, null);
+        producerEnqueueNode(node);
+        while (true) {
+            Thread owner = (Thread) PRODUCER_OWNER.getVolatile(this);
+            if (owner == self) return;
+            if (owner == null) {
+                if (producerSelfPromote(self, node)) return;
+            }
+            LockSupport.park(this);
+        }
     }
 
     private boolean putPlain(Object value) {
         int c = putDirect(value);
-        if (c < 0) {
-            producerRelease();
-            return false;
-        }
         producerRelease();
         if (c == 0) wakeConsumer();
-        return true;
+        return c >= 0;
     }
 
     private boolean putXf(Object value) {
@@ -286,30 +285,11 @@ public class BoundedChannel implements IChannel, IBuffered {
             Object result = rf.invoke(this, value);
             if (RT.isReduced(result)) {
                 rf.invoke(this); // flush stateful xforms
-                // TODO: sealInternal()
                 throw new UnsupportedOperationException("Seal not yet implemented");
             }
             return true;
         } finally {
             producerRelease();
-        }
-    }
-
-    private boolean putEnqueue(Object value, Thread self) {
-        QNode node = new QNode(self, rf != null ? null : value);
-        producerEnqueueNode(node);
-        for (;;) {
-            Thread owner = (Thread) PRODUCER_OWNER.getVolatile(this);
-            if (owner == self) break;
-            if (owner == null) {
-                if (producerSelfPromote(self, node)) break;
-            }
-            LockSupport.park(this);
-        }
-        if (rf != null) {
-            return putXf(value);
-        } else {
-            return putPlain(value);
         }
     }
 
@@ -321,8 +301,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
         if ((int) STATE.getAcquire(this) != OPEN) return -1;
         buffer[(int)(tail++ & mask)] = value;
-        int c = (int) COUNT.getAndAddRelease(this, 1);
-        return c;
+        return (int) COUNT.getAndAddRelease(this, 1);
     }
 
     // ================================================================
@@ -333,11 +312,24 @@ public class BoundedChannel implements IChannel, IBuffered {
     public final Object take() {
         Thread self = Thread.currentThread();
 
-        if (consumerClaim(self)) {
-            return takeWork();
+        if (!CONSUMER_OWNER.compareAndSet(this, null, self)) {
+            consumerWait(self);
         }
 
-        return takeEnqueue(self);
+        return takeWork();
+    }
+
+    private void consumerWait(Thread self) {
+        QNode node = new QNode(self, null);
+        consumerEnqueueNode(node);
+        while (true) {
+            Thread owner = (Thread) CONSUMER_OWNER.getVolatile(this);
+            if (owner == self) return;
+            if (owner == null) {
+                if (consumerSelfPromote(self, node)) return;
+            }
+            LockSupport.park(this);
+        }
     }
 
     private Object takeWork() {
@@ -365,20 +357,6 @@ public class BoundedChannel implements IChannel, IBuffered {
 
         if (c == capacity) wakeProducer();
         return value;
-    }
-
-    private Object takeEnqueue(Thread self) {
-        QNode node = new QNode(self, null);
-        consumerEnqueueNode(node);
-        for (;;) {
-            Thread owner = (Thread) CONSUMER_OWNER.getVolatile(this);
-            if (owner == self) break;
-            if (owner == null) {
-                if (consumerSelfPromote(self, node)) break;
-            }
-            LockSupport.park(this);
-        }
-        return takeWork();
     }
 
     // ================================================================
