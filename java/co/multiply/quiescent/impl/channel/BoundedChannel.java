@@ -24,23 +24,29 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     // ---- VarHandles ----
 
-    static final VarHandle COUNT;
+    static final VarHandle SHARED_TAIL;
+    static final VarHandle SHARED_HEAD;
     static final VarHandle STATE;
     static final VarHandle PRODUCER_OWNER;
     static final VarHandle PRODUCER_NEXT;
+    static final VarHandle PRODUCER_TAIL;
     static final VarHandle CONSUMER_OWNER;
     static final VarHandle CONSUMER_NEXT;
+    static final VarHandle CONSUMER_TAIL;
     static final VarHandle QNODE_NEXT;
 
     static {
         try {
             MethodHandles.Lookup l = MethodHandles.lookup();
-            COUNT = l.findVarHandle(BoundedChannel.class, "count", int.class);
+            SHARED_TAIL = l.findVarHandle(BoundedChannel.class, "sharedTail", long.class);
+            SHARED_HEAD = l.findVarHandle(BoundedChannel.class, "sharedHead", long.class);
             STATE = l.findVarHandle(BoundedChannel.class, "state", int.class);
             PRODUCER_OWNER = l.findVarHandle(BoundedChannel.class, "producerOwner", Thread.class);
             PRODUCER_NEXT = l.findVarHandle(BoundedChannel.class, "producerNext", QNode.class);
+            PRODUCER_TAIL = l.findVarHandle(BoundedChannel.class, "producerTail", QNode.class);
             CONSUMER_OWNER = l.findVarHandle(BoundedChannel.class, "consumerOwner", Thread.class);
             CONSUMER_NEXT = l.findVarHandle(BoundedChannel.class, "consumerNext", QNode.class);
+            CONSUMER_TAIL = l.findVarHandle(BoundedChannel.class, "consumerTail", QNode.class);
             QNODE_NEXT = l.findVarHandle(QNode.class, "next", QNode.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
@@ -50,14 +56,20 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ---- Producer-side fields ----
     @SuppressWarnings("unused") volatile Thread producerOwner;
     @SuppressWarnings("unused") volatile QNode producerNext;
-    QNode producerTailHint;
+    @SuppressWarnings("unused") volatile QNode producerTail;
     long tail;
+    long headCache;
 
     // ---- Padding between producer and shared ----
     @SuppressWarnings("unused") private long pp01, pp02, pp03, pp04, pp05, pp06, pp07, pp08;
 
     // ---- Shared coordination ----
-    @SuppressWarnings("unused") volatile int count;
+    @SuppressWarnings("unused") volatile long sharedTail;
+
+    // ---- Padding between shared variables ----
+    @SuppressWarnings("unused") private long pt01, pt02, pt03, pt04, pt05, pt06, pt07, pt08;
+
+    @SuppressWarnings("unused") volatile long sharedHead;
     @SuppressWarnings("unused") volatile int state;
 
     // ---- Padding between shared and consumer ----
@@ -66,8 +78,9 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ---- Consumer-side fields ----
     @SuppressWarnings("unused") volatile Thread consumerOwner;
     @SuppressWarnings("unused") volatile QNode consumerNext;
-    QNode consumerTailHint;
-    private long head;
+    @SuppressWarnings("unused") volatile QNode consumerTail;
+    long head;
+    long tailCache;
 
     // ---- Buffer ----
     final Object[] buffer;
@@ -80,6 +93,12 @@ public class BoundedChannel implements IChannel, IBuffered {
         private PutFailedException() { super(null, null, false, false); }
     }
 
+    // ---- Tunables (via -D properties) ----
+    static final int SPINS_BEFORE_PARK = Integer.getInteger(
+            "quiescent.channel.spinsBeforePark", 64);
+    static final int SPINS_RELEASE_LINK = Integer.getInteger(
+            "quiescent.channel.spinsReleaseLink", 1024);
+
     // ---- Constructors ----
 
     public BoundedChannel(int requestedSize) {
@@ -89,8 +108,12 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
         this.rf = null;
-        PRODUCER_NEXT.setVolatile(this, new QNode(null, null));
-        CONSUMER_NEXT.setVolatile(this, new QNode(null, null));
+        QNode pHead = new QNode(null);
+        QNode cHead = new QNode(null);
+        PRODUCER_NEXT.setVolatile(this, pHead);
+        CONSUMER_NEXT.setVolatile(this, cHead);
+        PRODUCER_TAIL.setVolatile(this, pHead);
+        CONSUMER_TAIL.setVolatile(this, cHead);
     }
 
     public BoundedChannel(int requestedSize, IFn xf) {
@@ -107,14 +130,22 @@ public class BoundedChannel implements IChannel, IBuffered {
             public Object invoke(Object acc, Object val) {
                 int c = putDirect(val);
                 if (c < 0) throw PutFailedException.INSTANCE;
-                VarHandle.fullFence();
-                if (c == 0) wakeConsumer();
+                // Ensure the write to sharedTail and buffer element is
+                // visible to a consumer before we unpark it on empty->nonempty.
+                if (c == 0) {
+                    VarHandle.fullFence();
+                    wakeConsumer();
+                }
                 return acc;
             }
         };
         this.rf = (IFn) xf.invoke(baseRf);
-        PRODUCER_NEXT.setVolatile(this, new QNode(null, null));
-        CONSUMER_NEXT.setVolatile(this, new QNode(null, null));
+        QNode pHead2 = new QNode(null);
+        QNode cHead2 = new QNode(null);
+        PRODUCER_NEXT.setVolatile(this, pHead2);
+        CONSUMER_NEXT.setVolatile(this, cHead2);
+        PRODUCER_TAIL.setVolatile(this, pHead2);
+        CONSUMER_TAIL.setVolatile(this, cHead2);
     }
 
     private static int nextPowerOf2(int n) {
@@ -133,12 +164,42 @@ public class BoundedChannel implements IChannel, IBuffered {
             producerHandover(succ);
             return;
         }
-        // No successor — clear owner (volatile for Dekker)
+        // No successor visible yet. Is one pending?
+        if ((QNode) PRODUCER_TAIL.getVolatile(this) != head) {
+            // Spin with a bounded limit for the link. If the enqueuer is
+            // preempted between getAndSet(tail) and setRelease(link), we
+            // must not spin forever while holding the lock — that blocks
+            // every other producer.
+            for (int spins = SPINS_RELEASE_LINK; spins > 0; spins--) {
+                succ = head.next;
+                if (succ != null) {
+                    producerHandover(succ);
+                    return;
+                }
+                Thread.onSpinWait();
+            }
+            // Link still not visible (enqueuer preempted). Fall through
+            // to release the lock so other producers can make progress.
+            // The stalled enqueuer will self-promote when it resumes.
+        }
+
+        // No successor observed or link not visible. Clear owner.
         PRODUCER_OWNER.setVolatile(this, null);
-        // Dekker re-check: someone may have queued after our read
-        succ = head.next;
-        if (succ != null) {
-            LockSupport.unpark(succ.thread); // let them self-promote
+
+        // Final check for race: a successor might have enqueued between
+        // the tail check above and the owner clear. We must spin for
+        // the link here — if head.next is null but tail != head, the
+        // enqueuer WILL complete the link, and the waiter may already
+        // be parked and unable to self-promote.
+        if ((QNode) PRODUCER_TAIL.getVolatile(this) != head) {
+            while ((succ = head.next) == null) {
+                // Must yield the carrier on virtual threads so the
+                // enqueuer (which may share this carrier) can complete
+                // its setRelease on pred.next.
+                LockSupport.parkNanos(this, 1L);
+            }
+            Thread t = succ.thread;
+            if (t != null) LockSupport.unpark(t);
         }
     }
 
@@ -160,23 +221,9 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     final void producerEnqueueNode(QNode node) {
-        while (true) {
-            QNode head = (QNode) PRODUCER_NEXT.getAcquire(this);
-            QNode hint = producerTailHint;
-            QNode tail = findTail(hint != null ? hint : head);
-            if (QNODE_NEXT.compareAndSet(tail, null, node)) {
-                producerTailHint = node;
-                return;
-            }
-        }
-    }
-
-    static QNode findTail(QNode from) {
-        QNode n = from;
-        while (n.next != null) {
-            n = n.next;
-        }
-        return n;
+        node.next = null;
+        QNode pred = (QNode) PRODUCER_TAIL.getAndSet(this, node);
+        QNODE_NEXT.setRelease(pred, node);
     }
 
     // ================================================================
@@ -190,11 +237,28 @@ public class BoundedChannel implements IChannel, IBuffered {
             consumerHandover(succ);
             return;
         }
+        // No successor visible yet. Is one pending?
+        if ((QNode) CONSUMER_TAIL.getVolatile(this) != head) {
+            for (int spins = SPINS_RELEASE_LINK; spins > 0; spins--) {
+                succ = head.next;
+                if (succ != null) {
+                    consumerHandover(succ);
+                    return;
+                }
+                Thread.onSpinWait();
+            }
+        }
+
+        // No successor observed or link not visible. Clear owner.
         CONSUMER_OWNER.setVolatile(this, null);
-        // Dekker re-check: someone may have queued after our read
-        succ = head.next;
-        if (succ != null) {
-            LockSupport.unpark(succ.thread); // let them self-promote
+
+        // Final check — spin for the link if a successor is pending.
+        if ((QNode) CONSUMER_TAIL.getVolatile(this) != head) {
+            while ((succ = head.next) == null) {
+                LockSupport.parkNanos(this, 1L);
+            }
+            Thread t = succ.thread;
+            if (t != null) LockSupport.unpark(t);
         }
     }
 
@@ -216,15 +280,9 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     final void consumerEnqueueNode(QNode node) {
-        while (true) {
-            QNode head = (QNode) CONSUMER_NEXT.getAcquire(this);
-            QNode hint = consumerTailHint;
-            QNode tail = findTail(hint != null ? hint : head);
-            if (QNODE_NEXT.compareAndSet(tail, null, node)) {
-                consumerTailHint = node;
-                return;
-            }
-        }
+        node.next = null;
+        QNode pred = (QNode) CONSUMER_TAIL.getAndSet(this, node);
+        QNODE_NEXT.setRelease(pred, node);
     }
 
     // ================================================================
@@ -235,6 +293,13 @@ public class BoundedChannel implements IChannel, IBuffered {
         Thread t = (Thread) CONSUMER_OWNER.getAcquire(this);
         if (t != null) {
             LockSupport.unpark(t);
+            return;
+        }
+        // No owner; try waking the head of the wait queue to self-promote
+        QNode head = (QNode) CONSUMER_NEXT.getAcquire(this);
+        QNode succ = head.next;
+        if (succ != null && succ.thread != null) {
+            LockSupport.unpark(succ.thread);
         }
     }
 
@@ -242,6 +307,13 @@ public class BoundedChannel implements IChannel, IBuffered {
         Thread t = (Thread) PRODUCER_OWNER.getAcquire(this);
         if (t != null) {
             LockSupport.unpark(t);
+            return;
+        }
+        // No owner; try waking the head of the wait queue to self-promote
+        QNode head = (QNode) PRODUCER_NEXT.getAcquire(this);
+        QNode succ = head.next;
+        if (succ != null && succ.thread != null) {
+            LockSupport.unpark(succ.thread);
         }
     }
 
@@ -265,7 +337,7 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     private void producerWait(Thread self) {
-        QNode node = new QNode(self, null);
+        QNode node = new QNode(self);
         producerEnqueueNode(node);
         boolean wasInterrupted = false;
         while (true) {
@@ -274,6 +346,15 @@ public class BoundedChannel implements IChannel, IBuffered {
             if (owner == null) {
                 if (producerSelfPromote(self, node)) break;
             }
+            // Short bounded spin to avoid immediate park/unpark churn
+            boolean acquired = false;
+            for (int spins = SPINS_BEFORE_PARK; spins > 0; spins--) {
+                owner = (Thread) PRODUCER_OWNER.getVolatile(this);
+                if (owner == self) { acquired = true; break; }
+                if (owner == null && producerSelfPromote(self, node)) { acquired = true; break; }
+                Thread.onSpinWait();
+            }
+            if (acquired) break;
             LockSupport.park(this);
             if (Thread.interrupted()) {
                 wasInterrupted = true;
@@ -287,7 +368,10 @@ public class BoundedChannel implements IChannel, IBuffered {
     private boolean putPlain(Object value) {
         int c = putDirect(value);
         producerRelease();
-        if (c == 0) wakeConsumer();
+        if (c == 0) {
+            VarHandle.fullFence();
+            wakeConsumer();
+        }
         return c >= 0;
     }
 
@@ -308,14 +392,35 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     int putDirect(Object value) {
-        while ((int) COUNT.getAcquire(this) >= capacity) {
-            if ((int) STATE.getAcquire(this) != OPEN) return -1;
-            LockSupport.park(this);
-            if (Thread.interrupted()) return -1;
+        long t = tail;
+        long hc = headCache;
+        if (t - hc >= capacity) {
+            hc = (long) SHARED_HEAD.getAcquire(this);
+            headCache = hc;
+            int spins = SPINS_BEFORE_PARK;
+            while (t - hc >= capacity) {
+                if ((int) STATE.getAcquire(this) != OPEN) return -1;
+                if (spins-- > 0) {
+                    Thread.onSpinWait();
+                } else {
+                    LockSupport.park(this);
+                }
+                if (Thread.interrupted()) {
+                    Thread.currentThread().interrupt();
+                    return -1;
+                }
+                hc = (long) SHARED_HEAD.getAcquire(this);
+                headCache = hc;
+            }
         }
         if ((int) STATE.getAcquire(this) != OPEN) return -1;
-        buffer[(int)(tail++ & mask)] = value;
-        return (int) COUNT.getAndAddRelease(this, 1);
+
+        buffer[(int)(t & mask)] = value;
+        SHARED_TAIL.setRelease(this, t + 1);
+        tail = t + 1;
+
+        long h = (long) SHARED_HEAD.getAcquire(this);
+        return (t == h) ? 0 : 1;
     }
 
     // ================================================================
@@ -334,7 +439,7 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     private void consumerWait(Thread self) {
-        QNode node = new QNode(self, null);
+        QNode node = new QNode(self);
         consumerEnqueueNode(node);
         boolean wasInterrupted = false;
         while (true) {
@@ -343,6 +448,14 @@ public class BoundedChannel implements IChannel, IBuffered {
             if (owner == null) {
                 if (consumerSelfPromote(self, node)) break;
             }
+            boolean acquired = false;
+            for (int spins = SPINS_BEFORE_PARK; spins > 0; spins--) {
+                owner = (Thread) CONSUMER_OWNER.getVolatile(this);
+                if (owner == self) { acquired = true; break; }
+                if (owner == null && consumerSelfPromote(self, node)) { acquired = true; break; }
+                Thread.onSpinWait();
+            }
+            if (acquired) break;
             LockSupport.park(this);
             if (Thread.interrupted()) {
                 wasInterrupted = true;
@@ -354,15 +467,29 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     private Object takeWork() {
-        while ((int) COUNT.getAcquire(this) == 0) {
-            if ((int) STATE.getAcquire(this) >= SEALED) {
-                consumerRelease();
-                return IChannel.CANCELLED;
-            }
-            LockSupport.park(this);
-            if (Thread.interrupted()) {
-                consumerRelease();
-                return IChannel.CANCELLED;
+        long h = head;
+        long tc = tailCache;
+        if (h == tc) {
+            tc = (long) SHARED_TAIL.getAcquire(this);
+            tailCache = tc;
+            int spins = SPINS_BEFORE_PARK;
+            while (h == tc) {
+                if ((int) STATE.getAcquire(this) >= SEALED) {
+                    consumerRelease();
+                    return IChannel.CANCELLED;
+                }
+                if (spins-- > 0) {
+                    Thread.onSpinWait();
+                } else {
+                    LockSupport.park(this);
+                }
+                if (Thread.interrupted()) {
+                    Thread.currentThread().interrupt();
+                    consumerRelease();
+                    return IChannel.CANCELLED;
+                }
+                tc = (long) SHARED_TAIL.getAcquire(this);
+                tailCache = tc;
             }
         }
         if ((int) STATE.getAcquire(this) == CANCELLED) {
@@ -370,13 +497,19 @@ public class BoundedChannel implements IChannel, IBuffered {
             return IChannel.CANCELLED;
         }
 
-        Object value = buffer[(int)(head & mask)];
-        buffer[(int)(head++ & mask)] = null;
-        int c = (int) COUNT.getAndAddRelease(this, -1);
+        Object value = buffer[(int)(h & mask)];
+        buffer[(int)(h & mask)] = null;
+        SHARED_HEAD.setRelease(this, h + 1);
+        head = h + 1;
+
+        long t = (long) SHARED_TAIL.getAcquire(this);
 
         consumerRelease();
 
-        if (c == capacity) wakeProducer();
+        if (t - h >= capacity) {
+            VarHandle.fullFence();
+            wakeProducer();
+        }
         return value;
     }
 
@@ -426,11 +559,14 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     @Override
     public int count() {
-        return (int) COUNT.getVolatile(this);
+        long t = (long) SHARED_TAIL.getVolatile(this);
+        long h = (long) SHARED_HEAD.getVolatile(this);
+        int c = (int) (t - h);
+        return c < 0 ? 0 : c;
     }
 
     @Override
     public double saturation() {
-        return (double) (int) COUNT.getVolatile(this) / capacity;
+        return (double) count() / capacity;
     }
 }

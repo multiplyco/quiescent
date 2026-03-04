@@ -5,8 +5,8 @@
     [clojure.string :as str]
     [co.multiply.quiescent :as q :refer [qdo qfor]]
     [co.multiply.quiescent.channel :refer [chan pipe poll put! seal! take!]]
-    [criterium.core :as c])
-)
+    [criterium.core :as c]))
+
 
 
 ;; -- Channel factories --
