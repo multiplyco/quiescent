@@ -6,7 +6,9 @@
     [co.multiply.quiescent :as q :refer [qdo qfor]]
     [co.multiply.quiescent.channel :refer [chan pipe poll put! seal! take!]]
     [criterium.core :as c])
-)
+  (:import [java.time Duration]
+           [java.util.concurrent TimeoutException]))
+
 
 
 ;; -- Channel factories --
@@ -30,38 +32,42 @@
 (declare run-scenario)
 
 (defn- run-quiescent
-  [{:keys [type n producers consumers buffer make-ch xf]}]
-  (case (or type :throughput)
-    (:throughput :xform :xform-mapcat :xform-filter)
-    (let [ch    (if xf (make-ch buffer xf) (make-ch buffer))
-          per-p (quot n producers)]
-      @(qdo
-         (qfor [_ (range consumers)]
-           (q/task (loop [] (poll [_ ch] (recur) nil))))
-         (q/task
-           @(qfor [_ (range producers)]
-              (q/task (dotimes [i per-p] (put! ch i))))
-           (seal! ch))))
+  [{:keys [type n producers consumers buffer make-ch xf quick]}]
+  (let [timeout (if quick (Duration/ofMinutes 1) (Duration/ofMinutes 10))]
+    (case (or type :throughput)
+      (:throughput :xform :xform-mapcat :xform-filter)
+      (let [ch    (if xf (make-ch buffer xf) (make-ch buffer))
+            per-p (quot n producers)]
+        @(-> (qdo
+               (qfor [_ (range consumers)]
+                 (q/task (loop [] (poll [_ ch] (recur) nil))))
+               (q/task
+                 @(qfor [_ (range producers)]
+                    (q/task (dotimes [i per-p] (put! ch i))))
+                 (seal! ch)))
+           (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes"))))
 
-    :ping-pong
-    (let [ch-a (make-ch buffer)
-          ch-b (make-ch buffer)]
-      @(qdo
-         (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
-         (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b)))))
+      :ping-pong
+      (let [ch-a (make-ch buffer)
+            ch-b (make-ch buffer)]
+        @(-> (qdo
+               (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
+               (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))
+           (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes"))))
 
-    (:pipe :pipe-xf)
-    (let [ch-a  (if xf (make-ch buffer xf) (make-ch buffer))
-          ch-b  (make-ch buffer)
-          per-p (quot n producers)]
-      @(qdo
-         (pipe ch-a ch-b)
-         (qfor [_ (range consumers)]
-           (q/task (loop [] (poll [_ ch-b] (recur) nil))))
-         (q/task
-           @(qfor [_ (range producers)]
-              (q/task (dotimes [i per-p] (put! ch-a i))))
-           (seal! ch-a))))))
+      (:pipe :pipe-xf)
+      (let [ch-a  (if xf (make-ch buffer xf) (make-ch buffer))
+            ch-b  (make-ch buffer)
+            per-p (quot n producers)]
+        @(-> (qdo
+               (pipe ch-a ch-b)
+               (qfor [_ (range consumers)]
+                 (q/task (loop [] (poll [_ ch-b] (recur) nil))))
+               (q/task
+                 @(qfor [_ (range producers)]
+                    (q/task (dotimes [i per-p] (put! ch-a i))))
+                 (seal! ch-a)))
+           (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes")))))))
 
 
 (defn- run-core-async
@@ -138,6 +144,8 @@
                 {:count 10 :type :ping-pong :n 10000 :buffer 1}]}
    {:scenario  "200×1P1C" :group :system :type :parallel
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 64}]}
+   {:scenario  "200×1P1C buf=1" :group :system :type :parallel
+    :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 1}]}
 
    ;; --- Transducer ---
    {:scenario  "XF map 1P1C" :group :transducer :type :xform :xf (map inc)
@@ -213,7 +221,7 @@
 
 (defn bench-one
   [cfg framework {:keys [verbose quick]}]
-  (let [run-cfg (assoc cfg :framework framework)
+  (let [run-cfg (assoc cfg :framework framework :quick (true? quick))
         label   (:scenario cfg)
         ch-name (:name (get frameworks framework))]
     (println (str "\nRunning: " label " — " ch-name))
@@ -274,10 +282,11 @@
 
 
 (defn run-all-benchmarks
-  [& {:keys [only verbose quick frameworks]}]
-  (let [active      (if only
-                      (filterv #(contains? only (:group %)) scenarios)
-                      scenarios)
+  [& {:keys [only scenario verbose quick frameworks]}]
+  (let [active      (cond
+                      scenario (filterv #(contains? scenario (:scenario %)) scenarios)
+                      only (filterv #(contains? only (:group %)) scenarios)
+                      :else scenarios)
         default-fws [:quiescent :core-async]
         opts        {:verbose verbose :quick quick}
         out-file    "benchmark_results.md"]
@@ -307,8 +316,19 @@
     (when (nat-int? idx)
       (into []
         (comp (drop (inc idx))
-          (take-while #(not (str/starts-with? % "--")))
+          (take-while #(not (str/starts-with? % "-")))
           (map #(keyword (str/replace % ":" ""))))
+        args))))
+
+
+(defn- parse-str-list
+  "Parse a list of string args after a flag like --scenario."
+  [args flag]
+  (let [idx (.indexOf args flag)]
+    (when (nat-int? idx)
+      (into []
+        (comp (drop (inc idx))
+          (take-while #(not (str/starts-with? % "-"))))
         args))))
 
 
@@ -319,6 +339,7 @@
         verbose    (boolean (some #{"--verbose" "-v"} args))
         quick      (boolean (some #{"--quick" "-q"} args))
         only       (some-> (parse-kw-list args "--only") set)
+        scenario   (some-> (parse-str-list args "--scenario") set)
         frameworks (parse-kw-list args "--frameworks")]
-    (run-all-benchmarks :only only :verbose verbose :quick quick
+    (run-all-benchmarks :only only :scenario scenario :verbose verbose :quick quick
       :frameworks (seq frameworks))))
