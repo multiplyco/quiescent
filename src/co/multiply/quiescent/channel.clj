@@ -10,7 +10,7 @@
     [co.multiply.quiescent.type.call :as call]
     [co.multiply.scoped :refer [ask]])
   (:import
-    [co.multiply.quiescent.impl.channel BoundedChannel BoundedChannelXf IBuffered IChannel]
+    [co.multiply.quiescent.impl.channel Alt BoundedChannel IBuffered IChannel]
     [java.util.concurrent CancellationException]))
 
 
@@ -33,7 +33,7 @@
   ([n]
    (BoundedChannel. (int n)))
   ([n xf]
-   (BoundedChannelXf. (int n) xf)))
+   (BoundedChannel. (int n) xf)))
 
 
 ;; # Core operations
@@ -112,6 +112,37 @@
   "True if the channel has been sealed (includes cancelled channels)."
   [ch]
   (IChannel/.isSealed ch))
+
+
+;; # Alt
+;; ################################################################################
+(defn alt
+  "Create an alt channel that takes (or puts) from the first of several
+   channels that's ready. Returns an IChannel, so it composes naturally.
+
+   Order mode (required):
+     :prio — always tries channels in given order
+     :fair — round-robin offset per operation
+
+   Termination mode (optional, default :all):
+     :all — done when all channels are closed; skips closed channels
+     :any — done when any channel is closed; short-circuits
+
+   Channels can be individual channels or collections, which are flattened.
+
+   (alt :fair ch1 ch2)                    ; fair, drain all
+   (alt :prio :any control-ch data-ch)    ; prio, stop on first close
+   (alt :fair (get-data-channels))        ; fair, from collection"
+  [mode & args]
+  (let [fair (case mode
+               :fair true
+               :prio false)
+        [term channels] (if (#{:all :any} (first args))
+                          [(first args) (rest args)]
+                          [:all args])
+        any  (= term :any)
+        chs  (into-array IChannel (flatten channels))]
+    (Alt. fair any chs)))
 
 
 ;; # Composition
