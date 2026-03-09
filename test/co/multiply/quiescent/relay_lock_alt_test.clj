@@ -33,21 +33,21 @@
 
 (deftest alt-acquire-uncontended-test
   (testing "AltNode acquires uncontended lock"
-    (let [lock    (RelayLock.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
           ref     (ChannelRef.)
-          ch      (stub-channel)
           alt     (RelayLock$AltNode. (Thread/currentThread) ref)
           node    (.acquireAlt lock alt)]
       (is (identical? alt node))
-      (.release lock node ch)
+      (.release lock node)
       (is true "Completed without error"))))
 
 
 (deftest alt-then-regular-handoff-test
   (testing "AltNode holds lock, regular thread waits, handoff works"
-    (let [lock    (RelayLock.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
           ref     (ChannelRef.)
-          ch      (stub-channel)
           alt     (RelayLock$AltNode. (Thread/currentThread) ref)
           _       (.acquireAlt lock alt)
           result  (AtomicBoolean. false)
@@ -61,17 +61,17 @@
                 (.release lock node))))
           (.countDown done)))
       (Thread/sleep 10)
-      ;; Release with channel — successor is a regular Thread
-      (.release lock alt ch)
+      ;; Release — successor is a regular Thread
+      (.release lock alt)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result)))))
 
 
 (deftest regular-then-alt-handoff-claim-succeeds-test
   (testing "Regular thread holds lock, AltNode successor, claim succeeds on release"
-    (let [lock    (RelayLock.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
           ref     (ChannelRef.)
-          ch      (stub-channel)
           node    (.acquire lock)
           result  (AtomicBoolean. false)
           done    (CountDownLatch. 1)]
@@ -82,11 +82,11 @@
             (try
               (.set result true)
               (finally
-                (.release lock node ch))))
+                (.release lock node))))
           (.countDown done)))
       (Thread/sleep 10)
-      ;; Release with channel — successor is an AltNode, claim should succeed
-      (.release lock node ch)
+      ;; Release — successor is an AltNode, claim should succeed
+      (.release lock node)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result))
       (is (identical? ch (.get ref))
@@ -99,12 +99,11 @@
 
 (deftest dead-alt-skipped-to-regular-thread-test
   (testing "Dead AltNode in chain is skipped, regular thread behind it gets woken"
-    (let [lock    (RelayLock.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
           ref     (ChannelRef.)
-          ch1     (stub-channel)
-          ch2     (stub-channel)
-          ;; Pre-claim the ref so the alt is dead
-          _       (.claim ref ch1)
+          ;; Pre-claim the ref so the alt is dead (by a different channel)
+          _       (.claim ref (stub-channel))
           node    (.acquire lock)
           regular-done (CountDownLatch. 1)
           regular-ran  (AtomicBoolean. false)]
@@ -135,7 +134,7 @@
       ;; Release — successor is the dead AltNode. dispatch should
       ;; skip it (claim fails), write DONE to altNode.state, and
       ;; wake the regular thread directly.
-      (.release lock node ch2)
+      (.release lock node)
       (is (.await regular-done 5 TimeUnit/SECONDS)
         "Regular thread should complete")
       (is (.get regular-ran)
@@ -144,10 +143,10 @@
 
 (deftest chained-dead-alts-skipped-test
   (testing "Multiple dead AltNodes in chain are all skipped"
-    (let [lock    (RelayLock.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
           ref1    (ChannelRef.)
           ref2    (ChannelRef.)
-          ch      (stub-channel)
           ;; Pre-claim both refs
           _       (.claim ref1 ch)
           _       (.claim ref2 ch)
@@ -178,7 +177,7 @@
           (.countDown regular-done)))
       (Thread/sleep 10)
       ;; Release — should skip both dead alts, reach regular thread
-      (.release lock node ch)
+      (.release lock node)
       (is (.await regular-done 10 TimeUnit/SECONDS)
         "Regular thread should complete")
       (is (.get regular-ran)
@@ -191,9 +190,9 @@
 
 (deftest signal-wakes-alt-claim-succeeds-test
   (testing "Signal with AltNode — claim succeeds, alt thread woken"
-    (let [sig     (Signal.)
+    (let [ch      (stub-channel)
+          sig     (Signal. (RelayLock. ch))
           ref     (ChannelRef.)
-          ch      (stub-channel)
           result  (AtomicBoolean. false)
           done    (CountDownLatch. 1)]
       (start-virtual-thread
@@ -203,7 +202,7 @@
             (.set result true))
           (.countDown done)))
       (Thread/sleep 10)
-      (.signal sig ch)
+      (.signal sig)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result)
         "Alt thread should have been woken")
@@ -213,13 +212,12 @@
 
 (deftest signal-skips-dead-alt-wakes-thread-test
   (testing "Signal with dead AltNode — skips to lock chain successor"
-    (let [lock    (RelayLock.)
-          sig     (Signal.)
+    (let [ch      (stub-channel)
+          lock    (RelayLock. ch)
+          sig     (Signal. lock)
           ref     (ChannelRef.)
-          ch1     (stub-channel)
-          ch2     (stub-channel)
-          ;; Pre-claim ref
-          _       (.claim ref ch1)
+          ;; Pre-claim ref (by a different channel)
+          _       (.claim ref (stub-channel))
           result  (AtomicBoolean. false)
           alt-parked (CountDownLatch. 1)
           successor-done (CountDownLatch. 1)]
@@ -234,7 +232,7 @@
             ;; Alt wakes (from signal skip writing DONE, or spurious).
             ;; Release the lock — may be redundant if signal already
             ;; did the DONE handoff, but idempotent.
-            (.release lock alt-node ch2))))
+            (.release lock alt-node))))
       (.await alt-parked 5 TimeUnit/SECONDS)
       (Thread/sleep 10)
       ;; A successor arrives in the lock chain behind the alt
@@ -249,7 +247,7 @@
       (Thread/sleep 10)
       ;; Signal from producer side — should skip dead alt,
       ;; write DONE to altNode.state (waking successor).
-      (.signal sig ch2)
+      (.signal sig)
       (is (.await successor-done 5 TimeUnit/SECONDS)
         "Successor should be woken after dead alt skipped")
       (is (.get result)
@@ -267,6 +265,6 @@
           (.set result true)
           (.countDown done)))
       (Thread/sleep 10)
-      (.signal sig (stub-channel))
+      (.signal sig)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result)))))
