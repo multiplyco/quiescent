@@ -23,7 +23,7 @@ import java.util.concurrent.locks.LockSupport;
  */
 public class RelayLock {
 
-    private static final Object DONE = new Object();
+    static final Object DONE = new Object();
 
     static final VarHandle SLOT;
     static final VarHandle STATE;
@@ -39,7 +39,17 @@ public class RelayLock {
     }
 
     public static class Node {
-        volatile Object state; // null | Thread | DONE
+        volatile Object state; // null | Thread | AltNode | DONE
+    }
+
+    public static class AltNode extends Node {
+        final Thread thread;
+        final ChannelRef ref;
+
+        public AltNode(Thread thread, ChannelRef ref) {
+            this.thread = thread;
+            this.ref = ref;
+        }
     }
 
     volatile Node slot;
@@ -52,7 +62,7 @@ public class RelayLock {
 
     /**
      * Acquire the lock. Returns the node that must be passed to
-     * {@link #release(Node)} when the critical section is done.
+     * {@link #release(Node, IChannel)} when the critical section is done.
      * <p>
      * Blocks (parks) until this thread is the owner. Interruption
      * is deferred: the thread cannot bail mid-chain. If interrupted
@@ -81,15 +91,72 @@ public class RelayLock {
     }
 
     /**
-     * Release the lock. Writes DONE to this node, waking the
-     * successor if one has registered.
+     * Acquire the lock with an AltNode. The AltNode is used as this
+     * thread's node in the chain, and is written onto the predecessor's
+     * state (instead of a Thread reference).
+     * <p>
+     * Returns the AltNode for passing to {@link #release(Node, IChannel)}.
+     */
+    public AltNode acquireAlt(AltNode altNode) {
+        Node prev = (Node) SLOT.getAndSet(this, altNode);
+
+        // Register AltNode on predecessor (not Thread).
+        Object prevState = STATE.getAndSet(prev, altNode);
+
+        if (prevState == DONE) {
+            return altNode;
+        }
+
+        // Park until predecessor writes DONE.
+        boolean interrupted = false;
+        while (prev.state != DONE) {
+            LockSupport.park(this);
+            if (Thread.interrupted()) interrupted = true;
+        }
+        if (interrupted) Thread.currentThread().interrupt();
+        return altNode;
+    }
+
+    /**
+     * Release the lock. Writes DONE to this node, then dispatches
+     * on the successor: unpark Thread, try-claim AltNode, or skip
+     * dead AltNodes by writing DONE and following the chain.
      *
-     * @param node the node returned by {@link #acquire()}
+     * @param node    the node returned by acquire() or acquireAlt()
+     * @param channel the channel identity for Alt claim, or null
+     */
+    public void release(Node node, IChannel channel) {
+        Object successor = STATE.getAndSet(node, DONE);
+        dispatch(successor, channel);
+    }
+
+    /**
+     * Release the lock (non-Alt path, no claim).
      */
     public void release(Node node) {
-        Object successor = STATE.getAndSet(node, DONE);
-        if (successor instanceof Thread t) {
-            LockSupport.unpark(t);
+        release(node, null);
+    }
+
+    /**
+     * Dispatch on a waiter: null, Thread, or AltNode.
+     * Shared by release() and Signal.signal().
+     */
+    static void dispatch(Object waiter, IChannel channel) {
+        while (true) {
+            if (waiter == null) return;
+            if (waiter instanceof Thread t) {
+                LockSupport.unpark(t);
+                return;
+            }
+            // AltNode — try to claim
+            AltNode alt = (AltNode) waiter;
+            if (channel != null && alt.ref.claim(channel)) {
+                LockSupport.unpark(alt.thread);
+                return;
+            }
+            // Dead alt (or no channel to claim with) — release its
+            // lock node and follow the successor.
+            waiter = STATE.getAndSet(alt, DONE);
         }
     }
 }

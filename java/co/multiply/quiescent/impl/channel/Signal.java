@@ -9,12 +9,12 @@ import java.util.concurrent.locks.LockSupport;
  * <p>
  * When a thread holds its lock but can't proceed (buffer empty for
  * consumer, buffer full for producer), it calls {@link #await()} to
- * register and park. The other side calls {@link #signal()} after
- * changing the buffer state to wake the waiting thread.
+ * register and park. The other side calls {@link #signal(IChannel)}
+ * after changing the buffer state to wake the waiting thread.
  * <p>
- * Internally, a single atomic field holds either null (nobody waiting)
- * or a Thread reference (someone waiting). Both operations are a single
- * getAndSet.
+ * Internally, a single atomic field holds null (nobody waiting),
+ * a Thread reference, or an AltNode. Both await and signal are a
+ * single getAndSet.
  */
 public class Signal {
 
@@ -29,7 +29,7 @@ public class Signal {
         }
     }
 
-    volatile Object ref; // null | Thread
+    volatile Object ref; // null | Thread | AltNode
 
     /**
      * Register the current thread and park until signaled.
@@ -47,14 +47,37 @@ public class Signal {
     }
 
     /**
-     * Wake the waiting thread, if any.
+     * Register an AltNode and park until signaled.
      * <p>
-     * Called by the other side after depositing or consuming a value.
+     * The AltNode sits in both the signal field and the lock chain.
+     * When signaled, the dispatcher will try to claim the Alt or
+     * skip past it to the lock chain successor.
      */
-    public void signal() {
-        Object prev = REF.getAndSet(this, null);
+    public void await(RelayLock.AltNode altNode) {
+        Object prev = REF.getAndSet(this, altNode);
         if (prev instanceof Thread t) {
             LockSupport.unpark(t);
         }
+        LockSupport.park(this);
+    }
+
+    /**
+     * Wake the waiting thread or AltNode, if any.
+     * <p>
+     * Uses the shared dispatch loop: handles Thread (unpark),
+     * AltNode (try claim or skip), and null (no-op).
+     *
+     * @param channel the channel identity for Alt claim, or null
+     */
+    public void signal(IChannel channel) {
+        Object prev = REF.getAndSet(this, null);
+        RelayLock.dispatch(prev, channel);
+    }
+
+    /**
+     * Wake the waiting thread, if any (non-Alt path).
+     */
+    public void signal() {
+        signal(null);
     }
 }
