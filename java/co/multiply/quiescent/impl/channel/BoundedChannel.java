@@ -1,5 +1,8 @@
 package co.multiply.quiescent.impl.channel;
 
+import clojure.lang.AFn;
+import clojure.lang.IFn;
+import clojure.lang.RT;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
@@ -15,6 +18,12 @@ import java.lang.invoke.VarHandle;
  * awaits on the signal with its lock node. Signal's SIGNALED sentinel
  * handles the race between buffer check and park — no Dekker recheck
  * needed.
+ * <p>
+ * When a transducer is supplied, the reducing function wraps
+ * {@link #putDirect}, which writes one value at a time to the ring
+ * buffer with backpressure. Stateful transducers like {@code mapcat}
+ * that expand a single input into multiple outputs will park mid-batch
+ * when the buffer is full, resuming as consumers drain.
  */
 public class BoundedChannel implements IChannel, IBuffered {
 
@@ -60,6 +69,11 @@ public class BoundedChannel implements IChannel, IBuffered {
     final int capacity;
     final int mask;
 
+    // ---- Transducer ----
+    final IFn rf;
+    RelayLock.Node putNode;     // current lock node, written/read under putLock only
+    boolean putInterrupted;     // interrupt captured during putDirect, under putLock only
+
     // ================================================================
     //  Constructors
     // ================================================================
@@ -70,15 +84,29 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.capacity = nextPowerOf2(requestedSize);
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
+        this.rf = null;
     }
 
-    /**
-     * Transducer constructor — not yet implemented for RelayLock.
-     */
     public BoundedChannel(int requestedSize, Object xf) {
-        this(requestedSize);
-        if (xf != null)
-            throw new UnsupportedOperationException("Transducer support not yet implemented");
+        if (requestedSize < 1)
+            throw new IllegalArgumentException("Buffer size must be >= 1, got " + requestedSize);
+        this.capacity = nextPowerOf2(requestedSize);
+        this.mask = capacity - 1;
+        this.buffer = new Object[capacity];
+        if (xf != null) {
+            IFn baseRf = new AFn() {
+                public Object invoke(Object acc) {
+                    return acc;
+                }
+                public Object invoke(Object acc, Object val) {
+                    putDirect(val, putNode);
+                    return acc;
+                }
+            };
+            this.rf = (IFn) ((IFn) xf).invoke(baseRf);
+        } else {
+            this.rf = null;
+        }
     }
 
     private static int nextPowerOf2(int n) {
@@ -90,30 +118,69 @@ public class BoundedChannel implements IChannel, IBuffered {
     //  PUT
     // ================================================================
 
+    /**
+     * Write one value to the ring buffer, parking on putSignal if full.
+     * Signals takeSignal when the buffer transitions from empty to non-empty.
+     * <p>
+     * Called under putLock. On interrupt, sets {@code putInterrupted} and
+     * returns false without restoring the flag — the caller decides how
+     * to handle it.
+     */
+    private boolean putDirect(Object value, RelayLock.Node node) {
+        while (true) {
+            if (state != OPEN) return false;
+            long t = tail;
+            long h = (long) HEAD.getAcquire(this);
+            if (t - h < capacity) {
+                buffer[(int)(t & mask)] = value;
+                TAIL.setVolatile(this, t + 1);
+                if (t + 1 - (long) HEAD.getVolatile(this) == 1) {
+                    takeSignal.signal(this);
+                }
+                return true;
+            }
+            if (putSignal.await(node)) {
+                putInterrupted = true;
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Transducer put path. Runs the value through the reducing function,
+     * which calls putDirect via the baseRf for each output value.
+     */
+    private boolean putXf(Object value, RelayLock.Node node) {
+        if (state != OPEN) return false;
+        this.putNode = node;
+        Object result = rf.invoke(this, value);
+        if (RT.isReduced(result)) {
+            rf.invoke(this);
+            seal();
+            return true;
+        }
+        if (putInterrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Direct put path. Takes an object and puts it on the channel, possibly
+     * parking if the buffer is full.
+     */
     @Override
     public boolean put(Object value) {
         RelayLock.Node node = putLock.acquire();
-        boolean signalTake = false;
         try {
-            while (true) {
-                if (state != OPEN) return false;
-                long t = tail;
-                long h = (long) HEAD.getAcquire(this);
-                if (t - h < capacity) {
-                    buffer[(int)(t & mask)] = value;
-                    TAIL.setVolatile(this, t + 1);
-                    signalTake = (t + 1 - (long) HEAD.getVolatile(this)) == 1;
-                    return true;
-                }
-                // Buffer full — await signal from consumer
-                if (putSignal.await(node)) {
-                    Thread.currentThread().interrupt();
-                    return false;
-                }
-            }
+            putInterrupted = false;
+            if (rf != null) return putXf(value, node);
+            boolean ok = putDirect(value, node);
+            if (putInterrupted) Thread.currentThread().interrupt();
+            return ok;
         } finally {
             putLock.release(node);
-            if (signalTake) takeSignal.signal(this);
         }
     }
 
