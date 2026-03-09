@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [deftest is testing]]
     [co.multiply.quiescent :as q]
-    [co.multiply.quiescent.channel :refer [buf-count capacity chan put! saturation take!]]
+    [co.multiply.quiescent.channel :refer [buf-count capacity chan pipe put! saturation seal! take!]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park]])
   (:import
     [co.multiply.quiescent.impl.channel IChannel]
@@ -171,6 +171,20 @@
     (is (thrown? CancellationException (put! ch 3)))
     (is (false? (put! ch 3 false)))
     (is (identical? IChannel/CANCELLED (IChannel/.take ch)))))
+
+
+(deftest pipe-with-xf-test
+  (let [src  (chan 8 (map inc))
+        sink (chan 8)
+        p    (pipe src sink)]
+    (put! src 1 false)
+    (put! src 2 false)
+    (put! src 3 false)
+    (seal! src)
+    @p
+    (is (= 2 (take! sink)))
+    (is (= 3 (take! sink)))
+    (is (= 4 (take! sink)))))
 
 
 (deftest seal-xf-drains-test

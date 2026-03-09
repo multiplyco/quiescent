@@ -376,15 +376,3 @@
     (is (deref p 1000 :timeout) "Pipe task should complete")))
 
 
-(deftest pipe-with-xf-test
-  (let [src  (chan 8 (map inc))
-        sink (chan 8)
-        p    (pipe src sink)]
-    (put! src 1 false)
-    (put! src 2 false)
-    (put! src 3 false)
-    (seal! src)
-    @p
-    (is (= 2 (take! sink)))
-    (is (= 3 (take! sink)))
-    (is (= 4 (take! sink)))))
