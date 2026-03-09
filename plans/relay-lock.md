@@ -149,184 +149,248 @@ RelayLock putLock  = new RelayLock();
 RelayLock takeLock = new RelayLock();
 ```
 
-### Buffer-edge signaling
+### Signal — buffer-edge coordination
 
 When a thread wins the lock but can't proceed (buffer empty for consumer,
 buffer full for producer), it needs to park and be woken by the other side.
 
-A single shared signal field handles this, using getAndSet:
+A separate Signal object handles this with two methods:
 
-```
-signal: AtomicReference<Object>   — null | Thread
-```
+```java
+class Signal {
+    volatile Object ref; // null | Thread | AltNode
 
-The buffer can't be simultaneously empty and full, so at most one side is
-waiting at any time. Both sides use the same field:
-
-**Consumer finds buffer empty:**
-```
-signal.getAndSet(self) → null: park (wait for producer)
-                       → producer Thread: impossible (buffer can't be both)
+    void await()                 // register self, park
+    void signal(IChannel channel) // wake waiter, handle Alt claim
+}
 ```
 
-**Producer deposits, checks signal:**
-```
-signal.getAndSet(null) → null: nobody waiting
-                       → consumer Thread: unpark it
+**await():** `REF.getAndSet(this, Thread.currentThread())`, then park.
+Called by a consumer (buffer empty) or producer (buffer full) while
+holding its lock. The lock is held while parked — producers and
+consumers use separate locks, so this doesn't block the other side.
+
+**signal(channel):** `REF.getAndSet(this, null)`, then dispatch on the
+return value in a loop:
+
+```java
+void signal(IChannel channel) {
+    Object waiter = REF.getAndSet(this, null);
+    while (true) {
+        if (waiter == null) return;
+        if (waiter instanceof Thread t) {
+            LockSupport.unpark(t);
+            return;
+        }
+        AltNode alt = (AltNode) waiter;
+        if (alt.ref.claim(channel)) {
+            LockSupport.unpark(alt.thread);
+            return;
+        }
+        // Dead alt — do its lock release, loop on successor
+        waiter = STATE.getAndSet(alt, DONE);
+    }
+}
 ```
 
-**Producer finds buffer full:**
-```
-signal.getAndSet(self) → null: park (wait for consumer)
-```
+The loop handles chains of dead AltNodes: each iteration writes DONE
+(releasing the dead alt's lock node) and follows the successor. The
+loop terminates when it finds a live waiter (Thread or successful Alt
+claim) or null (nobody waiting).
 
-**Consumer drains, checks signal:**
-```
-signal.getAndSet(null) → null: nobody waiting
-                       → producer Thread: unpark it
-```
-
-The getAndSet atomically installs the thread and reads whoever was there.
-No Dekker, no CAS, no separate empty/full fields. One field, one operation.
+**Channel state (OPEN/SEALED/CANCELLED)** is a separate volatile field
+on the channel, not part of Signal. Checked by the lock holder before
+and after parking. Cancellation wakes the signal and the chain unwinds
+via successive DONE handoffs.
 
 ### Steady-state cost (buffer neither empty nor full)
 
-3 exchanges for the lock, 0 for the signal field. The signal field is
-only touched at the edges.
+3 exchanges for the lock, 0 for the signal. The signal is only
+touched at the edges.
 
 ### Seal/Cancel
 
 ```java
 state = SEALED;
-signal.getAndSet(null) → if Thread, unpark it
+signal.signal(this); // wake whoever's waiting
 // Woken thread sees state, exits, releases lock, chain unwinds
 ```
 
 ## Alt (Select / Choice)
 
-Alt allows a thread to register on multiple channels and take from
-whichever has a value first. Rather than maintaining separate wait
-queues or out-of-band cancellation, Alt splices skippable nodes into
-the existing lock chains. Other threads cooperate to complete or
-discard these nodes via instanceof checks and a single CAS.
+Alt takes from whichever of several channels has a value first. AltNode
+extends Node with a thread reference and a shared claim (ChannelRef).
+It participates in the lock chain and the signal field using the same
+getAndSet protocol — other threads cooperate to complete or skip dead
+AltNodes via instanceof dispatch and a single CAS.
 
-### AltRef structure
+### AltNode structure
 
 ```java
-class AltRef {
-    Thread thread;              // the Alt's thread to unpark
-    Object next;                // next node in the chain (skip target)
-    AtomicReference channel;    // shared claim flag, initially null
+class AltNode extends Node {
+    final Thread thread;        // the Alt's thread to unpark
+    final ChannelRef ref;       // shared claim flag, initially null
 }
 ```
 
-All AltRefs belonging to the same Alt operation share the same `channel`
-reference. This is the sole synchronization point between channels:
-whichever channel successfully CAS's it claims the Alt.
+AltNode IS a Node. Its `state` field serves the same role: the lock
+chain successor registers on it, and DONE is written to release.
+All AltNodes belonging to the same Alt operation share the same
+ChannelRef. Whichever channel successfully CAS's the ref claims the Alt.
 
-### Registration
+### How Alt enters a channel
 
-Alt acquires each channel's lock in turn and inserts an AltRef where a
-plain thread reference would normally go:
-
-```
-ch1 chain:  A → AltRef(t, next→B, claim) → B → C
-ch2 chain:  D → AltRef(t, next→E, claim) → E
-```
-
-Both AltRefs share the same `claim` field.
-
-The AltRef's `next` field points to the next real waiter in the chain.
-This gives any thread encountering the AltRef a way to skip past it.
-
-### Producer encounters AltRef
-
-When a producer finishes its critical section and finds an AltRef as
-the successor (via getAndSet on its own node), it does additional work
-instead of a plain unpark:
+Alt creates an AltNode and acquires the lock like any thread:
 
 ```
-1. CAS(altRef.channel, null, thisChannel)
-2. Succeeded?
-     → Alt claimed. Deliver value, unpark altRef.thread.
-3. Failed?
-     → Alt already claimed by another channel. This AltRef is dead.
-     → Skip: getAndSet(altRef.next.state, DONE)
-       → got Thread? Unpark it (relay to the real next waiter).
-       → got null? Nobody there yet, done.
+1. altNode = new AltNode(self, ref)
+2. prev = SLOT.getAndSet(lock, altNode)      ← enqueue
+3. STATE.getAndSet(prev, altNode)             ← register on predecessor
+   (writes AltNode, not Thread — predecessor will dispatch on type)
+4. Got DONE? Alt is the owner. Check buffer.
+   Got null? Predecessor still working. Park.
 ```
 
-### Owner finishing, finds AltRef on its node
+The predecessor's release path dispatches:
 
-Same protocol. The owner (predecessor) does getAndSet on its own node
-and gets back an AltRef instead of a Thread:
+```java
+Object successor = STATE.getAndSet(myNode, DONE);
+if (successor instanceof Thread t) {
+    LockSupport.unpark(t);
+} else if (successor instanceof AltNode alt) {
+    if (alt.ref.claim(channel)) {
+        LockSupport.unpark(alt.thread);
+    } else {
+        // Dead alt — do its lock release, loop on successor
+        Object next = STATE.getAndSet(alt, DONE);
+        // ... continue dispatch on next (same loop)
+    }
+}
+```
+
+This is the same loop as Signal.signal() — a uniform dispatch that
+skips dead AltNodes by writing DONE and following the chain.
+
+### Alt holds the lock, buffer empty
+
+When Alt acquires the lock and finds the buffer empty, it registers
+on the Signal with its AltNode (not a thread reference):
 
 ```
-1. CAS(altRef.channel, null, thisChannel)
-2. Succeeded? Deliver, unpark altRef.thread.
-3. Failed? Follow altRef.next, relay DONE to the next real waiter.
+1. Alt acquires lock → altNode is in the slot
+2. Buffer empty → signal.await(altNode)
+3. Alt parks
 ```
 
-The chain heals itself: the dead AltRef is transparently skipped, and
-the next real thread in the chain receives the handoff.
+Meanwhile, altNode is in two places:
+- **Signal ref field** — waiting for a producer to signal
+- **Lock slot** — a successor may register on altNode.state
 
-### Alt thread wakes up
+A successor B arrives, does SLOT.getAndSet → gets altNode,
+does STATE.getAndSet(altNode, threadB) → null → parks.
 
-When the Alt's thread is unparked, it knows which channel claimed it
-(by reading the `channel` field). It proceeds on that channel only.
+Now altNode.state = threadB, Signal ref = altNode.
 
-The AltRefs on other channels remain in those chains as dead nodes.
-They will be skipped when encountered — any thread that does instanceof
-AltRef and fails the CAS on `channel` simply relays past it.
+### Signal wakes Alt (claim succeeds)
 
-### Why this works
+```
+1. Producer deposits value, calls signal.signal(channel)
+2. REF.getAndSet(null) → altNode
+3. alt.ref.claim(channel) → succeeds
+4. unpark(alt.thread)
+5. Alt wakes, takes value from buffer
+6. Alt releases: STATE.getAndSet(altNode, DONE) → threadB → unpark B
+7. B wakes as new owner. Normal chain continues.
+```
 
-- **No separate cancellation mechanism.** Dead AltRefs are cleaned up
-  lazily by whoever encounters them. No cancel tokens, no traversal
-  of foreign queues.
+### Signal skips dead Alt (claim fails)
 
-- **No lock held across channels.** Alt registers on each channel
-  independently. The shared `channel` field is the only cross-channel
-  coordination, and it's a single CAS — no lock ordering concerns.
+```
+1. Producer deposits value, calls signal.signal(channel)
+2. REF.getAndSet(null) → altNode
+3. alt.ref.claim(channel) → fails (another channel won)
+4. waiter = STATE.getAndSet(altNode, DONE) → threadB
+5. Loop: waiter is Thread → unpark(threadB) → return
+6. B wakes, sees altNode.state == DONE, becomes owner, takes value.
+```
 
-- **Chain integrity preserved.** The `next` field ensures that skipping
-  an AltRef always connects to the real next waiter. The FIFO property
-  holds for non-Alt threads.
+The signal cooperatively does the lock release on behalf of the dead
+Alt. Same getAndSet-DONE protocol, just a different thread driving it.
 
-- **instanceof dispatch.** The release path checks: is the successor a
-  Thread? Plain unpark. Is it an AltRef? Try to claim, or skip. This
-  is a single type check — no flags, no enum states, no wrapper objects.
+**No successor yet (altNode.state == null):**
+```
+4. STATE.getAndSet(altNode, DONE) → null → return
+5. DONE is set. Next arrival sees it immediately, proceeds.
+```
+
+### Dead Alt wakes later from winning channel
+
+The Alt thread was claimed by another channel and eventually wakes.
+It does `release(altNode)`: `STATE.getAndSet(altNode, DONE)`.
+
+- Gets DONE → no-op (signal already released)
+- Gets a Thread → spurious unpark (thread already proceeded)
+
+Both are harmless. The release is idempotent. All park loops re-check
+conditions before continuing, so spurious unparks cause no harm.
+
+### Alt visits multiple channels
+
+Alt acquires and releases each channel's lock in sequence, checking
+the claim between each:
+
+```
+1. Visit ch1:
+   Acquire lock, check buffer.
+   Has value? Take it, claim ref, release. Done.
+   Empty? signal.await(altNode1), release lock, park... or:
+          release lock, move on to ch2.
+   Check ref — claimed? Stop.
+
+2. Visit ch2:
+   Check ref — not claimed. Acquire lock, repeat.
+
+3. Visit ch3:
+   Check ref — claimed by ch1! Stop registering.
+```
+
+AltNodes left on losing channels are dead nodes. They will be skipped
+by whoever encounters them — the release path or signal.signal() writes
+DONE and follows the successor.
+
+### Uniform dispatch
+
+The release path and signal.signal() share the same dispatch loop:
+
+```java
+while (true) {
+    if (waiter == null) return;
+    if (waiter instanceof Thread t) {
+        LockSupport.unpark(t);
+        return;
+    }
+    AltNode alt = (AltNode) waiter;
+    if (alt.ref.claim(channel)) {
+        LockSupport.unpark(alt.thread);
+        return;
+    }
+    waiter = STATE.getAndSet(alt, DONE);
+}
+```
+
+One loop, three cases (null, Thread, AltNode). The chain composes:
+regular → alt → alt → regular all work. The instanceof branch is the
+only Alt-specific logic. The non-Alt hot path is unaffected — successor
+is always a Thread, one instanceof check (predicted by JIT), unpark.
 
 ### Cost
 
-- **Winning channel:** one CAS (on `channel`) + unpark. Same as a
-  normal handoff plus one CAS.
+- **Winning channel:** one CAS (on ref) + unpark. Same as a normal
+  handoff plus one CAS.
 - **Losing channels:** one CAS (fails) + one getAndSet (relay past).
   Two atomic ops to skip a dead node.
-- **Allocation:** one AltRef per channel registered. These share the
-  `channel` AtomicReference, so only one extra allocation beyond the
-  AltRefs themselves.
-
-### Example
-
-```
-Alt registers on ch1 (consumer lock) and ch2 (consumer lock).
-Alt thread = T.
-
-ch1 chain: ... → AltRef(T, next→X, claim) → X → ...
-ch2 chain: ... → AltRef(T, next→Y, claim) → Y → ...
-
-Producer P1 on ch1 finishes, encounters AltRef:
-  CAS(claim, null, ch1) → succeeds
-  Delivers value to T, unparks T.
-  T wakes, reads claim → ch1, proceeds on ch1.
-
-Later, producer P2 on ch2 finishes, encounters AltRef:
-  CAS(claim, null, ch2) → fails (already ch1)
-  AltRef is dead. Skips:
-    getAndSet(Y.state, DONE) → got Y's thread → unpark Y
-  Y becomes owner on ch2. Chain continues normally.
-```
+- **Allocation:** one AltNode per channel registered. All share the
+  same ChannelRef.
 
 ## Properties
 
