@@ -62,7 +62,7 @@ public class RelayLock {
 
     /**
      * Acquire the lock. Returns the node that must be passed to
-     * {@link #release(Node, IChannel)} when the critical section is done.
+     * {@link #release(Node)} when the critical section is done.
      * <p>
      * Blocks (parks) until this thread is the owner. Interruption
      * is deferred: the thread cannot bail mid-chain. If interrupted
@@ -71,22 +71,9 @@ public class RelayLock {
     public Node acquire() {
         Node myNode = new Node();
         Node prev = (Node) SLOT.getAndSet(this, myNode);
-
-        // Register on predecessor's node.
         Object prevState = STATE.getAndSet(prev, Thread.currentThread());
-
-        if (prevState == DONE) {
-            // Predecessor already finished — we are the owner.
-            return myNode;
-        }
-
-        // Predecessor still working. Park until it writes DONE.
-        boolean interrupted = false;
-        while (prev.state != DONE) {
-            LockSupport.park(this);
-            if (Thread.interrupted()) interrupted = true;
-        }
-        if (interrupted) Thread.currentThread().interrupt();
+        if (prevState == DONE) return myNode;
+        awaitPredecessor(prev);
         return myNode;
     }
 
@@ -99,22 +86,19 @@ public class RelayLock {
      */
     public AltNode acquireAlt(AltNode altNode) {
         Node prev = (Node) SLOT.getAndSet(this, altNode);
-
-        // Register AltNode on predecessor (not Thread).
         Object prevState = STATE.getAndSet(prev, altNode);
+        if (prevState == DONE) return altNode;
+        awaitPredecessor(prev);
+        return altNode;
+    }
 
-        if (prevState == DONE) {
-            return altNode;
-        }
-
-        // Park until predecessor writes DONE.
+    private void awaitPredecessor(Node prev) {
         boolean interrupted = false;
         while (prev.state != DONE) {
             LockSupport.park(this);
             if (Thread.interrupted()) interrupted = true;
         }
         if (interrupted) Thread.currentThread().interrupt();
-        return altNode;
     }
 
     /**
@@ -143,20 +127,29 @@ public class RelayLock {
      */
     static void dispatch(Object waiter, IChannel channel) {
         while (true) {
-            if (waiter == null) return;
-            if (waiter instanceof Thread t) {
-                LockSupport.unpark(t);
-                return;
+            switch (waiter) {
+                case null -> { return; }
+                case Thread t -> {
+                    LockSupport.unpark(t);
+                    return;
+                }
+                case AltNode alt -> {
+                    if (channel != null && alt.ref.claim(channel)) {
+                        LockSupport.unpark(alt.thread);
+                        return;
+                    }
+                    // Dead alt (or no channel to claim with) — release
+                    // its lock node and follow the successor. The alt
+                    // thread is not parked here — it's either visiting
+                    // other channels or parked on a Signal elsewhere.
+                    waiter = STATE.getAndSet(alt, DONE);
+                }
+                case Object o when o == DONE -> {
+                    // Already released (e.g., dead alt's redundant release).
+                    return;
+                }
+                default -> throw new IllegalStateException("unexpected waiter: " + waiter);
             }
-            // AltNode — try to claim
-            AltNode alt = (AltNode) waiter;
-            if (channel != null && alt.ref.claim(channel)) {
-                LockSupport.unpark(alt.thread);
-                return;
-            }
-            // Dead alt (or no channel to claim with) — release its
-            // lock node and follow the successor.
-            waiter = STATE.getAndSet(alt, DONE);
         }
     }
 }
