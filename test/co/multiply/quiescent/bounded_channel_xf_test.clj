@@ -93,9 +93,10 @@
   (let [ch (chan 16 (take 3))]
     (put! ch :a)
     (put! ch :b)
-    ;; 3rd put writes value then throws (seal stub)
-    (is (thrown? UnsupportedOperationException (put! ch :c)))
-    ;; All 3 values are in the buffer
+    ;; 3rd put writes value then seals the channel
+    (is (true? (put! ch :c)))
+    (is (false? (put! ch :d false)) "Channel is sealed — further puts fail")
+    ;; All 3 values drainable
     (is (= :a (take! ch)))
     (is (= :b (take! ch)))
     (is (= :c (take! ch)))))
@@ -109,9 +110,9 @@
           ch (chan 16 xf)]
       (put! ch 1)
       (put! ch 2)
-      ;; 3rd put triggers `Reduced`, which invokes `rf.invoke(this)`
-      ;; `partition-all` should flush its buffered `[3]` before the seal stub throws.
-      (is (thrown? UnsupportedOperationException (put! ch 3)))
+      ;; 3rd put triggers Reduced → completion flushes [3] → seal
+      (is (true? (put! ch 3)))
+      (is (false? (put! ch 4 false)) "Channel is sealed")
       (is (= [1 2] (take! ch)))
       (is (= [3] (take! ch))))))
 
