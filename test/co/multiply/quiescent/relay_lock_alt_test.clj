@@ -4,7 +4,7 @@
   (:import
     [co.multiply.quiescent.impl.channel
      RelayLock RelayLock$Node RelayLock$AltNode
-     Signal ChannelRef IChannel]
+     ChannelRef IChannel]
     [java.util.concurrent CountDownLatch TimeUnit]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean AtomicReference]))
 
@@ -116,7 +116,7 @@
                 _    (.acquireAlt lock alt)]
             ;; Simulate alt holding lock while visiting other channels.
             ;; In real usage, the alt thread would eventually release
-            ;; or park on a signal. Here we just hold indefinitely —
+            ;; or suspend. Here we just hold indefinitely —
             ;; dispatch will skip this dead alt and hand off to the
             ;; regular thread behind it.
             (Thread/sleep 60000))))
@@ -185,24 +185,24 @@
 
 
 ;; ================================================================
-;;  Signal with AltNode
+;;  Suspend/Resume with AltNode
 ;; ================================================================
 
 (deftest signal-wakes-alt-claim-succeeds-test
-  (testing "Signal with AltNode — claim succeeds, alt thread woken"
+  (testing "Suspend with AltNode — claim succeeds, alt thread woken"
     (let [ch      (stub-channel)
-          sig     (Signal. (RelayLock. ch))
+          lock    (RelayLock. ch)
           ref     (ChannelRef.)
           result  (AtomicBoolean. false)
           done    (CountDownLatch. 1)]
       (start-virtual-thread
         (fn []
           (let [alt (RelayLock$AltNode. (Thread/currentThread) ref)]
-            (.await sig alt)
+            (.suspend lock alt)
             (.set result true))
           (.countDown done)))
       (Thread/sleep 10)
-      (.signal sig)
+      (.resume lock)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result)
         "Alt thread should have been woken")
@@ -211,26 +211,25 @@
 
 
 (deftest signal-skips-dead-alt-wakes-thread-test
-  (testing "Signal with dead AltNode — skips to lock chain successor"
+  (testing "Resume with dead AltNode — skips to lock chain successor"
     (let [ch      (stub-channel)
           lock    (RelayLock. ch)
-          sig     (Signal. lock)
           ref     (ChannelRef.)
           ;; Pre-claim ref (by a different channel)
           _       (.claim ref (stub-channel))
           result  (AtomicBoolean. false)
           alt-parked (CountDownLatch. 1)
           successor-done (CountDownLatch. 1)]
-      ;; Alt thread: acquires lock, awaits on signal (parks)
+      ;; Alt thread: acquires lock, suspends (parks)
       (start-virtual-thread
         (fn []
           (let [alt-node (RelayLock$AltNode. (Thread/currentThread) ref)
                 _        (.acquireAlt lock alt-node)]
-            ;; Alt holds the lock, buffer "empty", await on signal
+            ;; Alt holds the lock, buffer "empty", suspend
             (.countDown alt-parked)
-            (.await sig alt-node)
-            ;; Alt wakes (from signal skip writing DONE, or spurious).
-            ;; Release the lock — may be redundant if signal already
+            (.suspend lock alt-node)
+            ;; Alt wakes (from resume skip writing DONE, or spurious).
+            ;; Release the lock — may be redundant if resume already
             ;; did the DONE handoff, but idempotent.
             (.release lock alt-node))))
       (.await alt-parked 5 TimeUnit/SECONDS)
@@ -245,9 +244,9 @@
                 (.release lock node))))
           (.countDown successor-done)))
       (Thread/sleep 10)
-      ;; Signal from producer side — should skip dead alt,
+      ;; Resume from producer side — should skip dead alt,
       ;; write DONE to altNode.state (waking successor).
-      (.signal sig)
+      (.resume lock)
       (is (.await successor-done 5 TimeUnit/SECONDS)
         "Successor should be woken after dead alt skipped")
       (is (.get result)
@@ -255,16 +254,17 @@
 
 
 (deftest signal-no-alt-still-works-test
-  (testing "Signal with regular thread still works after Alt support added"
-    (let [sig     (Signal.)
+  (testing "Suspend/resume with regular thread still works after Alt support added"
+    (let [lock    (RelayLock.)
           result  (AtomicBoolean. false)
           done    (CountDownLatch. 1)]
       (start-virtual-thread
         (fn []
-          (.await sig)
+          (let [node (RelayLock$Node. (Thread/currentThread))]
+            (.suspend lock node))
           (.set result true)
           (.countDown done)))
       (Thread/sleep 10)
-      (.signal sig)
+      (.resume lock)
       (is (.await done 5 TimeUnit/SECONDS))
       (is (.get result)))))
