@@ -39,15 +39,19 @@ public class RelayLock {
     }
 
     public static class Node {
+        final Thread thread;
         volatile Object state; // null | Thread | AltNode | DONE
+
+        Node(Thread thread) {
+            this.thread = thread;
+        }
     }
 
     public static class AltNode extends Node {
-        final Thread thread;
         final ChannelRef ref;
 
         public AltNode(Thread thread, ChannelRef ref) {
-            this.thread = thread;
+            super(thread);
             this.ref = ref;
         }
     }
@@ -55,7 +59,7 @@ public class RelayLock {
     volatile Node slot;
 
     public RelayLock() {
-        Node initial = new Node();
+        Node initial = new Node(null);
         initial.state = DONE;
         this.slot = initial;
     }
@@ -69,7 +73,7 @@ public class RelayLock {
      * while waiting, the interrupt flag is restored after acquiring.
      */
     public Node acquire() {
-        Node myNode = new Node();
+        Node myNode = new Node(Thread.currentThread());
         Node prev = (Node) SLOT.getAndSet(this, myNode);
         Object prevState = STATE.getAndSet(prev, Thread.currentThread());
         if (prevState == DONE) return myNode;

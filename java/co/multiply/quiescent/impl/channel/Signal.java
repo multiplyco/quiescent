@@ -8,42 +8,66 @@ import java.util.concurrent.locks.LockSupport;
  * Cross-lock signaling between producers and consumers.
  * <p>
  * When a thread holds its lock but can't proceed (buffer empty for
- * consumer, buffer full for producer), it calls {@link #await()} to
- * register and park. The other side calls {@link #signal(IChannel)}
+ * consumer, buffer full for producer), it calls {@link #await(RelayLock.Node)}
+ * to register and park. The other side calls {@link #signal(IChannel)}
  * after changing the buffer state to wake the waiting thread.
  * <p>
- * Internally, a single atomic field holds null (nobody waiting),
- * a Thread reference, or an AltNode. Both await and signal are a
- * single getAndSet.
+ * Internally, a single atomic field transitions between two states:
+ * SIGNALED (a distinguished Node sentinel — signal pending, no waiter)
+ * and a caller-provided Node (waiter registered). The SIGNALED sentinel
+ * eliminates the need for Dekker-style rechecks — if a signal fires
+ * between the buffer check and the await, the awaiting thread sees
+ * SIGNALED and returns without parking.
  */
 public class Signal {
+
+    static final RelayLock.Node SIGNALED;
 
     static final VarHandle REF;
 
     static {
+        SIGNALED = new RelayLock.Node(null);
+        SIGNALED.state = RelayLock.DONE;
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            REF = lookup.findVarHandle(Signal.class, "ref", Object.class);
+            REF = lookup.findVarHandle(Signal.class, "ref", RelayLock.Node.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
     }
 
-    volatile Object ref; // null | Thread | AltNode
+    volatile RelayLock.Node ref = SIGNALED;
 
     /**
-     * Register the current thread and park until signaled.
+     * Register the given node and park until signaled.
      * <p>
-     * The caller must re-check the buffer condition after waking,
-     * as wakeups may be spurious or due to cancellation.
+     * If a SIGNALED sentinel is found, the thread returns immediately
+     * without parking. The caller must re-check the buffer condition
+     * after returning, as wakeups may be spurious.
+     *
+     * @return true if the thread was interrupted while parked
+     */
+    public boolean await(RelayLock.Node node) {
+        RelayLock.Node prev = (RelayLock.Node) REF.getAndSet(this, node);
+        if (prev == SIGNALED) return false;
+        if (prev != node && prev.state != RelayLock.DONE) {
+            LockSupport.unpark(prev.thread);
+        }
+        boolean interrupted = false;
+        while (ref == node) {
+            LockSupport.park(this);
+            if (Thread.interrupted()) interrupted = true;
+        }
+        return interrupted;
+    }
+
+    /**
+     * Convenience await for standalone usage (without a RelayLock).
+     * Creates a temporary Node internally.
      */
     public void await() {
-        Thread self = Thread.currentThread();
-        Object prev = REF.getAndSet(this, self);
-        if (prev instanceof Thread t) {
-            LockSupport.unpark(t);
-        }
-        LockSupport.park(this);
+        RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
+        await(node);
     }
 
     /**
@@ -52,26 +76,46 @@ public class Signal {
      * The AltNode sits in both the signal field and the lock chain.
      * When signaled, the dispatcher will try to claim the Alt or
      * skip past it to the lock chain successor.
+     *
+     * @return true if the thread was interrupted while parked
      */
-    public void await(RelayLock.AltNode altNode) {
-        Object prev = REF.getAndSet(this, altNode);
-        if (prev instanceof Thread t) {
-            LockSupport.unpark(t);
+    public boolean await(RelayLock.AltNode altNode) {
+        RelayLock.Node prev = (RelayLock.Node) REF.getAndSet(this, altNode);
+        if (prev == SIGNALED) return false;
+        if (prev != altNode && prev.state != RelayLock.DONE) {
+            LockSupport.unpark(prev.thread);
         }
-        LockSupport.park(this);
+        boolean interrupted = false;
+        while (ref == altNode) {
+            LockSupport.park(this);
+            if (Thread.interrupted()) interrupted = true;
+        }
+        return interrupted;
     }
 
     /**
      * Wake the waiting thread or AltNode, if any.
      * <p>
-     * Uses the shared dispatch loop: handles Thread (unpark),
-     * AltNode (try claim or skip), and null (no-op).
+     * If no waiter is registered (SIGNALED), this is a no-op.
+     * If a waiter is found, wakes it directly.
      *
      * @param channel the channel identity for Alt claim, or null
      */
     public void signal(IChannel channel) {
-        Object prev = REF.getAndSet(this, null);
-        RelayLock.dispatch(prev, channel);
+        RelayLock.Node prev = (RelayLock.Node) REF.getAndSet(this, SIGNALED);
+        if (prev == SIGNALED) return;
+        if (prev instanceof RelayLock.AltNode alt) {
+            if (channel != null && alt.ref.claim(channel)) {
+                LockSupport.unpark(alt.thread);
+                return;
+            }
+            // Dead alt — release its lock node and follow the successor chain
+            Object waiter = RelayLock.STATE.getAndSet(alt, RelayLock.DONE);
+            RelayLock.dispatch(waiter, channel);
+        } else {
+            if (prev.state == RelayLock.DONE) return; // stale
+            LockSupport.unpark(prev.thread);
+        }
     }
 
     /**
