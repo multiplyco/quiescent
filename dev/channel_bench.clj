@@ -146,6 +146,14 @@
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 64}]}
    {:scenario  "200×1P1C buf=1" :group :system :type :parallel
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 1}]}
+   {:scenario  "24×16P1C" :group :system :type :parallel
+    :workloads [{:count 24 :producers 16 :consumers 1 :n 100000 :buffer 1024}]}
+   {:scenario  "24×32P1C" :group :system :type :parallel
+    :workloads [{:count 24 :producers 32 :consumers 1 :n 100000 :buffer 1024}]}
+   {:scenario  "24×64P1C" :group :system :type :parallel
+    :workloads [{:count 24 :producers 64 :consumers 1 :n 100000 :buffer 1024}]}
+   {:scenario  "24×128P1C" :group :system :type :parallel
+    :workloads [{:count 24 :producers 128 :consumers 1 :n 100000 :buffer 1024}]}
 
    ;; --- Transducer ---
    {:scenario  "XF map 1P1C" :group :transducer :type :xform :xf (map inc)

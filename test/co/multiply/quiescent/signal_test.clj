@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [deftest is testing]])
   (:import
-    [co.multiply.quiescent.impl.channel RelayLock Signal]
+    [co.multiply.quiescent.impl.channel RelayLock RelayLock$Node]
     [java.util.concurrent CountDownLatch TimeUnit]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
 
@@ -13,50 +13,51 @@
 
 
 (deftest signal-before-await-test
-  (testing "Signal before await — park returns immediately (banked permit)"
-    (let [sig     (Signal.)
+  (testing "Resume before suspend — returns immediately (banked permit)"
+    (let [lock    (RelayLock.)
           result  (AtomicBoolean. false)
           done    (CountDownLatch. 1)]
       (start-virtual-thread
         (fn []
           (Thread/sleep 10)
-          (.signal sig)))
+          (.resume lock)))
       (start-virtual-thread
         (fn []
-          (.await sig)
+          (let [node (RelayLock$Node. (Thread/currentThread))]
+            (.suspend lock node))
           (.set result true)
           (.countDown done)))
       (is (.await done 5 TimeUnit/SECONDS)
-        "Await should complete within timeout")
+        "Suspend should complete within timeout")
       (is (.get result)))))
 
 
 (deftest await-then-signal-test
-  (testing "Await parks, signal wakes"
-    (let [sig     (Signal.)
+  (testing "Suspend parks, resume wakes"
+    (let [lock    (RelayLock.)
           result  (AtomicBoolean. false)
           started (CountDownLatch. 1)
           done    (CountDownLatch. 1)]
       (start-virtual-thread
         (fn []
           (.countDown started)
-          (.await sig)
+          (let [node (RelayLock$Node. (Thread/currentThread))]
+            (.suspend lock node))
           (.set result true)
           (.countDown done)))
       (.await started 5 TimeUnit/SECONDS)
       (Thread/sleep 10)
-      (.signal sig)
+      (.resume lock)
       (is (.await done 5 TimeUnit/SECONDS)
-        "Await should complete within timeout")
+        "Suspend should complete within timeout")
       (is (.get result)
-        "Awaiting thread should have woken up"))))
+        "Suspended thread should have woken up"))))
 
 
 (deftest locked-producer-consumer-test
-  (testing "RelayLock + Signal: locked producer/consumer with buffer"
+  (testing "RelayLock acquire/suspend/resume/release: locked producer/consumer with buffer"
     (let [put-lock  (RelayLock.)
           take-lock (RelayLock.)
-          sig       (Signal.)
           buffer    (long-array 8)
           capacity  (alength buffer)
           count     (AtomicLong. 0) ;; current buffer occupancy
@@ -75,14 +76,14 @@
                 ;; Wait for space
                 (loop []
                   (when (>= (.get count) capacity)
-                    (.await sig)
+                    (.suspend put-lock node)
                     (recur)))
                 ;; Deposit
                 (let [idx (mod (.getAndIncrement put-idx) capacity)]
                   (aset buffer idx (long i)))
                 (.incrementAndGet count)
                 (.incrementAndGet produced)
-                (.signal sig)
+                (.resume take-lock)
                 (finally
                   (.release put-lock node)))))
           (.countDown done)))
@@ -95,14 +96,14 @@
                 ;; Wait for value
                 (loop []
                   (when (<= (.get count) 0)
-                    (.await sig)
+                    (.suspend take-lock node)
                     (recur)))
                 ;; Consume
                 (let [idx (mod (.getAndIncrement take-idx) capacity)]
                   (aget buffer idx))
                 (.decrementAndGet count)
                 (.incrementAndGet consumed)
-                (.signal sig)
+                (.resume put-lock)
                 (finally
                   (.release take-lock node)))))
           (.countDown done)))
@@ -115,10 +116,9 @@
 
 
 (deftest locked-mpmc-test
-  (testing "RelayLock + Signal: multiple producers and consumers"
+  (testing "RelayLock acquire/suspend/resume/release: multiple producers and consumers"
     (let [put-lock  (RelayLock.)
           take-lock (RelayLock.)
-          sig       (Signal.)
           buffer    (long-array 8)
           capacity  (alength buffer)
           count     (AtomicLong. 0)
@@ -139,12 +139,12 @@
                 (try
                   (loop []
                     (when (>= (.get count) capacity)
-                      (.await sig)
+                      (.suspend put-lock node)
                       (recur)))
                   (let [idx (mod (.getAndIncrement put-idx) capacity)]
                     (aset buffer idx (long i)))
                   (.incrementAndGet count)
-                  (.signal sig)
+                  (.resume take-lock)
                   (finally
                     (.release put-lock node)))))
             (.countDown done))))
@@ -157,13 +157,13 @@
                 (try
                   (loop []
                     (when (<= (.get count) 0)
-                      (.await sig)
+                      (.suspend take-lock node)
                       (recur)))
                   (let [idx (mod (.getAndIncrement take-idx) capacity)]
                     (aget buffer idx))
                   (.decrementAndGet count)
                   (.incrementAndGet consumed)
-                  (.signal sig)
+                  (.resume put-lock)
                   (finally
                     (.release take-lock node)))))
             (.countDown done))))
@@ -174,9 +174,9 @@
 
 
 (deftest rapid-signal-no-waiter-test
-  (testing "Rapid signals with nobody waiting — no crash"
-    (let [sig (Signal.)
-          n   10000]
+  (testing "Rapid resumes with nobody suspended — no crash"
+    (let [lock (RelayLock.)
+          n    10000]
       (dotimes [_ n]
-        (.signal sig))
+        (.resume lock))
       (is true "Completed without error"))))

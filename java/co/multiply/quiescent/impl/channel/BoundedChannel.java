@@ -9,15 +9,13 @@ import java.lang.invoke.VarHandle;
 /**
  * Bounded channel backed by a ring buffer with separate put/take locks.
  * <p>
- * Uses {@link RelayLock} for FIFO mutual exclusion and {@link Signal}
- * for cross-lock coordination. The lock is held while parked on the
- * signal — this is safe because producers and consumers use separate
- * locks.
+ * Uses {@link RelayLock} for FIFO mutual exclusion and cross-lock
+ * coordination (suspend/resume). The lock is held while suspended —
+ * this is safe because producers and consumers use separate locks.
  * <p>
  * When the buffer is empty (consumer) or full (producer), the thread
- * awaits on the signal with its lock node. Signal's SIGNALED sentinel
- * handles the race between buffer check and park — no Dekker recheck
- * needed.
+ * suspends with its lock node. The SIGNALED sentinel handles the race
+ * between buffer check and park — no Dekker recheck needed.
  * <p>
  * When a transducer is supplied, the reducing function wraps
  * {@link #putDirect}, which writes one value at a time to the ring
@@ -43,9 +41,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
     }
 
-    // ---- Locks + Signals ----
-    final Signal putSignal;
-    final Signal takeSignal;
+    // ---- Locks ----
     final RelayLock putLock;
     final RelayLock takeLock;
 
@@ -87,8 +83,6 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.rf = null;
         this.putLock = new RelayLock(this);
         this.takeLock = new RelayLock(this);
-        this.putSignal = new Signal(putLock);
-        this.takeSignal = new Signal(takeLock);
     }
 
     public BoundedChannel(int requestedSize, Object xf) {
@@ -99,8 +93,6 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.buffer = new Object[capacity];
         this.putLock = new RelayLock(this);
         this.takeLock = new RelayLock(this);
-        this.putSignal = new Signal(putLock);
-        this.takeSignal = new Signal(takeLock);
         if (xf != null) {
             IFn baseRf = new AFn() {
                 public Object invoke(Object acc) {
@@ -127,8 +119,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     /**
-     * Write one value to the ring buffer, parking on putSignal if full.
-     * Signals takeSignal when the buffer transitions from empty to non-empty.
+     * Write one value to the ring buffer, suspending on putLock if full.
+     * Resumes takeLock when the buffer transitions from empty to non-empty.
      * <p>
      * Called under putLock. On interrupt, sets {@code putInterrupted} and
      * returns false without restoring the flag — the caller decides how
@@ -143,11 +135,11 @@ public class BoundedChannel implements IChannel, IBuffered {
                 buffer[(int)(t & mask)] = value;
                 TAIL.setVolatile(this, t + 1);
                 if (t + 1 - (long) HEAD.getVolatile(this) == 1) {
-                    takeSignal.signal();
+                    takeLock.resume();
                 }
                 return true;
             }
-            if (putSignal.await(node)) {
+            if (putLock.suspend(node)) {
                 putInterrupted = true;
                 return false;
             }
@@ -213,15 +205,15 @@ public class BoundedChannel implements IChannel, IBuffered {
                     return value;
                 }
                 if (state >= SEALED) return IChannel.CANCELLED;
-                // Buffer empty — await signal from producer
-                if (takeSignal.await(node)) {
+                // Buffer empty — suspend until producer resumes
+                if (takeLock.suspend(node)) {
                     Thread.currentThread().interrupt();
                     return IChannel.CANCELLED;
                 }
             }
         } finally {
             takeLock.release(node);
-            if (signalPut) putSignal.signal();
+            if (signalPut) putLock.resume();
         }
     }
 
@@ -248,8 +240,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (this.state == CANCELLED) return false;
         this.state = CANCELLED;
         VarHandle.fullFence();
-        putSignal.signal();
-        takeSignal.signal();
+        putLock.resume();
+        takeLock.resume();
         return true;
     }
 
@@ -258,8 +250,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (this.state != OPEN) return false;
         this.state = SEALED;
         VarHandle.fullFence();
-        putSignal.signal();
-        takeSignal.signal();
+        putLock.resume();
+        takeLock.resume();
         return true;
     }
 
