@@ -44,10 +44,10 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     // ---- Locks + Signals ----
-    final RelayLock putLock = new RelayLock();
-    final RelayLock takeLock = new RelayLock();
-    final Signal putSignal = new Signal();
-    final Signal takeSignal = new Signal();
+    final Signal putSignal;
+    final Signal takeSignal;
+    final RelayLock putLock;
+    final RelayLock takeLock;
 
     // ---- Producer-side ----
     volatile long tail;
@@ -85,6 +85,10 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
         this.rf = null;
+        this.putLock = new RelayLock(this);
+        this.takeLock = new RelayLock(this);
+        this.putSignal = new Signal(putLock);
+        this.takeSignal = new Signal(takeLock);
     }
 
     public BoundedChannel(int requestedSize, Object xf) {
@@ -93,6 +97,10 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.capacity = nextPowerOf2(requestedSize);
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
+        this.putLock = new RelayLock(this);
+        this.takeLock = new RelayLock(this);
+        this.putSignal = new Signal(putLock);
+        this.takeSignal = new Signal(takeLock);
         if (xf != null) {
             IFn baseRf = new AFn() {
                 public Object invoke(Object acc) {
@@ -135,7 +143,7 @@ public class BoundedChannel implements IChannel, IBuffered {
                 buffer[(int)(t & mask)] = value;
                 TAIL.setVolatile(this, t + 1);
                 if (t + 1 - (long) HEAD.getVolatile(this) == 1) {
-                    takeSignal.signal(this);
+                    takeSignal.signal();
                 }
                 return true;
             }
@@ -213,7 +221,7 @@ public class BoundedChannel implements IChannel, IBuffered {
             }
         } finally {
             takeLock.release(node);
-            if (signalPut) putSignal.signal(this);
+            if (signalPut) putSignal.signal();
         }
     }
 
@@ -240,8 +248,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (this.state == CANCELLED) return false;
         this.state = CANCELLED;
         VarHandle.fullFence();
-        putSignal.signal(this);
-        takeSignal.signal(this);
+        putSignal.signal();
+        takeSignal.signal();
         return true;
     }
 
@@ -250,8 +258,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (this.state != OPEN) return false;
         this.state = SEALED;
         VarHandle.fullFence();
-        putSignal.signal(this);
-        takeSignal.signal(this);
+        putSignal.signal();
+        takeSignal.signal();
         return true;
     }
 

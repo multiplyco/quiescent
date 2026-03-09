@@ -36,7 +36,16 @@ public class Signal {
         }
     }
 
+    final RelayLock lock;
     volatile RelayLock.Node ref = SIGNALED;
+
+    public Signal(RelayLock lock) {
+        this.lock = lock;
+    }
+
+    public Signal() {
+        this(null);
+    }
 
     /**
      * Register the given node and park until signaled.
@@ -97,11 +106,11 @@ public class Signal {
      * Wake the waiting thread or AltNode, if any.
      * <p>
      * If no waiter is registered (SIGNALED), this is a no-op.
-     * If a waiter is found, wakes it directly.
-     *
-     * @param channel the channel identity for Alt claim, or null
+     * If a waiter is found, wakes it directly. For AltNodes, uses
+     * the lock's channel for claim dispatch.
      */
-    public void signal(IChannel channel) {
+    public void signal() {
+        IChannel channel = lock != null ? lock.channel : null;
         RelayLock.Node prev = (RelayLock.Node) REF.getAndSet(this, SIGNALED);
         if (prev == SIGNALED) return;
         if (prev instanceof RelayLock.AltNode alt) {
@@ -116,12 +125,5 @@ public class Signal {
             if (prev.state == RelayLock.DONE) return; // stale
             LockSupport.unpark(prev.thread);
         }
-    }
-
-    /**
-     * Wake the waiting thread, if any (non-Alt path).
-     */
-    public void signal() {
-        signal(null);
     }
 }

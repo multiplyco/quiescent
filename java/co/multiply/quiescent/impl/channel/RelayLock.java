@@ -56,12 +56,19 @@ public class RelayLock {
         }
     }
 
+    final IChannel channel;
+
     volatile Node slot;
 
-    public RelayLock() {
+    public RelayLock(IChannel channel) {
+        this.channel = channel;
         Node initial = new Node(null);
         initial.state = DONE;
         this.slot = initial;
+    }
+
+    public RelayLock() {
+        this(null);
     }
 
     /**
@@ -86,7 +93,7 @@ public class RelayLock {
      * thread's node in the chain, and is written onto the predecessor's
      * state (instead of a Thread reference).
      * <p>
-     * Returns the AltNode for passing to {@link #release(Node, IChannel)}.
+     * Returns the AltNode for passing to {@link #release(Node)}.
      */
     public AltNode acquireAlt(AltNode altNode) {
         Node prev = (Node) SLOT.getAndSet(this, altNode);
@@ -110,19 +117,11 @@ public class RelayLock {
      * on the successor: unpark Thread, try-claim AltNode, or skip
      * dead AltNodes by writing DONE and following the chain.
      *
-     * @param node    the node returned by acquire() or acquireAlt()
-     * @param channel the channel identity for Alt claim, or null
-     */
-    public void release(Node node, IChannel channel) {
-        Object successor = STATE.getAndSet(node, DONE);
-        dispatch(successor, channel);
-    }
-
-    /**
-     * Release the lock (non-Alt path, no claim).
+     * @param node the node returned by acquire() or acquireAlt()
      */
     public void release(Node node) {
-        release(node, null);
+        Object successor = STATE.getAndSet(node, DONE);
+        dispatch(successor, channel);
     }
 
     /**
