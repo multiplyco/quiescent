@@ -122,9 +122,10 @@ public class BoundedChannel implements IChannel, IBuffered {
      * Write one value to the ring buffer, suspending on putLock if full.
      * Resumes takeLock when the buffer transitions from empty to non-empty.
      * <p>
-     * Called under putLock. On interrupt, sets {@code putInterrupted} and
-     * returns false without restoring the flag — the caller decides how
-     * to handle it.
+     * Called under putLock. Interrupts are deferred: if interrupted during
+     * suspend, sets {@code putInterrupted} and continues until the value
+     * is written or the channel closes. Returns true if written, false
+     * only when {@code state != OPEN}.
      */
     private boolean putDirect(Object value, RelayLock.Node node) {
         while (true) {
@@ -141,7 +142,6 @@ public class BoundedChannel implements IChannel, IBuffered {
             }
             if (putLock.suspend(node)) {
                 putInterrupted = true;
-                return false;
             }
         }
     }
@@ -159,11 +159,7 @@ public class BoundedChannel implements IChannel, IBuffered {
             seal();
             return true;
         }
-        if (putInterrupted) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-        return true;
+        return state == OPEN;
     }
 
     /**
@@ -171,17 +167,62 @@ public class BoundedChannel implements IChannel, IBuffered {
      * parking if the buffer is full.
      */
     @Override
-    public boolean put(Object value) {
-        RelayLock.Node node = putLock.acquire();
-        try {
+    public boolean put(Object value) throws InterruptedException {
+        if (Thread.interrupted()) throw new InterruptedException();
+        if (rf != null) {
+            // Transducer path — no combining (xf may expand values)
+            RelayLock.Node node = putLock.acquire();
             putInterrupted = false;
-            if (rf != null) return putXf(value, node);
-            boolean ok = putDirect(value, node);
-            if (putInterrupted) Thread.currentThread().interrupt();
-            return ok;
-        } finally {
-            putLock.release(node);
+            try {
+                return putXf(value, node);
+            } finally {
+                node.release();
+                if (putInterrupted) Thread.currentThread().interrupt();
+            }
         }
+
+        // Direct path with combining
+        RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
+        node.value = value;
+        putLock.acquire(node);
+
+        if (node.combined) return true;
+
+        putInterrupted = false;
+        boolean ok = putDirect(value, node);
+
+        // Walk successors if own value was written
+        RelayLock.Node last = node;
+        if (ok) {
+            last = putCombine(node);
+        }
+        last.release();
+        if (putInterrupted) Thread.currentThread().interrupt();
+        return ok;
+    }
+
+    private RelayLock.Node putCombine(RelayLock.Node node) {
+        long t = tail;
+        long h = (long) HEAD.getAcquire(this);
+        RelayLock.Node current = node;
+        long newTail = t;
+
+        while (newTail - h < capacity && state == OPEN) {
+            Object succObj = current.state;
+            if (!(succObj instanceof RelayLock.Node succ)) break;
+            buffer[(int)(newTail & mask)] = succ.value;
+            newTail++;
+            succ.combined = true;
+            succ.wake();
+            current = succ;
+        }
+
+        if (newTail > t) {
+            TAIL.setVolatile(this, newTail);
+            takeLock.resume();
+        }
+
+        return current;
     }
 
     // ================================================================
@@ -189,32 +230,67 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     @Override
-    public Object take() {
-        RelayLock.Node node = takeLock.acquire();
-        boolean signalPut = false;
-        try {
-            while (true) {
-                if (state == CANCELLED) return IChannel.CANCELLED;
-                long h = head;
-                long t = (long) TAIL.getAcquire(this);
-                if (t - h > 0) {
-                    Object value = buffer[(int)(h & mask)];
-                    buffer[(int)(h & mask)] = null;
-                    HEAD.setVolatile(this, h + 1);
-                    signalPut = ((long) TAIL.getVolatile(this) - (h + 1)) == capacity - 1;
-                    return value;
-                }
-                if (state >= SEALED) return IChannel.CANCELLED;
-                // Buffer empty — suspend until producer resumes
-                if (takeLock.suspend(node)) {
-                    Thread.currentThread().interrupt();
-                    return IChannel.CANCELLED;
-                }
+    public Object take() throws InterruptedException {
+        if (Thread.interrupted()) throw new InterruptedException();
+        RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
+        takeLock.acquire(node);
+
+        if (node.combined) return node.value;
+
+        boolean interrupted = false;
+        while (true) {
+            if (state == CANCELLED) {
+                node.release();
+                if (interrupted) Thread.currentThread().interrupt();
+                return IChannel.CANCELLED;
             }
-        } finally {
-            takeLock.release(node);
-            if (signalPut) putLock.resume();
+            long h = head;
+            long t = (long) TAIL.getAcquire(this);
+            if (t - h > 0) {
+                Object ownValue = buffer[(int)(h & mask)];
+                buffer[(int)(h & mask)] = null;
+
+                RelayLock.Node last = takeCombine(node, h + 1, t);
+
+                if (last == node) HEAD.setVolatile(this, h + 1);
+
+                boolean signalPut = ((long) TAIL.getVolatile(this) - h) >= capacity;
+                last.release();
+                if (signalPut) putLock.resume();
+                if (interrupted) Thread.currentThread().interrupt();
+                return ownValue;
+            }
+            if (state >= SEALED) {
+                node.release();
+                if (interrupted) Thread.currentThread().interrupt();
+                return IChannel.CANCELLED;
+            }
+            if (takeLock.suspend(node)) {
+                interrupted = true;
+            }
         }
+    }
+
+    private RelayLock.Node takeCombine(RelayLock.Node node, long startHead, long t) {
+        long newHead = startHead;
+        RelayLock.Node current = node;
+
+        while (newHead < t && state != CANCELLED) {
+            Object succObj = current.state;
+            if (!(succObj instanceof RelayLock.Node succ)) break;
+            succ.value = buffer[(int)(newHead & mask)];
+            buffer[(int)(newHead & mask)] = null;
+            newHead++;
+            succ.combined = true;
+            succ.wake();
+            current = succ;
+        }
+
+        if (newHead > startHead) {
+            HEAD.setVolatile(this, newHead);
+        }
+
+        return current;
     }
 
     // ================================================================

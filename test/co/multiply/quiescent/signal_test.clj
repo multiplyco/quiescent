@@ -87,7 +87,7 @@
                 (.incrementAndGet produced)
                 (.resume take-lock)
                 (finally
-                  (.release put-lock node)))))
+                  (.release node)))))
           (.countDown done)))
       ;; Consumer
       (start-virtual-thread
@@ -107,7 +107,7 @@
                 (.incrementAndGet consumed)
                 (.resume put-lock)
                 (finally
-                  (.release take-lock node)))))
+                  (.release node)))))
           (.countDown done)))
       (.await done)
       (is (= target (.get produced))
@@ -147,7 +147,7 @@
                   (.incrementAndGet count)
                   (.resume take-lock)
                   (finally
-                    (.release put-lock node)))))
+                    (.release node)))))
             (.countDown done))))
       ;; Consumers
       (dotimes [_ n-cons]
@@ -166,7 +166,7 @@
                   (.incrementAndGet consumed)
                   (.resume put-lock)
                   (finally
-                    (.release take-lock node)))))
+                    (.release node)))))
             (.countDown done))))
       (.await done)
       (is (= total (.get consumed))

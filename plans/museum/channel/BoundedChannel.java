@@ -20,7 +20,7 @@ public class BoundedChannel extends AbstractBoundedChannel {
     }
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         long slot = (long) PRODUCER_SEQ.getAndAdd(this, 1L);
         if (slot < 0) return false; // sealed or cancelled
 

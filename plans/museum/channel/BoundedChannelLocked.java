@@ -71,7 +71,7 @@ public class BoundedChannelLocked implements IChannel, IBuffered {
     // ---- IChannel: Core operations ----
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         final AtomicInteger count = this.count;
         int c;
         putLock.lock();
@@ -96,7 +96,7 @@ public class BoundedChannelLocked implements IChannel, IBuffered {
     }
 
     @Override
-    public Object take() {
+    public Object take() throws InterruptedException {
         final AtomicInteger count = this.count;
         int c;
         Object value;
