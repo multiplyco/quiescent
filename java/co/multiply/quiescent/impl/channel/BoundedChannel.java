@@ -162,26 +162,10 @@ public class BoundedChannel implements IChannel, IBuffered {
         return state == OPEN;
     }
 
-    /**
-     * Direct put path. Takes an object and puts it on the channel, possibly
-     * parking if the buffer is full.
-     */
     @Override
     public boolean put(Object value) throws InterruptedException {
         if (Thread.interrupted()) throw new InterruptedException();
-        if (rf != null) {
-            // Transducer path — no combining (xf may expand values)
-            RelayLock.Node node = putLock.acquire();
-            putInterrupted = false;
-            try {
-                return putXf(value, node);
-            } finally {
-                node.release();
-                if (putInterrupted) Thread.currentThread().interrupt();
-            }
-        }
 
-        // Direct path with combining
         RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
         node.value = value;
         putLock.acquire(node);
@@ -189,12 +173,16 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (node.combined) return true;
 
         putInterrupted = false;
-        boolean ok = putDirect(value, node);
+        boolean ok;
+        if (rf != null) {
+            ok = putXf(value, node);
+        } else {
+            ok = putDirect(value, node);
+        }
 
-        // Walk successors if own value was written
         RelayLock.Node last = node;
         if (ok) {
-            last = putCombine(node);
+            last = rf != null ? putCombineXf(node) : putCombine(node);
         }
         last.release();
         if (putInterrupted) Thread.currentThread().interrupt();
@@ -220,6 +208,26 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (newTail > t) {
             TAIL.setVolatile(this, newTail);
             takeLock.resume();
+        }
+
+        return current;
+    }
+
+    private RelayLock.Node putCombineXf(RelayLock.Node node) {
+        RelayLock.Node current = node;
+
+        while (state == OPEN) {
+            Object succObj = current.state;
+            if (!(succObj instanceof RelayLock.Node succ)) break;
+            Object result = rf.invoke(this, succ.value);
+            succ.combined = true;
+            succ.wake();
+            current = succ;
+            if (RT.isReduced(result)) {
+                rf.invoke(this);
+                seal();
+                break;
+            }
         }
 
         return current;
