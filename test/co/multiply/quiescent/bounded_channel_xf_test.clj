@@ -1,15 +1,16 @@
 (ns co.multiply.quiescent.bounded-channel-xf-test
   (:require
-    [clojure.test :refer [deftest is testing]]
+    [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent :as q]
     [co.multiply.quiescent.channel :refer [buf-count capacity chan pipe put! saturation seal! take!]]
-    [co.multiply.quiescent.test-support :refer [allow-platform-park]])
+    [co.multiply.quiescent.test-support :refer [allow-platform-park timeout-fixture]])
   (:import
     [co.multiply.quiescent.impl.channel IChannel]
     [java.util.concurrent CancellationException]))
 
 
 (allow-platform-park)
+(use-fixtures :each (timeout-fixture))
 
 
 ;; # map
@@ -38,7 +39,7 @@
     (is (true? (put! ch 3)))
     ;; Even value passes through
     (put! ch 4)
-    (is (= 4 (deref done 1000 :timeout)))))
+    (is (= 4 @done))))
 
 
 (deftest filter-does-not-buffer-filtered-values-test
@@ -70,7 +71,7 @@
       (q/task (deliver done (mapv (fn [_] (take! ch)) (range 4))))
       ;; Single put produces 4 values into a buffer of 2
       (put! ch :x)
-      (is (= [:x :x :x :x] (deref done 1000 :timeout))))))
+      (is (= [:x :x :x :x] @done)))))
 
 
 ;; # partition-all (stateful)

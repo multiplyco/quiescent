@@ -28,6 +28,23 @@
               (q/throw-on-platform-park! true)))))
 
 
+#?(:clj (defn timeout-fixture
+          "Returns an :each fixture that fails tests exceeding timeout-ms (default 5000).
+           Useful for detecting deadlocks.
+
+           Use with: (use-fixtures :each (timeout-fixture))
+                 or: (use-fixtures :each (timeout-fixture 10000))"
+          ([] (timeout-fixture 5000))
+          ([timeout-ms]
+           (fn [f]
+             (let [fut    (future (f))
+                   result (deref fut timeout-ms ::timeout)]
+               (when (= result ::timeout)
+                 (future-cancel fut)
+                 (throw (ex-info (str "Test timed out after " timeout-ms "ms")
+                                 {:timeout-ms timeout-ms}))))))))
+
+
 (defmacro allow-platform-park
   []
   (if-cljs

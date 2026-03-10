@@ -1,15 +1,16 @@
 (ns co.multiply.quiescent.bounded-channel-test
   (:require
-    [clojure.test :refer [deftest is testing]]
+    [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent :as q]
     [co.multiply.quiescent.channel :refer [buf-count cancel! cancelled? capacity chan pipe poll put! seal! sealed? saturation take!]]
-    [co.multiply.quiescent.test-support :refer [allow-platform-park]])
+    [co.multiply.quiescent.test-support :refer [allow-platform-park timeout-fixture]])
   (:import
     [co.multiply.quiescent.impl.channel IChannel]
     [java.util.concurrent CancellationException]))
 
 
 (allow-platform-park)
+(use-fixtures :each (timeout-fixture))
 
 
 ;; # Construction
@@ -67,7 +68,7 @@
       ;; Consumer frees slot 0
       (is (= :a (take! ch)))
       ;; Producer should now unpark and write :c to slot 0
-      (is (deref woken 1000 :timeout) "Producer should unpark after slot freed")
+      (is @woken "Producer should unpark after slot freed")
       (is (= :b (take! ch)))
       (is (= :c (take! ch))))))
 
@@ -131,7 +132,7 @@
     (Thread/sleep 10)
     (is (not (realized? done)) "Producer should be parked")
     (is (= :first (take! ch)))
-    (is (= true (deref done 1000 :timeout)) "Producer should unpark after take")
+    (is (true? @done) "Producer should unpark after take")
     (is (= :second (take! ch)))))
 
 
@@ -142,7 +143,7 @@
     (Thread/sleep 10)
     (is (not (realized? result)) "Consumer should be parked")
     (put! ch :value)
-    (is (= :value (deref result 1000 :timeout)))))
+    (is (= :value @result))))
 
 
 ;; # MPMC concurrency
@@ -208,7 +209,7 @@
     (Thread/sleep 10)
     (is (not (realized? result)) "Consumer should be parked")
     (IChannel/.cancel ch nil)
-    (is (identical? IChannel/CANCELLED (deref result 1000 :timeout)))))
+    (is (identical? IChannel/CANCELLED @result))))
 
 
 (deftest cancel-wakes-parked-producer-test
@@ -219,7 +220,7 @@
     (Thread/sleep 10)
     (is (not (realized? result)) "Producer should be parked")
     (IChannel/.cancel ch nil)
-    (is (false? (deref result 1000 :timeout)))))
+    (is (false? @result))))
 
 
 (deftest cancel-idempotent-test
@@ -269,7 +270,7 @@
     (Thread/sleep 10)
     (is (not (realized? result)) "Producer should be parked")
     (IChannel/.seal ch)
-    (is (false? (deref result 1000 :timeout)))))
+    (is (false? @result))))
 
 
 (deftest seal-idempotent-test
@@ -373,6 +374,6 @@
         sink (chan 4)
         p   (pipe src sink)]
     (seal! src)
-    (is (deref p 1000 :timeout) "Pipe task should complete")))
+    (is @p "Pipe task should complete")))
 
 

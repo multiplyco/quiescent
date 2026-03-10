@@ -81,8 +81,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
         this.rf = null;
-        this.putLock = new RelayLock(this);
-        this.takeLock = new RelayLock(this);
+        this.putLock = new RelayLock();
+        this.takeLock = new RelayLock();
     }
 
     public BoundedChannel(int requestedSize, Object xf) {
@@ -91,8 +91,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         this.capacity = nextPowerOf2(requestedSize);
         this.mask = capacity - 1;
         this.buffer = new Object[capacity];
-        this.putLock = new RelayLock(this);
-        this.takeLock = new RelayLock(this);
+        this.putLock = new RelayLock();
+        this.takeLock = new RelayLock();
         if (xf != null) {
             IFn baseRf = new AFn() {
                 public Object invoke(Object acc) {
@@ -215,20 +215,6 @@ public class BoundedChannel implements IChannel, IBuffered {
             takeLock.release(node);
             if (signalPut) putLock.resume();
         }
-    }
-
-    // ================================================================
-    //  ALT (stripped — to be reintroduced)
-    // ================================================================
-
-    @Override
-    public Object altTake(ChannelRef ref) {
-        throw new UnsupportedOperationException("Alt not yet implemented for RelayLock");
-    }
-
-    @Override
-    public boolean altPut(Object value, ChannelRef ref) {
-        throw new UnsupportedOperationException("Alt not yet implemented for RelayLock");
     }
 
     // ================================================================

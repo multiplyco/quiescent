@@ -1,10 +1,14 @@
 (ns co.multiply.quiescent.bounded-channel-stampede-test
   (:require
-    [clojure.test :refer [deftest is testing]])
+    [clojure.test :refer [deftest is testing use-fixtures]]
+    [co.multiply.quiescent.test-support :refer [timeout-fixture]])
   (:import
     [co.multiply.quiescent.impl.channel BoundedChannel IChannel]
-    [java.util.concurrent CountDownLatch TimeUnit]
+    [java.util.concurrent CountDownLatch]
     [java.util.concurrent.atomic AtomicLong]))
+
+
+(use-fixtures :each (timeout-fixture))
 
 
 (defn- start-virtual-thread
@@ -33,8 +37,7 @@
               (when (not (identical? v IChannel/CANCELLED))
                 (.incrementAndGet counter))))
           (.countDown latch)))
-      (is (.await latch 15 TimeUnit/SECONDS)
-        "All threads should complete within 15 seconds")
+      (.await latch)
       (is (= (* 2 n-puts) (.get counter))))))
 
 
@@ -59,8 +62,7 @@
                 (when (not (identical? v IChannel/CANCELLED))
                   (.incrementAndGet counter))))
             (.countDown latch))))
-      (is (.await latch 15 TimeUnit/SECONDS)
-        "All threads should complete within 15 seconds")
+      (.await latch)
       (is (= n-puts (.get counter))))))
 
 
@@ -88,6 +90,5 @@
                 (when (not (identical? v IChannel/CANCELLED))
                   (.incrementAndGet counter))))
             (.countDown latch))))
-      (is (.await latch 30 TimeUnit/SECONDS)
-        "All threads should complete within 30 seconds")
+      (.await latch)
       (is (= total (.get counter))))))
