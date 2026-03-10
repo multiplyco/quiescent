@@ -11,7 +11,7 @@ import java.util.concurrent.locks.LockSupport;
  * per lock cycle. Threads form an implicit chain by swapping nodes into
  * a shared slot. Each node is a one-shot rendezvous point between
  * consecutive threads: the owner writes DONE when finished, the
- * successor writes its thread reference when it arrives. Both use
+ * successor writes its node reference when it arrives. Both use
  * getAndSet; the return value tells each side whether the other has
  * already acted. No spinning, no CAS, no queue structure. FIFO
  * ordering falls out of arrival order at the slot.
@@ -52,36 +52,24 @@ public class RelayLock {
 
     public static class Node {
         final Thread thread;
-        volatile Object state; // null | Thread | AltNode | DONE
+        volatile Object state; // null | Node | DONE
+        Object value;          // payload for combining (put value or take result)
+        boolean combined;      // set by combiner before waking; visibility
+                               // guaranteed by happens-before through the
+                               // volatile write of DONE to predecessor's state
 
         public Node(Thread thread) {
             this.thread = thread;
         }
     }
 
-    public static class AltNode extends Node {
-        final ChannelRef ref;
-
-        public AltNode(Thread thread, ChannelRef ref) {
-            super(thread);
-            this.ref = ref;
-        }
-    }
-
-    final IChannel channel;
-
     volatile Node slot;
     volatile Node ref = SIGNALED;
 
-    public RelayLock(IChannel channel) {
-        this.channel = channel;
+    public RelayLock() {
         Node initial = new Node(null);
         initial.state = DONE;
         this.slot = initial;
-    }
-
-    public RelayLock() {
-        this(null);
     }
 
     /**
@@ -95,30 +83,15 @@ public class RelayLock {
     public Node acquire() {
         Node myNode = new Node(Thread.currentThread());
         Node prev = (Node) SLOT.getAndSet(this, myNode);
-        Object prevState = STATE.getAndSet(prev, Thread.currentThread());
+        Object prevState = STATE.getAndSet(prev, myNode);
         if (prevState == DONE) return myNode;
-        awaitPredecessor(prev);
+        awaitPredecessor(prev, myNode);
         return myNode;
     }
 
-    /**
-     * Acquire the lock with an AltNode. The AltNode is used as this
-     * thread's node in the chain, and is written onto the predecessor's
-     * state (instead of a Thread reference).
-     * <p>
-     * Returns the AltNode for passing to {@link #release(Node)}.
-     */
-    public AltNode acquireAlt(AltNode altNode) {
-        Node prev = (Node) SLOT.getAndSet(this, altNode);
-        Object prevState = STATE.getAndSet(prev, altNode);
-        if (prevState == DONE) return altNode;
-        awaitPredecessor(prev);
-        return altNode;
-    }
-
-    private void awaitPredecessor(Node prev) {
+    private void awaitPredecessor(Node prev, Node myNode) {
         boolean interrupted = false;
-        while (prev.state != DONE) {
+        while (prev.state != DONE && !myNode.combined) {
             LockSupport.park(this);
             if (Thread.interrupted()) interrupted = true;
         }
@@ -127,14 +100,13 @@ public class RelayLock {
 
     /**
      * Release the lock. Writes DONE to this node, then dispatches
-     * on the successor: unpark Thread, try-claim AltNode, or skip
-     * dead AltNodes by writing DONE and following the chain.
+     * on the successor: unpark the successor's thread if present.
      *
-     * @param node the node returned by acquire() or acquireAlt()
+     * @param node the node returned by acquire()
      */
     public void release(Node node) {
         Object successor = STATE.getAndSet(node, DONE);
-        dispatch(successor, channel);
+        dispatch(successor);
     }
 
     // ================================================================
@@ -165,60 +137,24 @@ public class RelayLock {
     }
 
     /**
-     * Wake the waiting thread or AltNode, if any.
+     * Wake the waiting thread, if any.
      * <p>
      * If no waiter is registered (SIGNALED), this is a no-op.
-     * If a waiter is found, wakes it directly. For AltNodes, uses
-     * the channel for claim dispatch.
+     * If a waiter is found, wakes it directly.
      */
     public void resume() {
         Node prev = (Node) REF.getAndSet(this, SIGNALED);
         if (prev == SIGNALED) return;
-        if (prev instanceof AltNode alt) {
-            IChannel ch = this.channel;
-            if (ch != null && alt.ref.claim(ch)) {
-                LockSupport.unpark(alt.thread);
-                return;
-            }
-            // Dead alt — release its lock node and follow the successor chain
-            Object waiter = STATE.getAndSet(alt, DONE);
-            dispatch(waiter, ch);
-        } else {
-            if (prev.state == DONE) return; // stale
-            LockSupport.unpark(prev.thread);
-        }
+        if (prev.state == DONE) return; // stale
+        LockSupport.unpark(prev.thread);
     }
 
     /**
-     * Dispatch on a waiter: null, Thread, or AltNode.
+     * Dispatch on a waiter: null or Node.
      */
-    static void dispatch(Object waiter, IChannel channel) {
-        while (true) {
-            switch (waiter) {
-                case null -> {
-                    return;
-                }
-                case Thread t -> {
-                    LockSupport.unpark(t);
-                    return;
-                }
-                case AltNode alt -> {
-                    if (channel != null && alt.ref.claim(channel)) {
-                        LockSupport.unpark(alt.thread);
-                        return;
-                    }
-                    // Dead alt (or no channel to claim with) — release
-                    // its lock node and follow the successor. The alt
-                    // thread is not parked here — it's either visiting
-                    // other channels or suspended elsewhere.
-                    waiter = STATE.getAndSet(alt, DONE);
-                }
-                case Object o when o == DONE -> {
-                    // Already released (e.g., dead alt's redundant release).
-                    return;
-                }
-                default -> throw new IllegalStateException("unexpected waiter: " + waiter);
-            }
+    static void dispatch(Object waiter) {
+        if (waiter instanceof Node n) {
+            LockSupport.unpark(n.thread);
         }
     }
 }

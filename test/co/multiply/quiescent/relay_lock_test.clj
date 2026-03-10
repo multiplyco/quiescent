@@ -1,10 +1,14 @@
 (ns co.multiply.quiescent.relay-lock-test
   (:require
-    [clojure.test :refer [deftest is testing]])
+    [clojure.test :refer [deftest is testing use-fixtures]]
+    [co.multiply.quiescent.test-support :refer [timeout-fixture]])
   (:import
     [co.multiply.quiescent.impl.channel RelayLock RelayLock$Node]
-    [java.util.concurrent CountDownLatch TimeUnit]
+    [java.util.concurrent CountDownLatch]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
+
+
+(use-fixtures :each (timeout-fixture))
 
 
 (defn- start-virtual-thread
@@ -42,8 +46,7 @@
                   (finally
                     (.release lock node)))))
             (.countDown latch))))
-      (is (.await latch 10 TimeUnit/SECONDS)
-        "Both threads should complete within timeout")
+      (.await latch)
       (is (zero? (.get violations))
         "No concurrent access detected"))))
 
@@ -69,8 +72,7 @@
                   (finally
                     (.release lock node)))))
             (.countDown latch))))
-      (is (.await latch 30 TimeUnit/SECONDS)
-        "All threads should complete within timeout")
+      (.await latch)
       (is (zero? (.get violations))
         "No concurrent access detected"))))
 
@@ -92,8 +94,7 @@
                   (finally
                     (.release lock node)))))
             (.countDown latch))))
-      (is (.await latch 30 TimeUnit/SECONDS)
-        "All threads should complete within timeout")
+      (.await latch)
       (is (= (* n-threads n-ops) (.get counter))
         "All increments should be visible"))))
 
@@ -114,11 +115,10 @@
                            (finally
                              (.release lock n))))
                        (.countDown done)))]
-      (.await started 5 TimeUnit/SECONDS)
+      (.await started)
       (Thread/sleep 10)
       (.interrupt t)
       (.release lock node)
-      (is (.await done 10 TimeUnit/SECONDS)
-        "Interrupted thread should complete within timeout")
+      (.await done)
       (is (.get result)
         "Interrupted thread acquired the lock and ran"))))

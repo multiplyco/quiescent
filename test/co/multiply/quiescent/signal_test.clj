@@ -1,10 +1,14 @@
 (ns co.multiply.quiescent.signal-test
   (:require
-    [clojure.test :refer [deftest is testing]])
+    [clojure.test :refer [deftest is testing use-fixtures]]
+    [co.multiply.quiescent.test-support :refer [timeout-fixture]])
   (:import
     [co.multiply.quiescent.impl.channel RelayLock RelayLock$Node]
-    [java.util.concurrent CountDownLatch TimeUnit]
+    [java.util.concurrent CountDownLatch]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
+
+
+(use-fixtures :each (timeout-fixture))
 
 
 (defn- start-virtual-thread
@@ -27,8 +31,7 @@
             (.suspend lock node))
           (.set result true)
           (.countDown done)))
-      (is (.await done 5 TimeUnit/SECONDS)
-        "Suspend should complete within timeout")
+      (.await done)
       (is (.get result)))))
 
 
@@ -45,11 +48,10 @@
             (.suspend lock node))
           (.set result true)
           (.countDown done)))
-      (.await started 5 TimeUnit/SECONDS)
+      (.await started)
       (Thread/sleep 10)
       (.resume lock)
-      (is (.await done 5 TimeUnit/SECONDS)
-        "Suspend should complete within timeout")
+      (.await done)
       (is (.get result)
         "Suspended thread should have woken up"))))
 
@@ -107,8 +109,7 @@
                 (finally
                   (.release take-lock node)))))
           (.countDown done)))
-      (is (.await done 15 TimeUnit/SECONDS)
-        "Producer and consumer should complete within timeout")
+      (.await done)
       (is (= target (.get produced))
         "All items should be produced")
       (is (= target (.get consumed))
@@ -167,8 +168,7 @@
                   (finally
                     (.release take-lock node)))))
             (.countDown done))))
-      (is (.await done 30 TimeUnit/SECONDS)
-        "All threads should complete within timeout")
+      (.await done)
       (is (= total (.get consumed))
         "All items should be consumed"))))
 
