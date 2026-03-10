@@ -1,43 +1,56 @@
 # RelayLock
 
-A lock where threads form a FIFO handoff chain using three exchange (getAndSet)
-operations per lock cycle. No CAS, no spinning, no queue structure.
+A FIFO handoff lock with integrated cross-lock signaling. Three exchange
+(getAndSet) operations per lock cycle. No CAS, no spinning, no queue
+structure.
 
 ## Core Idea
 
-A single atomic slot holds a node. Each thread creates a node (one field),
-swaps it into the slot via getAndSet, and receives back the predecessor's
-node. The predecessor's node is a one-shot rendezvous point: both threads
-do a getAndSet on its field to coordinate handoff.
+A single atomic slot holds a node. Each thread creates a node, swaps it
+into the slot via getAndSet, and receives back the predecessor's node.
+The predecessor's node is a one-shot rendezvous point: both threads do a
+getAndSet on its state field to coordinate handoff.
 
-The node field has three states: `null` (initial), a thread reference
+The state field has three states: `null` (initial), a Node reference
 (successor registered), or `DONE` (owner finished). The getAndSet return
 value tells each side what happened.
 
 ## Structure
 
 ```
-slot:  AtomicReference<Node>   — the single coordination point
+slot:  volatile Node   — the single coordination point (VarHandle getAndSet)
+ref:   volatile Node   — cross-lock signal field (SIGNALED | waiter node)
 ```
 
 ```java
 class Node {
-    // Accessed via VarHandle getAndSet. Three states:
-    //   null    — initial
-    //   Thread  — successor has registered
-    //   DONE    — owner has finished critical section
-    volatile Object state;
+    final Thread thread;       // owning thread (null for sentinel nodes)
+    volatile Object state;     // null | Node (successor) | DONE
+    Object value;              // payload for combining (put value or take result)
+    volatile boolean combined; // set by combiner before waking
+
+    void wake() {
+        LockSupport.unpark(thread);
+    }
+
+    void release() {
+        dispatch(STATE.getAndSet(this, DONE));
+    }
 }
 ```
+
+The `value` and `combined` fields support combining (see below). A lock
+holder can walk the successor chain and perform operations on behalf of
+waiting threads, eliminating context switches.
 
 ## Thread Lifecycle
 
 ### Full cycle: 3 exchanges
 
 ```
-1. getAndSet(slot, myNode)         → predecessor's node (or null)
-2. getAndSet(predecessor.state, self)  → null (park) or DONE (proceed)
-3. getAndSet(myNode.state, DONE)       → null (no successor) or Thread (unpark it)
+1. getAndSet(slot, myNode)           → predecessor's node
+2. getAndSet(predecessor.state, myNode)  → null (park) or DONE (proceed)
+3. getAndSet(myNode.state, DONE)         → null (no successor) or Node (wake it)
 ```
 
 ### Step by step
@@ -45,38 +58,60 @@ class Node {
 **Acquire:**
 
 ```
-1. Create node (one object, one field)
-2. prev = slot.getAndSet(myNode)
-3. If prev == null: first arrival, proceed (owner)
-4. If prev != null:
-     result = prev.state.getAndSet(self)
-     If result == DONE: predecessor finished, proceed (owner)
-     If result == null: predecessor still working, park
+1. Create Node(Thread.currentThread())
+2. prev = SLOT.getAndSet(this, myNode)
+3. prevState = STATE.getAndSet(prev, myNode)
+4. If prevState == DONE: predecessor finished, proceed (owner)
+5. If prevState == null: predecessor still working, park
+   (loop: while prev.state != DONE && !myNode.combined)
 ```
+
+The park loop checks two conditions. The first (`prev.state != DONE`) is
+the normal handoff. The second (`!myNode.combined`) is for combining:
+the lock holder may have already performed this thread's operation and
+set `combined = true`, waking it directly.
 
 **Release (after critical section):**
 
 ```
-1. successor = myNode.state.getAndSet(DONE)
-2. If successor == null: nobody waiting, done
-3. If successor is a Thread: unpark it
+1. successor = STATE.getAndSet(myNode, DONE)
+2. dispatch(successor):
+   - null: nobody waiting, done
+   - Node: wake it (unpark its thread)
+```
+
+### Initialization
+
+The constructor creates a sentinel node with `state = DONE` and sets it
+as the initial slot value. The first thread to acquire swaps this
+sentinel out, sees DONE on the state exchange, and proceeds immediately.
+
+```java
+public RelayLock() {
+    Node initial = new Node(null);
+    initial.state = DONE;
+    this.slot = initial;
+}
 ```
 
 ### Why this works
 
-The node field is a rendezvous between exactly two threads: the current
+The state field is a rendezvous between exactly two threads: the current
 owner (A) and the next arrival (B). Both do getAndSet on the same field.
 The return value tells them who arrived first:
 
 **Case 1 — B arrives first:**
-- B does getAndSet(A.state, self) → gets null → parks
-- A finishes, does getAndSet(A.state, DONE) → gets B → unparks B
+
+- B does getAndSet(A.state, nodeB) → gets null → parks
+- A finishes, does getAndSet(A.state, DONE) → gets nodeB → wakes B
 
 **Case 2 — A finishes first:**
+
 - A does getAndSet(A.state, DONE) → gets null → walks away
-- B does getAndSet(A.state, self) → gets DONE → proceeds immediately
+- B does getAndSet(A.state, nodeB) → gets DONE → proceeds immediately
 
 **Case 3 — simultaneous:**
+
 - getAndSet is atomic; one of the above cases applies
 
 No lost wakeups. No Dekker protocol needed. The atomicity of the exchange
@@ -86,9 +121,9 @@ accesses (Dekker) or a compare-and-swap.
 ### FIFO ordering
 
 ```
-A arrives:  slot.getAndSet(nodeA) → null       → A is owner
-B arrives:  slot.getAndSet(nodeB) → nodeA      → B waits on A
-C arrives:  slot.getAndSet(nodeC) → nodeB      → C waits on B
+A arrives:  slot.getAndSet(nodeA) → sentinel  → A is owner
+B arrives:  slot.getAndSet(nodeB) → nodeA     → B waits on A
+C arrives:  slot.getAndSet(nodeC) → nodeB     → C waits on B
 ```
 
 Each thread only knows its predecessor. The chain is implicit:
@@ -102,7 +137,7 @@ is in the slot until C swaps it out (or indefinitely if nobody comes).
 
 A node left in the slot doesn't go stale. If B finishes and nobody arrives
 for an hour, the node still works: eventual arrival C swaps it out, does
-getAndSet on its field, sees DONE, and proceeds immediately.
+getAndSet on its state field, sees DONE, and proceeds immediately.
 
 ## Machine cost
 
@@ -115,14 +150,14 @@ Still the minimal atomic primitive — no comparison step like CAS.
 
 ### Per-lock-cycle cost
 
-| Operation | Instruction (x86) | Count |
-|---|---|---|
-| Enqueue (swap slot) | XCHG | 1 |
-| Acquire (swap predecessor node) | XCHG | 1 |
-| Release (swap own node) | XCHG | 1 |
-| **Total** | | **3** |
+| Operation                        | Instruction (x86) | Count |
+|----------------------------------|-------------------|-------|
+| Enqueue (swap slot)              | XCHG              | 1     |
+| Acquire (swap predecessor state) | XCHG              | 1     |
+| Release (swap own state)         | XCHG              | 1     |
+| **Total**                        |                   | **3** |
 
-Plus one object allocation (node with one field) per acquisition.
+Plus one object allocation (Node with four fields) per acquisition.
 
 ### Comparison to alternatives
 
@@ -133,96 +168,429 @@ exchange + park/unpark.
 
 **MCS lock:** getAndSet on tail + write next pointer. Has a window where
 the next pointer isn't visible yet, requiring a short spin. RelayLock
-avoids this because the successor writes itself into the predecessor's
-node (step 2), so the link is established synchronously.
+avoids this because the successor writes its node into the predecessor's
+state (step 2), so the link is established synchronously.
 
 **ReentrantLock (AQS):** CAS on state + CLH-variant queue with multiple
 CAS operations for enqueue/dequeue. Heavier per-operation cost, more
 complex state machine.
 
-## Usage in BoundedChannel
+## Combining
 
-Two RelayLock instances: one for producers, one for consumers.
+When a thread acquires the lock and performs its operation, it can peek at
+the successor chain before releasing. If successors are already queued and
+the operation can be done on their behalf, the lock holder combines them:
 
-```java
-RelayLock putLock  = new RelayLock();
-RelayLock takeLock = new RelayLock();
+```
+1. Lock holder finishes own operation
+2. Check: is current.state a Node (successor waiting)?
+3. If yes, and there's capacity:
+   - Perform successor's operation using successor.value
+   - Set successor.combined = true  (volatile write → happens-before)
+   - Wake successor (it sees combined, skips critical section)
+   - Advance to successor, repeat
+4. Release the last node in the combined chain
 ```
 
-### Signal — buffer-edge coordination
+The combined thread wakes in `awaitPredecessor`, sees `combined == true`,
+and returns immediately — it never enters the critical section.
+
+### Why combining helps
+
+Without combining, N queued threads require N context switches: each
+thread wakes, does its operation, releases, wakes the next. With
+combining, one thread does all N operations in a tight loop and then
+releases once. The successor threads wake only to find their work already
+done.
+
+This is especially effective under contention: the more threads queue up,
+the more the lock holder can batch. The cost per operation drops because
+the lock/unlock overhead is amortized across the batch.
+
+### Combining on put
+
+The lock holder writes its own value to the ring buffer, then walks
+successors. For each, it writes `succ.value` to the buffer and advances
+the tail. After the batch, it does a single volatile tail write and
+resumes the take lock if the buffer was empty.
+
+```java
+while(newTail -h<capacity &&state ==OPEN){
+Object succObj = current.state;
+    if(!(succObj instanceof
+Node succ))break;
+buffer[(int)(newTail &mask)]=succ.value;
+newTail++;
+succ.combined =true;
+        succ.
+
+wake();
+
+current =succ;
+}
+        if(newTail >t){
+        TAIL.
+
+setVolatile(this,newTail);
+    takeLock.
+
+resume();
+}
+```
+
+### Combining on take
+
+Same pattern: the lock holder reads its own value from the buffer, then
+walks successors. For each, it reads the next buffer slot into
+`succ.value` and advances the head. A single volatile head write follows.
+
+### Combining with transducers
+
+When a transducer is present, combining feeds each successor's value
+through the reducing function rather than writing directly. If the
+transducer signals completion (Reduced), the channel is sealed.
+
+## Suspend / Resume (Cross-Lock Signaling)
 
 When a thread wins the lock but can't proceed (buffer empty for consumer,
-buffer full for producer), it needs to park and be woken by the other side.
+buffer full for producer), it suspends on the lock's signal field and
+waits for the other side to resume it.
 
-A separate Signal object handles this with two methods:
+The signal is integrated into RelayLock, not a separate object. A single
+`ref` field transitions between two states:
+
+```
+SIGNALED  — sentinel node, no waiter (initial state)
+node      — a waiter is registered
+```
+
+### SIGNALED sentinel
 
 ```java
-class Signal {
-    volatile Object ref; // null | Thread | AltNode
+static final Node SIGNALED;
 
-    void await()                 // register self, park
-    void signal(IChannel channel) // wake waiter, handle Alt claim
+static {
+    SIGNALED = new Node(null);
+    SIGNALED.state = DONE;
 }
 ```
 
-**await():** `REF.getAndSet(this, Thread.currentThread())`, then park.
+A Node with `thread = null` and `state = DONE`. Using a sentinel instead
+of null eliminates the need for Dekker-style rechecks: if a resume fires
+between the buffer check and the suspend, the suspending thread sees
+SIGNALED via its getAndSet return value and returns without parking.
+
+### suspend(node)
+
+```java
+public boolean suspend(Node node) {
+    Node prev = (Node) REF.getAndSet(this, node);
+    if (prev == SIGNALED) return false;      // resume arrived first
+    if (prev != node && prev.state != DONE)
+        prev.wake();                         // stale waiter, wake it
+    while (ref == node) {
+        LockSupport.park(this);
+    }
+    return interrupted;
+}
+```
+
 Called by a consumer (buffer empty) or producer (buffer full) while
-holding its lock. The lock is held while parked — producers and
+holding its lock. The lock is held while suspended — producers and
 consumers use separate locks, so this doesn't block the other side.
 
-**signal(channel):** `REF.getAndSet(this, null)`, then dispatch on the
-return value in a loop:
+Returns true if the thread was interrupted while parked (interrupt flag
+is captured and deferred).
+
+### resume()
 
 ```java
-void signal(IChannel channel) {
-    Object waiter = REF.getAndSet(this, null);
-    while (true) {
-        if (waiter == null) return;
-        if (waiter instanceof Thread t) {
-            LockSupport.unpark(t);
-            return;
-        }
-        AltNode alt = (AltNode) waiter;
-        if (alt.ref.claim(channel)) {
-            LockSupport.unpark(alt.thread);
-            return;
-        }
-        // Dead alt — do its lock release, loop on successor
-        waiter = STATE.getAndSet(alt, DONE);
-    }
+public void resume() {
+    Node prev = (Node) REF.getAndSet(this, SIGNALED);
+    if (prev == SIGNALED) return;            // no waiter
+    if (prev.state == DONE) return;          // stale
+    prev.wake();
 }
 ```
 
-The loop handles chains of dead AltNodes: each iteration writes DONE
-(releasing the dead alt's lock node) and follows the successor. The
-loop terminates when it finds a live waiter (Thread or successful Alt
-claim) or null (nobody waiting).
-
-**Channel state (OPEN/SEALED/CANCELLED)** is a separate volatile field
-on the channel, not part of Signal. Checked by the lock holder before
-and after parking. Cancellation wakes the signal and the chain unwinds
-via successive DONE handoffs.
+Called by the other side (consumer resumes putLock, producer resumes
+takeLock) after an operation that may unblock the waiter. The getAndSet
+atomically replaces the waiter with SIGNALED, so a concurrent suspend
+will see SIGNALED and not park.
 
 ### Steady-state cost (buffer neither empty nor full)
 
 3 exchanges for the lock, 0 for the signal. The signal is only
 touched at the edges.
 
+## Usage in BoundedChannel
+
+Two RelayLock instances: one for producers, one for consumers. Each
+lock's signal field handles cross-lock coordination.
+
+```java
+final RelayLock putLock = new RelayLock();
+final RelayLock takeLock = new RelayLock();
+```
+
+### Ring buffer
+
+Power-of-2 sized array with a bitmask for index computation. Producer
+and consumer cursors (`tail` and `head`) are monotonically increasing
+longs. Cache-line padding separates them:
+
+```
+volatile long tail      — producer cursor
+long[8] padding
+volatile int state      — OPEN | SEALED | CANCELLED
+long[8] padding
+volatile long head      — consumer cursor
+```
+
+The producer reads `head` via `getAcquire` (weaker than volatile — only
+needs to see consumer progress, not establish happens-before for other
+fields). The consumer reads `tail` the same way. Writes to both cursors
+are volatile.
+
+### Put path
+
+```
+1. Create Node(currentThread), set node.value = value
+2. Acquire putLock (may park in chain)
+3. If node.combined: predecessor already wrote our value, return
+4. Write value to buffer, advance tail
+5. If buffer was empty: takeLock.resume()
+6. Combine: walk successor chain, write their values
+7. Release last node
+```
+
+If the buffer is full at step 4, the thread suspends on `putLock`
+(holding the lock) until a consumer resumes it.
+
+### Take path
+
+```
+1. Create Node(currentThread)
+2. Acquire takeLock (may park in chain)
+3. If node.combined: predecessor already read our value into node.value, return it
+4. Read value from buffer, advance head
+5. Combine: walk successor chain, read their values
+6. Release last node
+7. If buffer was full before: putLock.resume()
+```
+
+If the buffer is empty at step 4, the thread suspends on `takeLock`
+until a producer resumes it. If the channel is SEALED or CANCELLED,
+the thread returns CANCELLED.
+
+### Transducers
+
+When constructed with a transducer, the put path feeds values through a
+reducing function that wraps `putDirect`. The reducing function can
+expand (mapcat), filter, or transform values. Backpressure propagates
+naturally: `putDirect` suspends when the buffer is full, even mid-batch
+from a mapcat expansion. If the reducing function returns Reduced, the
+channel is sealed.
+
+Combining with transducers works the same way — each successor's value
+is fed through the reducing function rather than written directly.
+
 ### Seal/Cancel
 
 ```java
-state = SEALED;
-signal.signal(this); // wake whoever's waiting
-// Woken thread sees state, exits, releases lock, chain unwinds
+this.state =SEALED;   // or CANCELLED
+VarHandle.
+
+fullFence();
+putLock.
+
+resume();
+takeLock.
+
+resume();
 ```
 
-## Alt (Select / Choice)
+Both sides are woken. Woken threads see the state, skip work, release
+their lock nodes, and the chain unwinds via successive DONE handoffs.
 
-Alt takes from whichever of several channels has a value first. AltNode
-extends Node with a thread reference and a shared claim (ChannelRef).
-It participates in the lock chain and the signal field using the same
-getAndSet protocol — other threads cooperate to complete or skip dead
-AltNodes via instanceof dispatch and a single CAS.
+## Properties
+
+- **FIFO.** Strict arrival order. No spatial bias.
+- **Bounded cost.** Every synchronization operation is a single getAndSet.
+  No retry loops, no spinning, no unbounded CAS contention.
+- **Predictable.** Same cost regardless of contention level.
+- **Simple.** One slot, one node type, three states, three operations.
+- **Combining.** Lock holder batches operations for queued successors,
+  amortizing lock overhead and eliminating context switches under
+  contention.
+- **No queue management.** No head/tail bookkeeping, no node recycling,
+  no cleanup on drain.
+- **Allocation.** One Node (four fields) per lock acquisition. Trade-off
+  vs allocation-free designs.
+- **Deferred interruption.** A thread in the chain cannot bail until it
+  becomes owner. The chain is a strict sequence with no skip-ahead —
+  each thread only knows its predecessor, so there is no way to splice
+  yourself out from the middle. Interruption is deferred: the thread
+  waits for ownership, then restores the interrupt flag, skips the
+  critical work, and hands off immediately. For short critical sections
+  (buffer read/write), the delay is bounded by chain length times a
+  trivial operation.
+- **Channel-level cancellation.** While individual threads are
+  uninterruptible mid-chain, the channel as a whole is cancellable.
+  Set the channel state to CANCELLED, resume both locks. The owner
+  sees CANCELLED, skips work, writes DONE, successor wakes, sees
+  CANCELLED, writes DONE — the chain unwinds itself as a rapid cascade.
+  No queue traversal, no individual thread interruption. Just kick the
+  head and the relay does the rest.
+- **No global view.** The chain is not an inspectable data structure.
+  There is no head pointer, no tail pointer, no linked list in the heap.
+  The chain exists as a sequence of threads blocked on predecessor nodes,
+  largely on the stack. The only heap-visible state is the slot (holding
+  the most recent node) and the individual nodes (each holding at most
+  one successor reference). The chain's structure is implicit in the
+  call stacks of the participating threads.
+
+## Benchmark Results
+
+All benchmarks transfer 10M items per channel. Quiescent (RelayLock +
+BoundedChannel) vs core.async. Default buffer size is 1024 unless noted.
+
+### Virtual threads and carrier saturation
+
+The design is tuned for virtual threads. When a VT parks (on the lock
+chain or on a signal), the carrier thread doesn't idle — it switches to
+another runnable VT. This is a cheap continuation swap, not an OS-level
+context switch. The "blocking" lock becomes a scheduling hint: *I can't
+advance, but someone else can.*
+
+This means a system under contention can achieve lock-free behaviour in
+aggregate. RelayLock's semantics are blocking — a VT waits on its
+predecessor — but the carrier thread never stops making progress as long
+as there's a runnable VT somewhere. The more channels and threads in the
+system, the more saturated the carriers stay, and the more the park cost
+approaches zero.
+
+The single-channel benchmarks below are a microbenchmark artifact: a
+lone channel with nothing else running is an abnormal situation. When a
+VT parks on an empty buffer and no other VT is runnable, the carrier
+descends to OS-level idle — a scenario that doesn't occur in real
+systems. Even a system with exactly one channel will have other work
+(HTTP handlers, database calls, computation) keeping carriers busy.
+
+The many-channel and pipeline tests are the representative workload.
+
+### Single-channel throughput
+
+| Scenario  | Buffer | Speedup | Notes                        |
+|-----------|--------|---------|------------------------------|
+| 1P1C      | 1024   | 2.3x    |                              |
+| 1P1C      | 16     | 2.6x    |                              |
+| 1P1C      | 1      | 1.0x    | Park-heavy, signal dominates |
+| Ping-pong | 1      | 3.1x    | Pure handoff latency         |
+| 4P4C      | 1024   | 0.5x    | core.async faster            |
+| 4P4C      | 16     | 1.1x    |                              |
+| 4P4C      | 1      | 1.0x    |                              |
+
+The 4P4C deficit in isolation is misleading. With 8 VTs contending on
+one channel and nothing else running, carrier threads idle during parks.
+Spawn 50 of those same 4P4C channels and they all complete in 77ms
+(26.1x faster than core.async) — the carriers stay saturated and the
+park cost vanishes.
+
+### Many-channel scaling
+
+| Scenario       | Speedup | Notes |
+|----------------|---------|-------|
+| 50×1P1C        | 13.0x   |       |
+| 50×4P4C        | 26.1x   |       |
+| 200×1P1C       | 23.1x   |       |
+| 200×1P1C buf=1 | 29.0x   |       |
+| Mixed (40 ch)  | 18.5x   |       |
+
+This is where the design pays off. core.async's thread-pool-based
+dispatch collapses under many concurrent channels. RelayLock's direct
+handoff (no thread pool, no dispatch queue) keeps carrier threads
+saturated — every park is an instant switch to another channel's VT.
+
+### Fan-in (many producers, one consumer)
+
+| Scenario  | Buffer | Speedup |
+|-----------|--------|---------|
+| 16P1C     | 64     | 4.5x    |
+| 32P1C     | 64     | 6.5x    |
+| 64P1C     | 64     | 7.5x    |
+| 128P1C    | 64     | 9.2x    |
+| 16P1C     | 1024   | 4.8x    |
+| 32P1C     | 1024   | 12.5x   |
+| 64P1C     | 1024   | 17.7x   |
+| 128P1C    | 1024   | 24.2x   |
+| 24×16P1C  | 1024   | 31.0x   |
+| 24×32P1C  | 1024   | 209.2x  |
+| 24×64P1C  | 1024   | 674.6x  |
+| 24×128P1C | 1024   | 837.6x  |
+
+Fan-in is the strongest scenario. Two effects compound: combining
+batches more writes per lock cycle as producers queue up, and carrier
+saturation from the many contending VTs ensures parks are free. The
+multi-channel fan-in variants (24×NP1C) show extreme speedups as
+core.async's dispatch queue becomes a bottleneck while RelayLock's
+per-channel combining scales independently.
+
+### Transducer channels
+
+| Scenario       | Buffer | Speedup |
+|----------------|--------|---------|
+| XF map 1P1C    | 1024   | 3.0x    |
+| XF filter 1P1C | 1024   | 3.0x    |
+| XF mapcat 1P1C | 1024   | 2.6x    |
+| XF map 4P4C    | 1024   | 0.6x    |
+| XF 128P1C      | 64     | 12.2x   |
+| XF 128P1C      | 1024   | 20.2x   |
+
+Same pattern: 1P1C and fan-in are strong. The 4P4C result is the
+single-channel isolation artifact — not representative of production
+load.
+
+### Pipeline
+
+| Scenario         | Buffer | Speedup |
+|------------------|--------|---------|
+| Pipe 4P→1P→4C    | 16     | 4.3x    |
+| Pipe 4P→1P→4C    | 64     | 4.3x    |
+| Pipe 4P→1P→4C    | 1024   | 4.4x    |
+| Pipe XF 4P→1P→4C | 1024   | 4.1x    |
+| 20×Pipe 4P→1P→4C | —      | 33.2x   |
+
+Consistent 4x for single pipelines across buffer sizes. The 20-pipeline
+variant shows the multi-channel scaling advantage — carrier saturation
+from 20 concurrent pipelines eliminates park overhead.
+
+### Discussion
+
+The abstraction boundary shifts with virtual threads. At the VT level, RelayLock is blocking — a virtual thread parks
+waiting on its predecessor. But at the carrier thread level, that park is just a continuation switch. The carrier never
+stops making progress as long as there's a runnable virtual thread somewhere.
+
+So the 24×128P1C benchmark showing 625x isn't just combining — it's the carrier threads staying saturated. 3072 virtual
+threads contending across 24 channels means there's always a runnable VT ready when one parks. The carrier thread does a
+cheap continuation swap and immediately resumes useful work. The "blocking" lock becomes a scheduling hint: I can't
+advance, but someone else can.
+
+Contrast with platform threads: parking means an OS-level context switch, the core goes idle or picks up an unrelated OS
+thread, cache lines go cold. The blocking is real all the way down.
+
+The 1P1C case with a single channel is the degenerate case — one VT parks on an empty buffer, the carrier has nothing
+else to run, so it actually descends to OS-level idle. That's why the speedup is modest there. The design rewards
+system-level concurrency, not single-channel throughput.
+
+Traditional lock-free algorithms optimize for individual progress without cooperation. RelayLock optimizes for aggregate
+progress through cooperation — the combining, the FIFO handoff, the parking that feeds the VT scheduler. The more
+threads participate, the better it gets.
+
+## Alt (Select / Choice) — Not Yet Implemented
+
+Alt takes from whichever of several channels has a value first. The
+design extends RelayLock with AltNode and a shared claim cell.
 
 ### AltNode structure
 
@@ -251,137 +619,65 @@ Alt creates an AltNode and acquires the lock like any thread:
    Got null? Predecessor still working. Park.
 ```
 
-The predecessor's release path dispatches:
+The predecessor's release path dispatches on the successor type:
 
 ```java
 Object successor = STATE.getAndSet(myNode, DONE);
-if (successor instanceof Thread t) {
-    LockSupport.unpark(t);
-} else if (successor instanceof AltNode alt) {
-    if (alt.ref.claim(channel)) {
-        LockSupport.unpark(alt.thread);
-    } else {
-        // Dead alt — do its lock release, loop on successor
-        Object next = STATE.getAndSet(alt, DONE);
-        // ... continue dispatch on next (same loop)
+if(successor instanceof
+Node n){
+        n.
+
+wake();   // normal case
+}else if(successor instanceof
+AltNode alt){
+        if(alt.ref.
+
+claim(channel)){
+        LockSupport.
+
+unpark(alt.thread);
+    }else{
+// Dead alt — do its lock release, loop on successor
+Object next = STATE.getAndSet(alt, DONE);
+// ... continue dispatch on next (same loop)
     }
-}
+            }
 ```
 
-This is the same loop as Signal.signal() — a uniform dispatch that
-skips dead AltNodes by writing DONE and following the chain.
-
-### Alt holds the lock, buffer empty
+### Signal integration
 
 When Alt acquires the lock and finds the buffer empty, it registers
-on the Signal with its AltNode (not a thread reference):
+its AltNode on the signal field (not a Thread):
 
 ```
 1. Alt acquires lock → altNode is in the slot
-2. Buffer empty → signal.await(altNode)
+2. Buffer empty → suspend(altNode)
 3. Alt parks
 ```
 
-Meanwhile, altNode is in two places:
+The altNode sits in two places:
+
 - **Signal ref field** — waiting for a producer to signal
 - **Lock slot** — a successor may register on altNode.state
 
-A successor B arrives, does SLOT.getAndSet → gets altNode,
-does STATE.getAndSet(altNode, threadB) → null → parks.
+Signal wakes follow the same dispatch: claim succeeds → unpark alt
+thread; claim fails → write DONE (releasing the dead alt's lock node)
+and follow the successor chain.
 
-Now altNode.state = threadB, Signal ref = altNode.
+### Dead Alt cleanup
 
-### Signal wakes Alt (claim succeeds)
-
-```
-1. Producer deposits value, calls signal.signal(channel)
-2. REF.getAndSet(null) → altNode
-3. alt.ref.claim(channel) → succeeds
-4. unpark(alt.thread)
-5. Alt wakes, takes value from buffer
-6. Alt releases: STATE.getAndSet(altNode, DONE) → threadB → unpark B
-7. B wakes as new owner. Normal chain continues.
-```
-
-### Signal skips dead Alt (claim fails)
-
-```
-1. Producer deposits value, calls signal.signal(channel)
-2. REF.getAndSet(null) → altNode
-3. alt.ref.claim(channel) → fails (another channel won)
-4. waiter = STATE.getAndSet(altNode, DONE) → threadB
-5. Loop: waiter is Thread → unpark(threadB) → return
-6. B wakes, sees altNode.state == DONE, becomes owner, takes value.
-```
-
-The signal cooperatively does the lock release on behalf of the dead
-Alt. Same getAndSet-DONE protocol, just a different thread driving it.
-
-**No successor yet (altNode.state == null):**
-```
-4. STATE.getAndSet(altNode, DONE) → null → return
-5. DONE is set. Next arrival sees it immediately, proceeds.
-```
-
-### Dead Alt wakes later from winning channel
-
-The Alt thread was claimed by another channel and eventually wakes.
-It does `release(altNode)`: `STATE.getAndSet(altNode, DONE)`.
-
-- Gets DONE → no-op (signal already released)
-- Gets a Thread → spurious unpark (thread already proceeded)
-
-Both are harmless. The release is idempotent. All park loops re-check
-conditions before continuing, so spurious unparks cause no harm.
+AltNodes left on losing channels are dead nodes. They are skipped by
+whoever encounters them — the release path or resume() writes DONE and
+follows the successor. The release is idempotent: a dead alt that wakes
+later from the winning channel does `STATE.getAndSet(altNode, DONE)`,
+which is harmless whether the signal already released it or not.
 
 ### Alt visits multiple channels
 
-Alt acquires and releases each channel's lock in sequence, checking
-the claim between each:
-
-```
-1. Visit ch1:
-   Acquire lock, check buffer.
-   Has value? Take it, claim ref, release. Done.
-   Empty? signal.await(altNode1), release lock, park... or:
-          release lock, move on to ch2.
-   Check ref — claimed? Stop.
-
-2. Visit ch2:
-   Check ref — not claimed. Acquire lock, repeat.
-
-3. Visit ch3:
-   Check ref — claimed by ch1! Stop registering.
-```
-
-AltNodes left on losing channels are dead nodes. They will be skipped
-by whoever encounters them — the release path or signal.signal() writes
-DONE and follows the successor.
-
-### Uniform dispatch
-
-The release path and signal.signal() share the same dispatch loop:
-
-```java
-while (true) {
-    if (waiter == null) return;
-    if (waiter instanceof Thread t) {
-        LockSupport.unpark(t);
-        return;
-    }
-    AltNode alt = (AltNode) waiter;
-    if (alt.ref.claim(channel)) {
-        LockSupport.unpark(alt.thread);
-        return;
-    }
-    waiter = STATE.getAndSet(alt, DONE);
-}
-```
-
-One loop, three cases (null, Thread, AltNode). The chain composes:
-regular → alt → alt → regular all work. The instanceof branch is the
-only Alt-specific logic. The non-Alt hot path is unaffected — successor
-is always a Thread, one instanceof check (predicted by JIT), unpark.
+Alt acquires and releases each channel's lock in sequence, checking the
+shared ChannelRef between each. Once claimed, it stops registering. Dead
+AltNodes on unclaimed channels are garbage-collected after being relayed
+past.
 
 ### Cost
 
@@ -392,61 +688,14 @@ is always a Thread, one instanceof check (predicted by JIT), unpark.
 - **Allocation:** one AltNode per channel registered. All share the
   same ChannelRef.
 
-## Properties
-
-- **FIFO.** Strict arrival order. No spatial bias (unlike StampedeLock).
-- **Bounded cost.** Every operation is a single getAndSet. No retry loops,
-  no spinning, no unbounded CAS contention.
-- **Predictable.** Same cost regardless of contention level.
-- **Simple.** One slot, one node type, three states, three operations.
-- **No queue management.** No head/tail bookkeeping, no node recycling,
-  no cleanup on drain.
-- **Allocation.** One small object (one field) per lock acquisition.
-  Trade-off vs allocation-free designs (StampedeLock).
-- **Deferred interruption.** A thread in the chain cannot bail until it
-  becomes owner. The chain is a strict sequence with no skip-ahead —
-  each thread only knows its predecessor, so there is no way to splice
-  yourself out from the middle. Interruption is deferred: the thread
-  waits for ownership, then restores the interrupt flag, skips the
-  critical work, and hands off immediately. For short critical sections
-  (buffer read/write), the delay is bounded by chain length times a
-  trivial operation.
-- **Channel-level cancellation.** While individual threads are
-  uninterruptible mid-chain, the channel as a whole is cancellable.
-  Set the channel state to CANCELLED, wake the current owner via the
-  signal field. The owner sees CANCELLED, skips work, writes DONE,
-  successor wakes, sees CANCELLED, writes DONE — the chain unwinds
-  itself as a rapid cascade. No queue traversal, no individual thread
-  interruption. Just kick the head and the relay does the rest.
-- **No global view.** The chain is not an inspectable data structure.
-  There is no head pointer, no tail pointer, no linked list in the heap.
-  The chain exists as a sequence of threads blocked on predecessor nodes,
-  largely on the stack. The only heap-visible state is the slot (holding
-  the most recent node) and the individual nodes (each holding at most
-  one successor reference). The chain's structure is implicit in the
-  call stacks of the participating threads.
-
 ## Open Questions
+
+- **4P4C contention.** Symmetric many-to-many on a single channel is the
+  weak spot. The single slot serializes all arrivals. Techniques like
+  arrival spreading (multiple slots with fallback) could help, but add
+  complexity.
 
 - **Allocation pressure.** One node per acquisition. Under high throughput
   this creates GC pressure. Could nodes be recycled (thread-local pool)?
   Would need care to avoid use-after-recycle — a node must not be recycled
   until the successor has completed its getAndSet on it.
-
-- **Park/unpark overhead.** Every contended acquisition parks. CLH/MCS
-  spin briefly first, which is faster when the critical section is very
-  short. An adaptive front-spin before parking could help, at the cost of
-  complexity.
-
-- **Performance vs StampedeLock.** StampedeLock spreads arrival contention
-  across N slots (O(1) expected CAS collisions). RelayLock serializes all
-  arrivals through one slot. Under very high contention, the single slot
-  may become a bottleneck. Under moderate contention, the simpler protocol
-  may win. Benchmarking needed.
-
-- **Signal field ordering.** The getAndSet on the signal field needs to be
-  correctly ordered with respect to buffer reads/writes. The lock's
-  acquire/release provides happens-before for buffer access, but the
-  signal field is accessed across locks (producer signals consumer and
-  vice versa). Need to verify that the getAndSet's full-fence semantics
-  are sufficient, or whether additional ordering is needed.

@@ -74,12 +74,12 @@
   [{:keys [type n producers consumers buffer xf expand-factor pass-ratio]}]
   (case (or type :throughput)
     (:throughput :xform :xform-mapcat :xform-filter)
-    (let [ch     (if xf (a/chan buffer xf) (a/chan buffer))
-          take-n (quot (long (* n (or expand-factor 1) (or pass-ratio 1))) consumers)
-          gos    (into
-                   (mapv (fn [_] (a/go (dotimes [_ take-n] (a/<! ch)))) (range consumers))
-                   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers)))]
-      (run! a/<!! gos))
+    (let [ch  (if xf (a/chan buffer xf) (a/chan buffer))
+          cs  (mapv (fn [_] (a/go (loop [] (when-some [_ (a/<! ch)] (recur))))) (range consumers))
+          ps  (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers))]
+      (run! a/<!! ps)
+      (a/close! ch)
+      (run! a/<!! cs))
 
     :ping-pong
     (let [ch-a (a/chan buffer)
@@ -93,7 +93,7 @@
     (let [ch-a (if xf (a/chan buffer xf) (a/chan buffer))
           ch-b (a/chan buffer)
           _    (a/pipe ch-a ch-b)
-          cs   (mapv (fn [_] (a/go (dotimes [_ (quot n consumers)] (a/<! ch-b)))) (range consumers))
+          cs   (mapv (fn [_] (a/go (loop [] (when-some [_ (a/<! ch-b)] (recur))))) (range consumers))
           ps   (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch-a i)))) (range producers))]
       (run! a/<!! ps)
       (a/close! ch-a)
@@ -146,13 +146,13 @@
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 64}]}
    {:scenario  "200×1P1C buf=1" :group :system :type :parallel
     :workloads [{:count 200 :producers 1 :consumers 1 :n 50000 :buffer 1}]}
-   {:scenario  "24×16P1C" :group :system :type :parallel
+   {:scenario  "24×16P1C" :group :system :type :parallel :buffer 1024
     :workloads [{:count 24 :producers 16 :consumers 1 :n 100000 :buffer 1024}]}
-   {:scenario  "24×32P1C" :group :system :type :parallel
+   {:scenario  "24×32P1C" :group :system :type :parallel :buffer 1024
     :workloads [{:count 24 :producers 32 :consumers 1 :n 100000 :buffer 1024}]}
-   {:scenario  "24×64P1C" :group :system :type :parallel
+   {:scenario  "24×64P1C" :group :system :type :parallel :buffer 1024
     :workloads [{:count 24 :producers 64 :consumers 1 :n 100000 :buffer 1024}]}
-   {:scenario  "24×128P1C" :group :system :type :parallel
+   {:scenario  "24×128P1C" :group :system :type :parallel :buffer 1024
     :workloads [{:count 24 :producers 128 :consumers 1 :n 100000 :buffer 1024}]}
 
    ;; --- Transducer ---
