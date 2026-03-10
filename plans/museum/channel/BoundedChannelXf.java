@@ -48,7 +48,7 @@ public class BoundedChannelXf extends AbstractBoundedChannel {
     }
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         if ((long) PRODUCER_SEQ.getVolatile(this) < 0) return false;
         xfLock.lock();
         try {

@@ -37,7 +37,7 @@ public class BoundedChannelLockedXf extends BoundedChannelLocked {
     }
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         if (isSealed() || isCancelled()) return false;
         xfLock.lock();
         try {

@@ -117,7 +117,7 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     // ================================================================
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         Thread owner = (Thread) PRODUCER_OWNER.getVolatile(this);
         if (owner == CONTENDED)
             return putContended(value);
@@ -269,7 +269,7 @@ public class BoundedChannelAdaptive implements IChannel, IBuffered {
     // ================================================================
 
     @Override
-    public Object take() {
+    public Object take() throws InterruptedException {
         Thread owner = (Thread) CONSUMER_OWNER.getVolatile(this);
         if (owner == CONTENDED)
             return takeContended();

@@ -377,3 +377,42 @@
     (is @p "Pipe task should complete")))
 
 
+;; # Interruption
+;; ################################################################################
+
+(deftest put-throws-on-pre-interrupted-thread-test
+  (testing "put throws InterruptedException if thread is already interrupted"
+    (let [ch     (chan 8)
+          result (promise)
+          worker (Thread.
+                   (fn []
+                     (.interrupt (Thread/currentThread))
+                     (try
+                       (.put ch :v)
+                       (deliver result :should-not-reach)
+                       (catch InterruptedException _
+                         (deliver result :interrupted)))))]
+      (.start worker)
+      (.join worker 1000)
+      (is (= :interrupted @result))
+      (is (= 0 (buf-count ch)) "Value should not have been written"))))
+
+(deftest take-throws-on-pre-interrupted-thread-test
+  (testing "take throws InterruptedException if thread is already interrupted"
+    (let [ch     (chan 8)
+          result (promise)
+          _      (put! ch :v)
+          worker (Thread.
+                   (fn []
+                     (.interrupt (Thread/currentThread))
+                     (try
+                       (.take ch)
+                       (deliver result :should-not-reach)
+                       (catch InterruptedException _
+                         (deliver result :interrupted)))))]
+      (.start worker)
+      (.join worker 1000)
+      (is (= :interrupted @result))
+      (is (= 1 (buf-count ch)) "Value should still be in buffer"))))
+
+

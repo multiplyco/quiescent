@@ -59,7 +59,7 @@ public class Alt implements IChannel {
     // ================================================================
 
     @Override
-    public Object take() {
+    public Object take() throws InterruptedException {
         while (true) {
             ChannelRef ref = new ChannelRef();
             Object val = altTake(ref);
@@ -96,7 +96,7 @@ public class Alt implements IChannel {
     // ================================================================
 
     @Override
-    public boolean put(Object value) {
+    public boolean put(Object value) throws InterruptedException {
         while (true) {
             ChannelRef ref = new ChannelRef();
             boolean put = altPut(value, ref);

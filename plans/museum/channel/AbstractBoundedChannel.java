@@ -129,7 +129,7 @@ public abstract class AbstractBoundedChannel implements IChannel, IBuffered {
     // ---- IChannel: Core operations ----
 
     @Override
-    public Object take() {
+    public Object take() throws InterruptedException {
         long slot = (long) CONSUMER_SEQ.getAndAdd(this, 1L);
         if (slot < 0) return IChannel.CANCELLED;
 

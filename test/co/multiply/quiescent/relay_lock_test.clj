@@ -22,7 +22,7 @@
           n    10000]
       (dotimes [_ n]
         (let [node (.acquire lock)]
-          (.release lock node)))
+          (.release node)))
       (is true "Completed without deadlock"))))
 
 
@@ -44,7 +44,7 @@
                       (.incrementAndGet violations)))
                   (.decrementAndGet counter)
                   (finally
-                    (.release lock node)))))
+                    (.release node)))))
             (.countDown latch))))
       (.await latch)
       (is (zero? (.get violations))
@@ -70,7 +70,7 @@
                       (.incrementAndGet violations)))
                   (.decrementAndGet counter)
                   (finally
-                    (.release lock node)))))
+                    (.release node)))))
             (.countDown latch))))
       (.await latch)
       (is (zero? (.get violations))
@@ -92,7 +92,7 @@
                 (try
                   (.incrementAndGet counter)
                   (finally
-                    (.release lock node)))))
+                    (.release node)))))
             (.countDown latch))))
       (.await latch)
       (is (= (* n-threads n-ops) (.get counter))
@@ -113,12 +113,12 @@
                          (try
                            (.set result true)
                            (finally
-                             (.release lock n))))
+                             (.release n))))
                        (.countDown done)))]
       (.await started)
       (Thread/sleep 10)
       (.interrupt t)
-      (.release lock node)
+      (.release node)
       (.await done)
       (is (.get result)
         "Interrupted thread acquired the lock and ran"))))

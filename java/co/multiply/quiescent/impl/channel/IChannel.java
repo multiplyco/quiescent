@@ -12,8 +12,8 @@ public interface IChannel {
     Object CANCELLED = new Object();
 
     // Core operations
-    Object take();
-    boolean put(Object value);
+    Object take() throws InterruptedException;
+    boolean put(Object value) throws InterruptedException;
 
     // Lifecycle
     boolean cancel(String msg);
