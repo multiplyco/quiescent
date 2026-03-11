@@ -37,12 +37,17 @@
           ([] (timeout-fixture 5000))
           ([timeout-ms]
            (fn [f]
-             (let [fut    (future (f))
-                   result (deref fut timeout-ms ::timeout)]
-               (when (= result ::timeout)
-                 (future-cancel fut)
+             (let [p (promise)
+                   t (Thread/startVirtualThread
+                       (bound-fn [] (try (f) (deliver p true)
+                                      (catch Throwable e (deliver p e)))))]
+               (when (= (deref p timeout-ms ::timeout) ::timeout)
+                 (.interrupt t)
                  (throw (ex-info (str "Test timed out after " timeout-ms "ms")
-                                 {:timeout-ms timeout-ms}))))))))
+                                 {:timeout-ms timeout-ms})))
+               (let [v @p]
+                 (when (instance? Throwable v)
+                   (throw v))))))))
 
 
 (defmacro allow-platform-park

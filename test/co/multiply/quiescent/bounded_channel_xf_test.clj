@@ -74,6 +74,22 @@
       (is (= [:x :x :x :x] @done)))))
 
 
+(deftest mapcat-throughput-test
+  (testing "mapcat 1P1C at scale — value-expanding transducer"
+    (let [n      100000
+          ch     (chan 1024 (mapcat #(vector % %)))
+          result (promise)]
+      (q/task (let [cnt (loop [c 0]
+                          (let [v (IChannel/.take ch)]
+                            (if (identical? v IChannel/CANCELLED)
+                              c
+                              (recur (inc c)))))]
+                (deliver result cnt)))
+      (q/task (dotimes [i n] (put! ch i))
+              (seal! ch))
+      (is (= (* 2 n) @result)))))
+
+
 ;; # partition-all (stateful)
 ;; ################################################################################
 
