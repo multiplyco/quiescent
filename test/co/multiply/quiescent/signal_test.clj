@@ -3,7 +3,7 @@
     [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent.test-support :refer [timeout-fixture]])
   (:import
-    [co.multiply.quiescent.impl.channel RelayLock RelayLock$Node]
+    [co.multiply.quiescent.impl.channel RelayLock]
     [java.util.concurrent CountDownLatch]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
 
@@ -27,8 +27,9 @@
           (.resume lock)))
       (start-virtual-thread
         (fn []
-          (let [node (RelayLock$Node. (Thread/currentThread))]
-            (.suspend lock node))
+          (let [node (.acquire lock)]
+            (.suspend lock)
+            (.release node))
           (.set result true)
           (.countDown done)))
       (.await done)
@@ -44,8 +45,9 @@
       (start-virtual-thread
         (fn []
           (.countDown started)
-          (let [node (RelayLock$Node. (Thread/currentThread))]
-            (.suspend lock node))
+          (let [node (.acquire lock)]
+            (.suspend lock)
+            (.release node))
           (.set result true)
           (.countDown done)))
       (.await started)
@@ -78,7 +80,7 @@
                 ;; Wait for space
                 (loop []
                   (when (>= (.get count) capacity)
-                    (.suspend put-lock node)
+                    (.suspend put-lock)
                     (recur)))
                 ;; Deposit
                 (let [idx (mod (.getAndIncrement put-idx) capacity)]
@@ -98,7 +100,7 @@
                 ;; Wait for value
                 (loop []
                   (when (<= (.get count) 0)
-                    (.suspend take-lock node)
+                    (.suspend take-lock)
                     (recur)))
                 ;; Consume
                 (let [idx (mod (.getAndIncrement take-idx) capacity)]
@@ -140,7 +142,7 @@
                 (try
                   (loop []
                     (when (>= (.get count) capacity)
-                      (.suspend put-lock node)
+                      (.suspend put-lock)
                       (recur)))
                   (let [idx (mod (.getAndIncrement put-idx) capacity)]
                     (aset buffer idx (long i)))
@@ -158,7 +160,7 @@
                 (try
                   (loop []
                     (when (<= (.get count) 0)
-                      (.suspend take-lock node)
+                      (.suspend take-lock)
                       (recur)))
                   (let [idx (mod (.getAndIncrement take-idx) capacity)]
                     (aget buffer idx))

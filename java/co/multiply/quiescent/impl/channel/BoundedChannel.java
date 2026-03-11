@@ -13,15 +13,19 @@ import java.lang.invoke.VarHandle;
  * coordination (suspend/resume). The lock is held while suspended —
  * this is safe because producers and consumers use separate locks.
  * <p>
- * When the buffer is empty (consumer) or full (producer), the thread
- * suspends with its lock node. The SIGNALED sentinel handles the race
- * between buffer check and park — no Dekker recheck needed.
+ * Cross-lock signaling uses a Dekker-style protocol: the producer
+ * writes TAIL then reads HEAD; the consumer writes HEAD then reads
+ * TAIL. Sequential consistency guarantees at least one side sees the
+ * other's update, so the consumer only signals the producer when the
+ * buffer was observably full. The SIGNALED sentinel in RelayLock
+ * handles the residual race between the Dekker check and the park.
  * <p>
- * When a transducer is supplied, the reducing function wraps
- * {@link #putDirect}, which writes one value at a time to the ring
- * buffer with backpressure. Stateful transducers like {@code mapcat}
- * that expand a single input into multiple outputs will park mid-batch
- * when the buffer is full, resuming as consumers drain.
+ * Buffer writes are accumulated via {@link #putAccumulate} without
+ * bumping the committed tail. A single volatile TAIL write flushes
+ * all accumulated values at the end of {@link #put}, or earlier if
+ * backpressure forces a mid-batch flush (e.g. mapcat expansion filling
+ * the buffer). This batches volatile writes and gives consumers a
+ * larger batch to drain per wake-up.
  */
 public class BoundedChannel implements IChannel, IBuffered {
 
@@ -65,24 +69,18 @@ public class BoundedChannel implements IChannel, IBuffered {
     final int capacity;
     final int mask;
 
-    // ---- Transducer ----
+    // ---- Put-side state (putLock only) ----
     final IFn rf;
-    RelayLock.Node putNode;     // current lock node, written/read under putLock only
-    boolean putInterrupted;     // interrupt captured during putDirect, under putLock only
+    boolean putInterrupted;     // interrupt captured during putAccumulate
+    long putTail;               // accumulator cursor, diverges from tail until flushed
+    boolean putSealed;          // set when transducer returns Reduced
 
     // ================================================================
     //  Constructors
     // ================================================================
 
     public BoundedChannel(int requestedSize) {
-        if (requestedSize < 1)
-            throw new IllegalArgumentException("Buffer size must be >= 1, got " + requestedSize);
-        this.capacity = nextPowerOf2(requestedSize);
-        this.mask = capacity - 1;
-        this.buffer = new Object[capacity];
-        this.rf = null;
-        this.putLock = new RelayLock();
-        this.takeLock = new RelayLock();
+        this(requestedSize, null);
     }
 
     public BoundedChannel(int requestedSize, Object xf) {
@@ -99,7 +97,7 @@ public class BoundedChannel implements IChannel, IBuffered {
                     return acc;
                 }
                 public Object invoke(Object acc, Object val) {
-                    putDirect(val, putNode);
+                    putAccumulate(val);
                     return acc;
                 }
             };
@@ -119,44 +117,57 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     /**
-     * Write one value to the ring buffer, suspending on putLock if full.
-     * Resumes takeLock when the buffer transitions from empty to non-empty.
+     * Write one value to the ring buffer without bumping TAIL.
+     * Flushes (commits TAIL, resumes takeLock) and suspends only
+     * when the buffer is full — backpressure for expanding
+     * transducers like mapcat. Called under putLock.
      * <p>
-     * Called under putLock. Interrupts are deferred: if interrupted during
-     * suspend, sets {@code putInterrupted} and continues until the value
-     * is written or the channel closes. Returns true if written, false
-     * only when {@code state != OPEN}.
+     * {@code putTail} must be initialized before the first call.
+     *
+     * @return true if written, false only when {@code state != OPEN}
      */
-    private boolean putDirect(Object value, RelayLock.Node node) {
+    private boolean putAccumulate(Object value) {
         while (true) {
             if (state != OPEN) return false;
-            long t = tail;
             long h = (long) HEAD.getAcquire(this);
-            if (t - h < capacity) {
-                buffer[(int)(t & mask)] = value;
-                TAIL.setVolatile(this, t + 1);
-                if (t + 1 - (long) HEAD.getVolatile(this) == 1) {
-                    takeLock.resume();
-                }
+            if (putTail - h < capacity) {
+                buffer[(int)(putTail & mask)] = value;
+                putTail++;
                 return true;
             }
-            if (putLock.suspend(node)) {
+            // Buffer full — flush accumulated writes so consumers can drain
+            TAIL.setVolatile(this, putTail);
+            takeLock.resume();
+            // Dekker: re-read HEAD after TAIL write — if the consumer
+            // already drained, skip the park
+            h = (long) HEAD.getAcquire(this);
+            if (putTail - h < capacity) continue;
+            if (putLock.suspend()) {
                 putInterrupted = true;
             }
         }
     }
 
     /**
-     * Transducer put path. Runs the value through the reducing function,
-     * which calls putDirect via the baseRf for each output value.
+     * Route a value through the transducer (if present) or directly
+     * to the buffer. Called for every value regardless of source.
      */
-    private boolean putXf(Object value, RelayLock.Node node) {
+    private boolean writeValue(Object value) {
+        return rf != null ? putXf(value) : putAccumulate(value);
+    }
+
+    /**
+     * Transducer put path. Runs the value through the reducing
+     * function, which calls putAccumulate via baseRf for each output.
+     * If the transducer returns Reduced, runs completion and sets
+     * putSealed (seal is deferred to after the tail flush in put()).
+     */
+    private boolean putXf(Object value) {
         if (state != OPEN) return false;
-        this.putNode = node;
         Object result = rf.invoke(this, value);
         if (RT.isReduced(result)) {
             rf.invoke(this);
-            seal();
+            putSealed = true;
             return true;
         }
         return state == OPEN;
@@ -173,61 +184,55 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (node.combined) return true;
 
         putInterrupted = false;
-        boolean ok;
-        if (rf != null) {
-            ok = putXf(value, node);
-        } else {
-            ok = putDirect(value, node);
-        }
+        putSealed = false;
+        putTail = tail;
+
+        boolean ok = writeValue(value);
 
         RelayLock.Node last = node;
-        if (ok) {
-            last = rf != null ? putCombineXf(node) : putCombine(node);
+        if (ok && !putSealed) {
+            last = putCombine(node);
         }
+
+        // Flush accumulated writes (commit only — defer consumer notification)
+        boolean flushed = putTail != tail;
+        if (flushed) {
+            TAIL.setVolatile(this, putTail);
+        }
+
+        // Seal must precede release: successors must see SEALED state
+        if (putSealed) seal();
+
         last.release();
+
+        // Notify consumers after release — successor parks on signal
+        // immediately (buffer still full), gets woken by consumer side
+        if (flushed && !putSealed) {
+            takeLock.resume();
+        }
+
         if (putInterrupted) Thread.currentThread().interrupt();
         return ok;
     }
 
+    /**
+     * Combine waiting successors. Each value goes through
+     * {@link #writeValue} — the same path as the owner's value.
+     * Parks on backpressure (consumer drains, combiner continues),
+     * amortizing lock acquisition across the batch.
+     */
     private RelayLock.Node putCombine(RelayLock.Node node) {
-        long t = tail;
-        long h = (long) HEAD.getAcquire(this);
         RelayLock.Node current = node;
-        long newTail = t;
 
-        while (newTail - h < capacity && state == OPEN) {
+        while (state == OPEN && !putSealed) {
             Object succObj = current.state;
             if (!(succObj instanceof RelayLock.Node succ)) break;
-            buffer[(int)(newTail & mask)] = succ.value;
-            newTail++;
+
+            if (!writeValue(succ.value)) break;
+
             succ.combined = true;
             succ.wake();
             current = succ;
-        }
-
-        if (newTail > t) {
-            TAIL.setVolatile(this, newTail);
-            takeLock.resume();
-        }
-
-        return current;
-    }
-
-    private RelayLock.Node putCombineXf(RelayLock.Node node) {
-        RelayLock.Node current = node;
-
-        while (state == OPEN) {
-            Object succObj = current.state;
-            if (!(succObj instanceof RelayLock.Node succ)) break;
-            Object result = rf.invoke(this, succ.value);
-            succ.combined = true;
-            succ.wake();
-            current = succ;
-            if (RT.isReduced(result)) {
-                rf.invoke(this);
-                seal();
-                break;
-            }
         }
 
         return current;
@@ -262,9 +267,15 @@ public class BoundedChannel implements IChannel, IBuffered {
 
                 if (last == node) HEAD.setVolatile(this, h + 1);
 
-                boolean signalPut = ((long) TAIL.getVolatile(this) - h) >= capacity;
                 last.release();
-                if (signalPut) putLock.resume();
+
+                // Dekker: re-read TAIL after HEAD write — signal producer
+                // only if the buffer was full (producer might be parked)
+                long freshT = (long) TAIL.getAcquire(this);
+                if (freshT - h >= capacity) {
+                    putLock.resume();
+                }
+
                 if (interrupted) Thread.currentThread().interrupt();
                 return ownValue;
             }
@@ -273,7 +284,7 @@ public class BoundedChannel implements IChannel, IBuffered {
                 if (interrupted) Thread.currentThread().interrupt();
                 return IChannel.CANCELLED;
             }
-            if (takeLock.suspend(node)) {
+            if (takeLock.suspend()) {
                 interrupted = true;
             }
         }

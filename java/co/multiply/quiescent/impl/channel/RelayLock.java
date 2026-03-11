@@ -17,12 +17,12 @@ import java.util.concurrent.locks.LockSupport;
  * ordering falls out of arrival order at the slot.
  * <p>
  * <b>Signal (suspend/resume)</b> — a single atomic field transitions
- * between SIGNALED (sentinel, no waiter) and a caller-provided Node
- * (waiter registered). The SIGNALED sentinel eliminates the need for
- * Dekker-style rechecks — if a resume fires between the buffer check
- * and the suspend, the suspending thread sees SIGNALED and returns
- * without parking. Used for cross-lock coordination: a thread holds
- * its lock while suspended, and the other side resumes it.
+ * between SIGNALED (sentinel, no waiter) and the owner's Node
+ * (waiter registered). The SIGNALED sentinel handles the race between
+ * condition check and park — if a resume fires between the two, the
+ * suspending thread sees SIGNALED and returns without parking.
+ * Used for cross-lock coordination: a thread holds its lock while
+ * suspended, and the other side resumes it.
  * <p>
  * Interruption is deferred: a thread cannot bail mid-chain. It must
  * wait for ownership, then hand off immediately.
@@ -78,6 +78,7 @@ public class RelayLock {
 
     volatile Node slot;
     volatile Node ref = SIGNALED;
+    Node owner; // plain field — only the owner thread reads/writes it
 
     public RelayLock() {
         Node initial = new Node(null);
@@ -100,8 +101,12 @@ public class RelayLock {
     public Node acquire(Node myNode) {
         Node prev = (Node) SLOT.getAndSet(this, myNode);
         Object prevState = STATE.getAndSet(prev, myNode);
-        if (prevState == DONE) return myNode;
-        awaitPredecessor(prev, myNode);
+        if (prevState != DONE) {
+            awaitPredecessor(prev, myNode);
+        }
+        if (!myNode.combined) {
+            this.owner = myNode;
+        }
         return myNode;
     }
 
@@ -119,7 +124,7 @@ public class RelayLock {
     // ================================================================
 
     /**
-     * Register the given node and park until resumed.
+     * Park the current lock owner until resumed.
      * <p>
      * If a SIGNALED sentinel is found, the thread returns immediately
      * without parking. The caller must re-check the buffer condition
@@ -127,7 +132,8 @@ public class RelayLock {
      *
      * @return true if the thread was interrupted while parked
      */
-    public boolean suspend(Node node) {
+    public boolean suspend() {
+        Node node = this.owner;
         Node prev = (Node) REF.getAndSet(this, node);
         if (prev == SIGNALED) return false;
         if (prev != node && prev.state != DONE) {
