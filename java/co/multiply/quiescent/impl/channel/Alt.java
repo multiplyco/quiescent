@@ -59,12 +59,10 @@ public class Alt implements IChannel {
         volatile Object result = PENDING;
         final Thread callerThread;
         volatile int remaining;          // countdown: channels not yet exhausted
-        final boolean any;
 
-        AltClaim(Thread callerThread, int channelCount, boolean any) {
+        AltClaim(Thread callerThread, int channelCount) {
             this.callerThread = callerThread;
             this.remaining = channelCount;
-            this.any = any;
         }
 
         boolean tryClaim() {
@@ -82,10 +80,8 @@ public class Alt implements IChannel {
 
         void channelDone() {
             int r = (int) REMAINING.getAndAdd(this, -1) - 1;
-            if ((any || r == 0) && !isClaimed()) {
-                if (tryClaim()) {
-                    deliver(IChannel.CANCELLED);
-                }
+            if (r == 0 && tryClaim()) {
+                deliver(IChannel.CANCELLED);
             }
         }
     }
@@ -132,7 +128,7 @@ public class Alt implements IChannel {
     @Override
     public Object take() throws InterruptedException {
         if (Thread.interrupted()) throw new InterruptedException();
-        AltClaim claim = new AltClaim(Thread.currentThread(), channels.length, any);
+        AltClaim claim = new AltClaim(Thread.currentThread(), channels.length);
         spawnVT(0, claim);
 
         boolean interrupted = false;
@@ -162,7 +158,11 @@ public class Alt implements IChannel {
 
     private void exitDone(int idx, AltClaim claim, boolean spawned) {
         cascade(idx, claim, spawned);
-        claim.channelDone();
+        if (any) {
+            if (claim.tryClaim()) claim.deliver(IChannel.CANCELLED);
+        } else {
+            claim.channelDone();
+        }
     }
 
     private void handleChannel(int idx, AltClaim claim) {
