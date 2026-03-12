@@ -619,7 +619,6 @@ exclusively on the claim cell. Virtual threads own the lock chains.
 ```java
 class AltNode extends Node {
     final AltClaim claim;      // shared across all VTs in one Alt op
-    final int channelIndex;    // which channel this node is for
     Node prev;                 // predecessor, set after enqueue
 }
 ```
@@ -636,12 +635,13 @@ so predecessor wakes route to the VT.
 class AltClaim {
     volatile int claimed;         // 0 = open, 1 = claimed (CAS field)
     volatile Object result;       // the value (take) or Boolean (put)
-    volatile int resultIndex;     // which channel won
     final Thread callerThread;    // the Alt caller to unpark
 
     boolean tryClaim();           // CAS 0 → 1
+
     boolean isClaimed();          // read claimed
-    void setResult(Object value, int idx);  // write result, unpark caller
+
+    void setResult(Object value);  // write result, unpark caller
 }
 ```
 
@@ -651,67 +651,34 @@ Alt spawns virtual threads lazily via a cascade. Each participant
 handles one channel: enqueue, try for data, and spawn the next VT
 only at the point where it must park.
 
-**The unstarted VT optimization:** before enqueueing on a channel,
-create an unstarted VT via `Thread.ofVirtual().unstarted()`. The VT's
-Thread reference goes into `AltNode.thread`. Cost: ~100 bytes (no
-continuation/stack until `start()`). If the caller gets DONE back and
-the buffer has data, it takes directly and the VT is never started —
-the Thread object is just garbage. If the caller can't complete
-immediately, it calls `vt.start()` and parks on the claim cell.
-
-This gives us a zero-VT fast path: the common case (uncontended lock,
-buffer non-empty) completes with zero virtual threads, zero
-continuations, just one AltNode allocation.
-
 ### Step by step
 
 ```
 Alt.take(channels):
     claim = new AltClaim(currentThread)
-    workers = Thread[N]
-
-    ── First channel: caller tries directly ──
-
-    vt = Thread.ofVirtual().unstarted(→ handleChannel(ch[0], ...))
-    node = new AltNode(vt, claim, 0)
-    prev = SLOT.getAndSet(ch[0].takeLock, node)
-    prevState = STATE.getAndSet(prev, node)
-    node.prev = prev
-
-    if prevState == DONE:
-        if buffer non-empty and claim.tryClaim():
-            take value, release, return         ← zero VTs
-        if buffer non-empty:
-            release, return                     ← claim lost (shouldn't happen on first)
-        // Buffer empty — need VT for suspend + cascade
-        vt.start()
-    else:
-        // Contended — need VT for lock chain + cascade
-        vt.start()
-
-    ── Caller parks on claim ──
+    start VT for ch[0] (cascade spawns further VTs as needed)
 
     while !claim.isClaimed():
         park()
 
-    ── Cleanup ──
-
-    for w in workers: if alive, interrupt
-    Thread.interrupted()                        ← clear self-interrupt
     return claim.result
 ```
+
+The caller does no channel work. It creates the claim, starts the first
+VT, and parks. The VT cascade handles all lock acquisition, buffer
+access, and combining. Dead VTs (claim already won by another channel)
+drain naturally through the lock chain — no interrupt, no cleanup.
 
 ### VT lifecycle (handleChannel)
 
 ```
-handleChannel(ch[i], node, claim, workers, idx):
+handleChannel(ch[i], node, claim, idx):
     prev = node.prev
 
     if prev.state != DONE and !node.combined:
         // Must wait in lock chain — spawn VT for next channel NOW
         if idx+1 < N:
-            spawn next VT (same unstarted pattern), enqueue on ch[idx+1]
-            workers[idx+1] = nextVT; nextVT.start()
+            spawn + enqueue + start next VT for ch[idx+1]
         awaitPredecessor(prev, node)
 
     if node.combined: return                    ← combiner handled us
@@ -723,33 +690,25 @@ handleChannel(ch[i], node, claim, workers, idx):
         if buffer non-empty:
             if claim.tryClaim():
                 take value
-                claim.setResult(value, idx)     ← unparks caller
+                claim.setResult(value)          ← unparks caller
                 combine successors
                 release last, return
             else: release, return
         if sealed/cancelled: release, return
         // Buffer empty — spawn VT for next channel if not yet spawned
-        if idx+1 < N and workers[idx+1] == null:
-            spawn + enqueue + start next VT
-        suspendInterruptible(node)
-        // woken by producer resume or interrupt → re-check
+        if idx+1 < N and not yet spawned:
+            spawn + enqueue + start next VT for ch[idx+1]
+        suspend(node)
+        // woken by producer resume → re-check
 ```
 
 The cascade spawns the next VT at the **first park point** — either
 the lock chain (predecessor busy) or the signal (buffer empty). If
 the VT gets DONE and data, it completes without spawning further VTs.
 
-### Unstarted VT: why there are no races
-
-The unstarted VT's thread identity is fixed at creation, baked into
-the AltNode before it touches the slot.
-
-| Event ordering | What happens |
-|----------------|-------------|
-| Predecessor finishes before `vt.start()` | `wake()` → `unpark(vt)` banks the permit. VT starts, parks, returns immediately. |
-| Combiner sets `combined` before `vt.start()` | `combined` is volatile. `vt.start()` provides happens-before. VT sees `combined=true`, exits. |
-| `vt.start()` before predecessor finishes | Normal case. VT parks in `awaitPredecessor`, woken by predecessor. |
-| Caller takes in fast path | VT never started. Thread object is GC'd. |
+Dead VTs (claim already won) wake naturally when their predecessor
+releases, check `claim.isClaimed()`, and release — potentially
+combining successors on their way out. No special cleanup needed.
 
 ### Combining interaction
 
@@ -769,29 +728,41 @@ dead AltNode is a skip node — discarded with minimal cost.
 
 ```java
 // In takeCombine:
-while (newHead < t && state == OPEN) {
-    Object succObj = current.state;
-    if (!(succObj instanceof Node succ)) break;
+while(newHead<t &&state ==OPEN){
+Object succObj = current.state;
+    if(!(succObj instanceof
+Node succ))break;
 
-    if (succ instanceof AltNode alt) {
-        if (!alt.claim.tryClaim()) {
-            // Dead alt — skip, no buffer work
-            succ.combined = true;
-            succ.wake();
-            current = succ;
+        if(succ instanceof
+AltNode alt){
+        if(!alt.claim.
+
+tryClaim()){
+// Dead alt — skip, no buffer work
+succ.combined =true;
+        succ.
+
+wake();
+
+current =succ;
             continue;
-        }
-        // Live alt — claim won
-        alt.claim.setResult(buffer[(int)(newHead & mask)], alt.channelIndex);
-    }
+                    }
+                    // Live alt — claim won
+                    alt.claim.
 
-    // Normal combine (live alt falls through here too)
-    succ.value = buffer[(int)(newHead & mask)];
-    buffer[(int)(newHead & mask)] = null;
-    newHead++;
-    succ.combined = true;
-    succ.wake();
-    current = succ;
+setResult(buffer[(int)(newHead &mask)]);
+        }
+
+// Normal combine (live alt falls through here too)
+succ.value =buffer[(int)(newHead &mask)];
+buffer[(int)(newHead &mask)]=null;
+newHead++;
+succ.combined =true;
+        succ.
+
+wake();
+
+current =succ;
 }
 ```
 
@@ -799,47 +770,6 @@ Dead AltNodes don't truncate the batch. The combiner passes through
 a chain of `[live, dead, dead, live, normal, dead, live]` in one
 pass, advancing the cursor only for live nodes. Under heavy Alt
 contention, this preserves the batching advantage.
-
-### suspendInterruptible
-
-A new variant of `suspend` that exits on interrupt, for Alt VTs that
-need to be cancelled when another channel wins:
-
-```java
-public boolean suspendInterruptible(Node node) {
-    Node prev = (Node) REF.getAndSet(this, node);
-    if (prev == SIGNALED) return false;
-    if (prev != node && prev.state != DONE) prev.wake();
-    while (ref == node) {
-        LockSupport.park(this);
-        if (Thread.interrupted()) {
-            REF.compareAndSet(this, node, SIGNALED);
-            return true;
-        }
-    }
-    return false;
-}
-```
-
-The CAS on ref is safe against concurrent `resume()`: if resume fires
-first, `ref` is already SIGNALED, CAS fails, loop exits because
-`ref != node`. If CAS succeeds first, the VT removed itself cleanly;
-a later resume sees SIGNALED and is a no-op.
-
-### Dead VT cleanup
-
-After the claim succeeds, the caller interrupts all VTs:
-
-| VT state | What happens | Delay |
-|----------|-------------|-------|
-| In lock chain | Interrupt deferred. VT eventually becomes owner, checks claim, releases. | Predecessor's critical section |
-| Suspended on signal | `suspendInterruptible` exits on interrupt. VT CAS's ref to SIGNALED, releases lock. | ~instant |
-| Already completed | Interrupt is no-op on dead thread. | 0 |
-
-A VT stuck in the lock chain cannot leave until its predecessor
-releases. This is bounded by the predecessor's critical section
-(a buffer read/write — trivial). The VT is a virtual thread: while
-parked, the carrier is free to run other VTs.
 
 ### Fair / Prio
 
@@ -849,14 +779,14 @@ any channel that becomes ready first wins.
 ```java
 private int scanStart() {
     return fair
-        ? (int) Math.floorMod(OFFSET.getAndAdd(this, 1L), channels.length)
-        : 0;
+            ? (int) Math.floorMod(OFFSET.getAndAdd(this, 1L), channels.length)
+            : 0;
 }
 ```
 
 **`:prio`** — cascade starts at index 0, always. The caller tries
 channel 0 first. If channel 0 has data, it wins deterministically
-(zero VTs). If no channel has data, any VT can win — consistent with
+(one VT, no cascade). If no channel has data, any VT can win — consistent with
 standard Alt semantics (priority applies to "multiple ready", not
 "waiting").
 
@@ -873,12 +803,12 @@ are cheap.
 
 ### Cost
 
-| Scenario | VTs spawned | Lock cycles |
-|----------|------------|-------------|
-| ch[0] DONE + data | 0 | 1 (3 exchanges) |
-| ch[0] contended, data after wait | 1 (ch[1] dead) | 1 each |
-| All empty, ch[k] gets data first | k | 1 each |
-| N concurrent Alts batched on ch[0] | 0 per Alt (all combined) | 1 total |
+| Scenario                           | VTs spawned              | Lock cycles     |
+|------------------------------------|--------------------------|-----------------|
+| ch[0] DONE + data                  | 1                        | 1 (3 exchanges) |
+| ch[0] contended, data after wait   | 2 (ch[1] dead)           | 1 each          |
+| All empty, ch[k] gets data first   | k+1                      | 1 each          |
+| N concurrent Alts batched on ch[0] | N (all combined)         | 1 total         |
 
 The last row is the batching win: N concurrent Alt calls all cascade
 to the same channel and are combined in one lock cycle. The combiner
@@ -886,15 +816,54 @@ does N claim CASes + N buffer reads + one volatile HEAD write.
 
 ### Per-Alt allocation
 
-| Object | Size | When |
-|--------|------|------|
-| AltClaim | ~40 bytes | always |
-| AltNode | ~48 bytes (Node + 3 fields) | per channel visited |
-| Unstarted Thread | ~100 bytes | per channel visited |
-| Started VT (continuation + stack) | ~1 KB | only if channel needs to wait |
+| Object                            | Size                        | When                |
+|-----------------------------------|-----------------------------|---------------------|
+| AltClaim                          | ~40 bytes                   | always              |
+| AltNode + VT (continuation+stack) | ~1 KB                       | per channel visited |
 
-In the zero-VT fast path: one AltClaim + one AltNode + one unstarted
-Thread ≈ 200 bytes. No continuation, no stack, no scheduling.
+## Alt Implementation Milestones
+
+### M1: Core mechanics — Alt take, prio only
+
+AltClaim, AltNode, cascade spawning with started VTs. Claim CAS for
+exactly-once. Dead VT passthrough (check `isClaimed()`, release).
+No combining — Alt VTs just take and release. `:prio` only (always
+start at index 0).
+
+Proves: cascade protocol, claim coordination, dead VT draining.
+
+### M2: Fair mode
+
+Add rotating offset for `:fair`. Trivial change to cascade start
+index, but needs testing to verify starvation prevention.
+
+### M3: Combining with AltNodes
+
+Lock holders walk successor chain and handle AltNodes: live nodes
+(claim CAS succeeds) get combined, dead nodes (claim CAS fails)
+get skipped. Dead AltNodes driving combine passes for successors
+behind them.
+
+### M4: Alt put
+
+Mirror of Alt take. Same cascade/claim mechanics, buffer write
+instead of read.
+
+### M5: Alt as IChannel (composition)
+
+Alt implements the channel protocol. Enables nesting: an outer Alt
+can include an inner Alt as one of its channels.
+
+### M6: Unstarted VT optimization
+
+Create VTs via `Thread.ofVirtual().unstarted()` to defer continuation
+allocation. Caller does the initial enqueue + state exchange inline;
+VT is only started if the caller can't complete immediately. Gives a
+fast path where the common case (uncontended lock, buffer non-empty)
+completes with zero started VTs (~200 bytes instead of ~1 KB).
+
+Evaluate after profiling whether the allocation savings justify the
+added complexity (two code paths for the same operation).
 
 ## Open Questions
 
