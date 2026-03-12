@@ -179,6 +179,39 @@
 (deftest mpmc-4p4c-test (mpmc-test 4 4 2500 64))
 
 
+(deftest mpmc-no-lost-or-double-dispensed-values-test
+  (testing "8 producers × 5000 values: every value taken exactly once"
+    (let [n-producers 8
+          per-thread  5000
+          n-consumers 4
+          total       (* n-producers per-thread)
+          ch          (chan 16)
+          results     (java.util.concurrent.ConcurrentLinkedQueue.)]
+      @(q/task
+         (let [cs (mapv (fn [_]
+                          (q/task
+                            (dotimes [_ (quot total n-consumers)]
+                              (.add results (take! ch)))))
+                    (range n-consumers))
+               ps (mapv (fn [p]
+                          (q/task
+                            (dotimes [i per-thread]
+                              (put! ch (+ (* p per-thread) i)))))
+                    (range n-producers))]
+           (run! deref ps)
+           (run! deref cs)))
+      (let [taken   (vec results)
+            freqs   (frequencies taken)
+            dupes   (into {} (filter #(> (val %) 1)) freqs)
+            missing (remove freqs (range total))]
+        (is (= total (count taken))
+          "Total taken count must equal total put count")
+        (is (empty? dupes)
+          (str "Values dispensed more than once: " (take 10 dupes)))
+        (is (empty? (seq missing))
+          (str "Values never received: " (take 10 missing)))))))
+
+
 ;; # Cancellation
 ;; ################################################################################
 

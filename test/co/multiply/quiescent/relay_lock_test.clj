@@ -8,6 +8,11 @@
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
 
 
+(def ^:private ^java.lang.reflect.Field slot-field
+  (doto (.getDeclaredField RelayLock "slot")
+    (.setAccessible true)))
+
+
 (use-fixtures :each (timeout-fixture))
 
 
@@ -97,6 +102,40 @@
       (.await latch)
       (is (= (* n-threads n-ops) (.get counter))
         "All increments should be visible"))))
+
+
+(deftest fifo-ordering-test
+  (testing "Threads acquire the lock in arrival order"
+    (let [^RelayLock lock  (RelayLock.)
+          n                8
+          order            (java.util.concurrent.ConcurrentLinkedQueue.)
+          done             (CountDownLatch. n)
+          ;; Hold the lock so all subsequent threads park in the chain
+          blocker          (.acquire lock)
+          ;; Launch threads one at a time, spinning on slot to confirm
+          ;; each has entered the chain before launching the next
+          _threads
+          (reduce
+            (fn [acc i]
+              (let [prev-slot (.get slot-field lock)
+                    t (start-virtual-thread
+                        (fn []
+                          (let [node (.acquire lock)]
+                            (try
+                              (.add order (int i))
+                              (finally
+                                (.release node))))
+                          (.countDown done)))]
+                ;; Spin until this thread has swapped into the slot
+                (while (identical? prev-slot (.get slot-field lock)))
+                (conj acc t)))
+            []
+            (range n))]
+      ;; Release the blocker — threads should wake in chain order
+      (.release blocker)
+      (.await done)
+      (is (= (vec (range n)) (vec order))
+        "Acquire order must match arrival order"))))
 
 
 (deftest interrupt-deferred-test
