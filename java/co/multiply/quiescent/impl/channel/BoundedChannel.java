@@ -297,6 +297,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         while (newHead < t && state != CANCELLED) {
             Object succObj = current.state;
             if (!(succObj instanceof RelayLock.Node succ)) break;
+            if (succ instanceof Alt.AltNode) break;  // M1: don't combine alt nodes
             succ.value = buffer[(int)(newHead & mask)];
             buffer[(int)(newHead & mask)] = null;
             newHead++;
