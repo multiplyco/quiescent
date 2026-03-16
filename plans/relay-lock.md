@@ -865,6 +865,105 @@ completes with zero started VTs (~200 bytes instead of ~1 KB).
 Evaluate after profiling whether the allocation savings justify the
 added complexity (two code paths for the same operation).
 
+## Pipe (Fan-In)
+
+Pipe is the data-plane complement to Alt. Where Alt is lazy (take exactly
+one value, other channels untouched), pipe is eager (continuously drain
+sources into a collector). For high-throughput fan-in of data streams,
+pipe is simpler and faster than Alt.
+
+### Semantics
+
+`(pipe target [src1 src2 src3])` spawns a VT per source channel. Each VT
+loops: take from source, send to target. Values move as fast as buffer
+space allows. Backpressure propagates naturally — when the target buffer
+is full, pipe VTs park on the target's put lock.
+
+Alt and pipe serve distinct scenarios:
+
+| | Alt | Pipe |
+|---|---|---|
+| **Access pattern** | Lazy, exactly-once per call | Eager, continuous drain |
+| **Side effects** | Other channels untouched | Sources consumed |
+| **Cost per op** | VT cascade, claim CAS | Normal lock acquire/release |
+| **Sweet spot** | Control flow, coordination, signals | Data aggregation, merging streams |
+
+Pipe plays directly into RelayLock's strengths. Each pipe VT becomes a
+producer on the collector channel. The fan-in benchmarks (128P1C at 24x,
+multi-channel 24×128P1C at 837x) are essentially measuring pipe fan-in
+throughput. Combining on the collector's put lock batches writes from
+whichever pipe sources have data ready.
+
+### `.send(channel)` — pipe-aware put
+
+`.send()` is the primitive pipe VTs use to write to the target channel.
+It is distinct from `.put()` in one way: it respects the SEALING state
+(see below). During SEALING, `.put()` is rejected but `.send()` is
+allowed, giving pipe sources a bounded window to complete their in-flight
+operation.
+
+`.send()` also stands alone as a composable one-shot forwarding primitive
+for coordination flows.
+
+### Source registration
+
+The target channel maintains an atomic count of active pipe sources.
+
+```
+target.registerSource()    — atomic increment
+target.sourceComplete()    — atomic decrement; if zero, SEALING → SEALED
+```
+
+Each pipe VT calls `registerSource()` on start and `sourceComplete()`
+when its source is drained. A sealed source may still have buffered
+values — the pipe VT keeps taking until it gets the sealed-and-empty
+signal, then calls `sourceComplete()`. When the last source completes,
+the target transitions to SEALED.
+
+### SEALING — graceful pipe shutdown
+
+Channel state gains a third lifecycle phase:
+
+```
+OPEN → SEALING → SEALED
+OPEN → SEALED            (no pipe sources, or direct seal)
+OPEN → CANCELLED         (immediate teardown, unchanged)
+```
+
+SEALING is the bounded grace period for pipe sources to complete:
+
+- **Direct `put()`**: rejected (SEALING looks like SEALED to direct
+  producers).
+- **`.send()` from pipe VTs**: allowed. The pipe VT completes its
+  current send, then sees SEALING and exits.
+- **`take()`**: allowed. Consumers can still drain buffered values.
+
+The pipe VT loop:
+
+```
+loop:
+    val = source.take()
+    if cancelled: break
+    target.send(val)
+    if target.state >= SEALING:
+        target.sourceComplete()
+        break
+```
+
+Each pipe source does at most one more value after `seal()` is called.
+The shutdown window is bounded: N values in flight (one per pipe source),
+and the channel reaches SEALED as soon as those land.
+
+**Explicit seal override**: `seal()` on a target with registered sources
+enters SEALING. If someone needs immediate shutdown regardless of pipe
+sources, `cancel()` is the hard override — CANCELLED discards in-flight
+values, same as before. SEALING is the cooperative path; CANCELLED is
+the imperative override.
+
+The `sourceComplete()` call does a `decrementAndGet` on the source
+count. If the count reaches zero, it CASes `SEALING → SEALED` and
+resumes both locks so suspended waiters see the final state.
+
 ## Open Questions
 
 - **4P4C contention.** Symmetric many-to-many on a single channel is the
