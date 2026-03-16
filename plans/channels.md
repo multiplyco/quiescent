@@ -14,14 +14,14 @@ distributed reactive computation upon.
 
 There are two fundamentally different computation models:
 
-| | Discrete | Continuous |
-|---|---|---|
-| **What matters** | Every value | Latest value |
-| **Read** | `take` (consuming) | `@deref` (non-consuming) |
-| **Notification** | Every put | Only on change (deduplication) |
-| **Duplicates** | Delivered | Skipped |
-| **Buffer types** | Fixed, sliding, dropping | Memo |
-| **Analogy** | Event stream | Atom with watches |
+|                  | Discrete                 | Continuous                     |
+|------------------|--------------------------|--------------------------------|
+| **What matters** | Every value              | Latest value                   |
+| **Read**         | `take` (consuming)       | `@deref` (non-consuming)       |
+| **Notification** | Every put                | Only on change (deduplication) |
+| **Duplicates**   | Delivered                | Skipped                        |
+| **Buffer types** | Fixed, sliding, dropping | Memo                           |
+| **Analogy**      | Event stream             | Atom with watches              |
 
 ## Buffer Types
 
@@ -70,11 +70,11 @@ Safe alternative to `take`. Two-branch form:
 Parks until either a value arrives or the channel is cancelled. Does not
 propagate cancellation — the second branch handles it explicitly.
 
-| Operation | Channel alive | Channel cancelled |
-|-----------|--------------|-------------------|
-| `take` | Park, return value | Propagate cancellation |
-| `@deref` | Return current value (memo) | Propagate cancellation |
-| `poll` | Park, first branch | Second branch |
+| Operation | Channel alive               | Channel cancelled      |
+|-----------|-----------------------------|------------------------|
+| `take`    | Park, return value          | Propagate cancellation |
+| `@deref`  | Return current value (memo) | Propagate cancellation |
+| `poll`    | Park, first branch          | Second branch          |
 
 ### `put`
 
@@ -260,9 +260,9 @@ Naming/tagging via transducers:
 
 Both work on both tasks and channels:
 
-| | Cancels losers | Keeps losers |
-|---|---|---|
-| **Tasks** | `race` | `alt` |
+|              | Cancels losers             | Keeps losers        |
+|--------------|----------------------------|---------------------|
+| **Tasks**    | `race`                     | `alt`               |
 | **Channels** | `race` (valid but unusual) | `alt` (natural fit) |
 
 The distinction is destructive vs non-destructive, not task vs channel.
@@ -335,6 +335,7 @@ Structured concurrency extends across the network: cancel the parent, all
 remote computations cancel. Error handling and retry work as normal.
 
 Requirements:
+
 - Same compiled codebase on all peers (like Electric).
 - Peers with different code versions cannot participate together
   (enables blue/green deployment).
@@ -375,6 +376,7 @@ channels. The ring buffer design is the current preferred approach.
 ## Open Questions
 
 ### Channel Semantics
+
 - Exact cancel semantics for buffered channels (immediate vs drain).
 - Whether cascade cancellation (structured concurrency) is always immediate.
 - Output buffer type for `then`: memo if any input is memo? Fixed if all
