@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.6 - 2026-05-26
+
+- Fix `ClassNotFoundException: clojure.lang.AFunction` (and similar lazy class-generation / reflection failures) on
+  executor worker threads. Worker threads are constructed on whichever thread submits the first task and previously
+  inherited that thread's context classloader; when the submitter's loader couldn't resolve Clojure's own classes
+  (e.g. a Rama module/daemon thread), lazy class generation on the worker — Specter dynamic-path eval, runtime
+  reflection, agent fns — would fail. All three executors (`q-io`, `q-cpu`, `q-se`) now pin the classloader captured
+  at namespace load as each worker's context classloader.
+
 ## 0.2.5 - 2026-02-23
 
 - Fix performance warning in `ground`: `case` expression now coerces to primitive int, avoiding boxed comparison.

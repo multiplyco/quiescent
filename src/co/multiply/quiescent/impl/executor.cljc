@@ -8,6 +8,18 @@
             [java.util.concurrent.atomic AtomicLong])))
 
 
+#?(:clj (defonce ^{:doc "Classloader captured at namespace load and set as the context classloader on every
+                         executor thread below. Worker threads are constructed lazily on whatever thread
+                         submits the first task, so without this they inherit that submitter's context
+                         classloader. When the submitter is a thread whose context loader can't resolve
+                         Clojure's own classes (e.g. a Rama module/daemon loader), lazy class generation on
+                         the worker - Specter dynamic-path eval, runtime reflection, agent fns - fails with
+                         `ClassNotFoundException: clojure.lang.AFunction`. baseLoader at load time is a
+                         DynamicClassLoader that can resolve clojure.lang.* (and the loaded app classes)."}
+          ^ClassLoader base-classloader
+          (clojure.lang.RT/baseLoader)))
+
+
 #?(:clj (defonce ^{:doc "Virtual thread executor for IO-bound tasks. Creates a new virtual thread per task.
                          Default executor for tasks - use for network calls, file IO, and blocking operations."}
           ^ThreadPerTaskExecutor virtual-executor
@@ -15,9 +27,10 @@
             (reify ThreadFactory
               (newThread
                 [_ runnable]
-                (-> (Thread/ofVirtual)
-                  (Thread$Builder/.name "q-io")
-                  (Thread$Builder/.unstarted runnable)))))))
+                (doto (-> (Thread/ofVirtual)
+                        (Thread$Builder/.name "q-io")
+                        (Thread$Builder/.unstarted runnable))
+                  (Thread/.setContextClassLoader base-classloader)))))))
 
 
 (defn delegate-virtual
@@ -38,13 +51,14 @@
                          that should not block. Pool size scales with available CPUs."}
           ^ForkJoinPool cpu-executor
           (let [counter (AtomicLong. 0)
-                n-cpus  (.. Runtime getRuntime availableProcessors)]
+                n-cpus  (Runtime/.availableProcessors (Runtime/getRuntime))]
             (ForkJoinPool. n-cpus
               (reify ForkJoinPool$ForkJoinWorkerThreadFactory
                 (newThread
                   [_ pool]
                   (doto (ForkJoinPool$ForkJoinWorkerThreadFactory/.newThread ForkJoinPool/defaultForkJoinWorkerThreadFactory pool)
-                    (.setName (str "q-cpu-" (.getAndIncrement counter))))))
+                    (Thread/.setName (str "q-cpu-" (AtomicLong/.getAndIncrement counter)))
+                    (Thread/.setContextClassLoader base-classloader))))
               nil false))))
 
 
@@ -67,7 +81,8 @@
               (newThread
                 [_ r]
                 (doto (Thread. r "q-se")
-                  (.setDaemon true)))))))
+                  (Thread/.setDaemon true)
+                  (Thread/.setContextClassLoader base-classloader)))))))
 
 
 #?(:clj  (defn delegate-scheduled
