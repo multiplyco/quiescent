@@ -593,6 +593,11 @@ Alt takes from (or puts to) whichever of several channels is ready
 first. Each Alt operation consumes or produces exactly one value on
 one channel.
 
+Two claim mechanisms are described below: the original CAS-based
+AltClaim, and an alternative reservation-based design using getAndAdd
+on a shared integer. The reservation model generalizes to batch
+operations (pour/drain) where the CAS model does not.
+
 ### Properties
 
 - **Fairly queued.** AltNodes participate in each channel's lock chain
@@ -821,6 +826,183 @@ does N claim CASes + N buffer reads + one volatile HEAD write.
 | AltClaim                          | ~40 bytes                   | always              |
 | AltNode + VT (continuation+stack) | ~1 KB                       | per channel visited |
 
+## Alternative: Reservation-Based Claim (getAndAdd)
+
+An alternative to the CAS-based AltClaim. Instead of a single CAS
+for exactly-once, the claim uses an array and a VarHandle integer.
+The integer is the synchronization primitive; the array is plain.
+
+This design unifies single-value alt, batch pour/drain, and
+drain-available under one mechanism. Single-value alt becomes a
+special case of batch with a 1-element array.
+
+### Structure
+
+```java
+class ReservationClaim {
+    volatile Object[] array;          // output/input slots
+    volatile long reserved;           // VarHandle getAndAdd
+    final Thread callerThread;        // the caller to unpark
+
+    // VarHandle for reserved
+    static final VarHandle RESERVED = ...;
+}
+```
+
+The `array` holds the values being poured (put side) or slots to
+fill (take side). The `reserved` integer tracks how many slots have
+been claimed across all channels. A VT wins a range by doing
+`getAndAdd(n)` and checking the return value against `array.length`.
+
+### Race protocol
+
+```
+VT arrives at channel, acquires lock, inspects buffer.
+
+available = buffer occupancy (take) or headroom (put)
+want      = min(available, array.length - reserved)  // don't exceed array
+offset    = RESERVED.getAndAdd(claim, want)
+
+if offset >= array.length:
+    // Lost — array already full. Release lock, exit.
+
+if offset + want > array.length:
+    // Partial — someone else claimed between our read and add.
+    // Clamp: actual = array.length - offset
+    want = array.length - offset
+
+// Won (full or partial). Transfer `want` values.
+```
+
+The getAndAdd is unconditional — no retry, no CAS loop. The return
+value tells the VT its starting offset into the array. Multiple VTs
+on different channels get non-overlapping ranges. A VT that gets
+`offset >= array.length` knows the operation is complete and exits.
+
+### Within-channel FIFO, no cross-channel ordering
+
+Values are spread across channels by available buffer space. The
+cascade visits channels in priority order, so higher-priority
+channels get first chance at the early range of the array. But if
+a high-priority channel happens to be full when visited, a
+lower-priority channel may receive those values instead.
+
+This is the alt contract applied to batch: you used alt precisely
+because you didn't want a guarantee that values go to a specific
+channel. You want them in *any* channel from a selection, with
+first chance given by priority. FIFO is maintained within each
+channel; no ordering is guaranteed across channels.
+
+The stronger semantic — strict cross-channel ordering where value 3
+is guaranteed to land on a higher-priority channel than value 7 —
+would require sequential put-and-ack (insert one, await
+acknowledgement, insert next). That's a different operation.
+
+### Batch operations: pour and drain
+
+The reservation model naturally expresses batch operations. Single
+value alt is the degenerate case.
+
+| Operation | Array size | Claim amount | Semantics |
+|---|---|---|---|
+| `alt-put(chs, v)` | 1 | `min(headroom, 1)` | Put one value to any channel |
+| `alt-take(chs)` | 1 | `min(available, 1)` | Take one value from any channel |
+| `pour(chs, arr)` | N | `min(headroom, N - offset)` | Put all N values, block until done |
+| `drain(chs, n)` | N | `min(available, N - offset)` | Take exactly N, block until done |
+| `drain(chs)` | 1 | `available` | Take whatever's ready (see below) |
+
+**pour(chs, arr):** The caller has an array of N values to
+distribute. VTs cascade across channels in priority order. Each VT
+claims `min(headroom, remaining)` slots, writes that range into the
+channel buffer, and moves on. If all channels are full, VTs suspend
+and wait for headroom (same as single-value put). The operation
+completes when `reserved >= N`.
+
+**drain(chs, n):** Mirror of pour. Pre-allocate an N-slot output
+array. VTs cascade, each claiming `min(available, remaining)` buffer
+values and writing them into the output array at their reserved
+offset. Block until N values accumulated.
+
+**drain(chs) — drain available:** The caller doesn't know how many
+values to expect. Start with a 1-slot array — the minimum viable
+acceptance. When a VT wins the race on a buffer (gets offset 0), it
+reads `available` from that buffer, claims all of them via
+`getAndAdd(available)`, and replaces the array with a fresh one of
+the actual size.
+
+The losing-thread check is uniform regardless:
+
+```
+offset = RESERVED.getAndAdd(claim, n)
+offset >= array.length?  →  lost, bail
+```
+
+Whether the winner took 1 or 8, whether the array is the original
+1-slot or a replacement — the integer is at or past the array length
+either way. Losers see the same signal:
+
+- Winner took 8: integer=8, array.length=1 → 8 ≥ 1 → lost
+- Winner took 8 and replaced array: integer=8, array.length=8 → 8 ≥ 8 → lost
+
+An opportunistic "pour" (put however many the channels feel like
+accepting) doesn't have a use case. If you produced 8 values, you
+want all 8 delivered. Partial pour would mean silently dropping
+values.
+
+### Cascade flow (pour example)
+
+```
+Producer has 10 items, channels [ch1, ch2, ch3].
+
+1. VT0 visits ch1. Headroom = 4.
+   getAndAdd(4) → 0. Won. Write items[0..3] to ch1 buffer.
+   reserved is now 4. Remaining = 6.
+   ch1 is full. Spawn VT1 for ch2.
+
+2. VT1 visits ch2. Headroom = 6.
+   getAndAdd(6) → 4. Offset 4, want 6, 4+6=10 = array.length. OK.
+   Write items[4..9] to ch2 buffer.
+   reserved is now 10. Done.
+
+Meanwhile, consumer drains ch1. Headroom reopens.
+If VT2 had been spawned for ch3, it arrives, does getAndAdd(n) → 10.
+10 ≥ 10 → lost, bail. No wasted work.
+```
+
+### Publish ordering within a channel
+
+When multiple VTs claim ranges on the same channel's buffer (rare,
+but possible when headroom opens up between visits), they hold
+non-overlapping ranges via getAndAdd. The buffer writes can proceed
+in parallel, but the channel's tail (or head) cursor must advance
+contiguously — consumers can't see slot 7 before slot 4 is written.
+
+In the cascade model, this is naturally ordered: the first VT fills
+and commits (advances the cursor) before headroom reopens, which is
+what allows the second VT to see headroom at all. The consumer had
+to drain the first VT's writes to create that headroom, so the
+first VT's publish is already visible.
+
+Simultaneous claiming (two unrelated producers on the same channel)
+is serialized by the channel's lock. The getAndAdd reservation
+operates within the lock's critical section — it coordinates across
+an *alt operation's* VTs, not across independent producers.
+
+### Comparison to CAS-based AltClaim
+
+| | CAS (AltClaim) | getAndAdd (ReservationClaim) |
+|---|---|---|
+| Single-value alt | CAS(0,1), one instruction | getAndAdd(1), check ≥ 1, one instruction |
+| Batch put/take | N separate alt operations | One operation, N values |
+| Drain available | N/A | 1-slot array, replace on win |
+| Loser side-effect | None (CAS fails cleanly) | Increments past array.length (harmless) |
+| Retry | None (one-shot CAS) | None (getAndAdd unconditional) |
+| Instruction | x86: LOCK CMPXCHG | x86: LOCK XADD |
+
+For single-value alt, the two are equivalent — same cost, same
+semantics. The reservation model's advantage is that batch and
+drain-available fall out naturally without a separate mechanism.
+
 ## Alt Implementation Milestones
 
 ### M1: Core mechanics — Alt take, prio only
@@ -832,6 +1014,10 @@ start at index 0).
 
 Proves: cascade protocol, claim coordination, dead VT draining.
 
+Can use either CAS-based AltClaim or reservation-based claim (with
+a 1-element array). The reservation model is a drop-in replacement
+at this stage — single-value behavior is identical.
+
 ### M2: Fair mode
 
 Add rotating offset for `:fair`. Trivial change to cascade start
@@ -840,9 +1026,9 @@ index, but needs testing to verify starvation prevention.
 ### M3: Combining with AltNodes
 
 Lock holders walk successor chain and handle AltNodes: live nodes
-(claim CAS succeeds) get combined, dead nodes (claim CAS fails)
-get skipped. Dead AltNodes driving combine passes for successors
-behind them.
+(claim CAS succeeds / getAndAdd offset < array.length) get combined,
+dead nodes (claim lost) get skipped. Dead AltNodes driving combine
+passes for successors behind them.
 
 ### M4: Alt put
 
@@ -854,7 +1040,19 @@ instead of read.
 Alt implements the channel protocol. Enables nesting: an outer Alt
 can include an inner Alt as one of its channels.
 
-### M6: Unstarted VT optimization
+### M6: Batch operations — pour and drain
+
+Requires the reservation-based claim model. Extends the cascade to
+claim ranges of buffer slots rather than single values. Same VT
+lifecycle, same cascade spawning — the only change is that each VT
+claims `min(available, remaining)` instead of exactly 1.
+
+- `pour(chs, arr)`: distribute N values across channels
+- `drain(chs, n)`: collect exactly N values from channels
+- `drain(chs)`: drain available from first ready buffer (1-slot
+  array, replace on win)
+
+### M7: Unstarted VT optimization
 
 Create VTs via `Thread.ofVirtual().unstarted()` to defer continuation
 allocation. Caller does the initial enqueue + state exchange inline;
