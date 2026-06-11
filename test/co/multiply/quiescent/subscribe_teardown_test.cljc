@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.subscribe-teardown-test
   (:require
     [clojure.test :refer [deftest is testing #?(:cljs async)]]
-    [co.multiply.quiescent :as q :refer [q qdo]]
+    [co.multiply.quiescent :as q :refer [q]]
     [co.multiply.quiescent.impl :as impl]
     [co.multiply.quiescent.impl.subscription :as subs]
     [co.multiply.quiescent.impl.state-machine :as sm]

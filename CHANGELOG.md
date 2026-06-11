@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 - 2026-06-11
+
+- **BREAKING**: `qdo` is now a macro with sequential semantics, like an async `do`: each clause is evaluated only
+  after the previous one has settled, and a failure skips the remaining clauses. Previously, `qdo` was a function
+  whose (hot, already-running) task arguments were awaited in parallel, with all of them cancelled if one failed.
+  That behavior lives on unchanged as `qjoin` (new). Existing `qdo` call sites are source-compatible — clauses are
+  still all awaited and the last value returned — but clauses no longer run concurrently; switch to `qjoin` where
+  parallel execution was intended.
+
 ## 0.2.6 - 2026-05-26
 
 - Fix `ClassNotFoundException: clojure.lang.AFunction` (and similar lazy class-generation / reflection failures) on

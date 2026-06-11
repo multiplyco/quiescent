@@ -1,7 +1,8 @@
 (ns co.multiply.quiescent.coordination-test
+  #?(:cljs (:require-macros [co.multiply.quiescent.coordination-test :refer [deep-qdo]]))
   (:require
     [clojure.test :refer [is]]
-    [co.multiply.quiescent :as q :refer [q qdo]]
+    [co.multiply.quiescent :as q :refer [q qjoin]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results make-exception result with-task]]))
 
 
@@ -134,7 +135,7 @@
     (let [released (atom [])
           task     (q/race-stateful #(swap! released conj %)
                      (q :a) (q :b) (q :c))]
-      (with-task (qdo (q/await task) task)
+      (with-task (qjoin (q/await task) task)
         (result [v]
           (is (contains? #{:a :b :c} v) "There should be a winner.")
           (is (= 2 (count @released)) "Two releases should be recorded.")
@@ -163,24 +164,73 @@
           t2       (q :r2)
           task     (q/race-stateful #(swap! released conj %)
                      t1 t1 t2 t2)]
-      (with-task (qdo (q/sleep 5 :done) task)
+      (with-task (qjoin (q/sleep 5 :done) task)
         (result [v]
           (let [loser (if (= v :r1) :r2 :r1)]
             (is (contains? #{:r1 :r2} v) "There is a winner.")
             (is (= [loser] @released) "Only loser released, exactly once")))))))
 
 
+#?(:clj (defmacro deep-qdo
+          "Expand to a `qdo` of `n` clauses, each a task conj'ing its index onto the
+           atom bound to `ran`. Exercises deeply nested `then` chains in the expansion."
+          [ran n]
+          `(q/qdo ~@(map (fn [i] `(q/task (swap! ~ran conj ~i))) (range n)))))
+
+
 (def-results qdo-test
+  (clause :empty "qdo with no clauses returns nil"
+    (with-task (q/qdo)
+      (result [v]
+        (is (nil? v)))))
+
+  (clause :single-clause "qdo with one clause returns its value"
+    (with-task (q/qdo :a)
+      (result [v]
+        (is (= :a v)))))
+
   (clause :returns-last-value "qdo returns only last value"
     (with-task (q/qdo (q/task :first) (q/task :second) (q/task :last))
       (result [v]
         (is (= :last v) "Returns last value."))))
 
-  (clause :exception-propagates "qdo cancels all if one throws"
-    (let [task-ran  (atom false)
-          slow-task (q/sleep 100 #(reset! task-ran true))]
-      (with-task (q/qdo slow-task (q/task (throw (make-exception "Boom!"))))
+  (clause :sequential-order "qdo awaits each clause before evaluating the next"
+    (let [order (atom [])]
+      (with-task (q/qdo (q/sleep 20 #(swap! order conj :first))
+                   (swap! order conj :second)
+                   :done)
+        (result [v]
+          (is (= :done v) "Returns last value.")
+          (is (= [:first :second] @order) "Later clauses wait for earlier tasks.")))))
+
+  (clause :deep-chain "qdo handles 50 sequential clauses"
+    (let [ran (atom [])]
+      (with-task (deep-qdo ran 50)
+        (result [v]
+          (is (= (vec (range 50)) @ran) "All clauses ran, strictly in order.")
+          (is (= (vec (range 50)) v) "Returns the last clause's value.")))))
+
+  (clause :failure-short-circuits "qdo skips remaining clauses after a failure"
+    (let [ran (atom false)]
+      (with-task (q/qdo (q/task (throw (make-exception "Boom!")))
+                   (reset! ran true))
         (result [_v e c]
           (is (false? c) "`qdo` is not cancelled.")
           (is (some? e) "`qdo` is exceptional.")
+          (is (false? @ran) "Remaining clauses never run."))))))
+
+
+(def-results qjoin-test
+  (clause :returns-last-value "qjoin returns only last value"
+    (with-task (q/qjoin (q/task :first) (q/task :second) (q/task :last))
+      (result [v]
+        (is (= :last v) "Returns last value."))))
+
+  (clause :exception-propagates "qjoin cancels all if one throws"
+    (let [task-ran  (atom false)
+          slow-task (q/sleep 100 #(reset! task-ran true))]
+      (with-task (q/qjoin slow-task (q/task (throw (make-exception "Boom!"))))
+        (result [_v e c]
+          (is (false? c) "`qjoin` is not cancelled.")
+          (is (some? e) "`qjoin` is exceptional.")
           (is (q/cancelled? slow-task) "Slow task is cancelled."))))))

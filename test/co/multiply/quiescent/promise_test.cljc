@@ -1,14 +1,14 @@
 (ns co.multiply.quiescent.promise-test
   (:require
     [clojure.test :refer [is testing]]
-    [co.multiply.quiescent :as q :refer [qdo qlet]]
+    [co.multiply.quiescent :as q :refer [qjoin qlet]]
     [co.multiply.quiescent.test-support :refer [clause def-results make-exception result with-task]]))
 
 
 (def-results promise-test
   (clause :deliver "Promise can be delivered"
     (let [p (q/promise)]
-      (with-task (qdo (p 42) p)
+      (with-task (qjoin (p 42) p)
         (result [v]
           (is (= 42 v))))))
 
@@ -17,7 +17,7 @@
                  task (qlet [v      p
                              result (+ v 10)]
                         result)]
-             (with-task (qdo (p 100) task)
+             (with-task (qjoin (p 100) task)
                (result [v]
                  (is (= 110 v)))))))
 
@@ -56,7 +56,7 @@
     (let [e1   (make-exception "Failed!")
           p    (q/promise)
           link (q/then p (constantly :never-runs))]
-      (with-task (qdo
+      (with-task (qjoin
                    (q/then (q/cancel p)
                      (fn [& _]
                        (p :success)

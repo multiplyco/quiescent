@@ -6,7 +6,7 @@
 
 
 (def lib 'co.multiply/quiescent)
-(def version "0.2.6")
+(def version "0.3.0")
 (def class-dir "target/classes")
 (def jar-file (format "target/%s-%s.jar" (name lib) version))
 (def basis (delay (b/create-basis {:project "deps.edn"})))

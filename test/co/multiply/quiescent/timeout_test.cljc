@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.timeout-test
   (:require
     [clojure.test :refer [is]]
-    [co.multiply.quiescent :as q :refer [q qdo]]
+    [co.multiply.quiescent :as q :refer [q qjoin]]
     [co.multiply.quiescent.impl.state-machine :as sm]
     [co.multiply.quiescent.test-support :refer [clause def-results make-exception result with-task]]
     [co.multiply.quiescent.type.call :as call])
@@ -147,7 +147,7 @@
   (clause :timeout "monitor side effect doesn't fire on fast task"
     (let [side-effect-ran (atom false)
           fast-task       (q/sleep 1 :result)]
-      (with-task (qdo (q/sleep 10) (q/monitor fast-task 5 (fn [] (reset! side-effect-ran true))))
+      (with-task (qjoin (q/sleep 10) (q/monitor fast-task 5 (fn [] (reset! side-effect-ran true))))
         (result [v]
           (is (= :result v))
           (is (false? @side-effect-ran))))))

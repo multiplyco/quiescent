@@ -861,10 +861,15 @@
           (type/vecNth v (dec c)))))))
 
 
-(defn qdo
-  "Await all tasks, but only return the output of the last one.
+(defn qjoin
+  "Await all tasks in parallel, but only return the output of the last one.
 
-   If one task throws, all are cancelled."
+   Tasks are hot - they are already running when passed in. `qjoin` controls
+   only the fan-in: it delays completion until every task has settled, then
+   returns the last task's value. If one task throws, all are cancelled.
+
+   Useful for tying the lifetime of side effects to a result. See `qdo` for
+   sequential semantics."
   ([] (type/as-task nil))
   ([t] (type/as-task t))
   ([t1 t2] (do-applier delegate-sync [t1 t2] nil plain-last))
@@ -878,6 +883,31 @@
   ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] (do-applier delegate-sync [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] nil plain-last))
   ([t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 & ts]
    (do-applier delegate-sync (into [t1 t2 t3 t4 t5 t6 t7 t8 t9 t10] ts) nil plain-last)))
+
+
+(defmacro qdo
+  "Execute clauses sequentially, awaiting each before evaluating the next.
+
+   Like `do`, but async-aware: a clause that returns a task is awaited before
+   the next clause is evaluated. Returns a Task containing the value of the
+   last clause. If a clause fails, the remaining clauses are never evaluated
+   and the error propagates.
+
+   Use for imperative sequencing of side effects:
+
+   ```clojure
+   (qdo
+     (mark-pending! id)
+     (upload! id payload)
+     (mark-active! id))
+   ```
+
+   See `qjoin` for awaiting concurrently running tasks (fan-in only)."
+  [& clauses]
+  (reduce (fn [acc clause]
+            `(co.multiply.quiescent/then ~acc (fn [_#] ~clause)))
+    `(co.multiply.quiescent/as-task ~(first clauses))
+    (rest clauses)))
 
 
 ;; # Timing and lifecycle
@@ -990,7 +1020,7 @@
        #(log/warn \"Operation exceeded 5s\")))
    ```"
   [t ms-or-dur side-effect-fn]
-  (qdo (timeout (co.multiply.quiescent/compel t) ms-or-dur side-effect-fn)
+  (qjoin (timeout (co.multiply.quiescent/compel t) ms-or-dur side-effect-fn)
     ;; Return `t` uncompelled to allow outside cancellations to cascade.
     t))
 
@@ -1076,7 +1106,7 @@
            ;; Recursive call. Grounds into `catch` (yielding the `catch` thread).
            (sleep backoff-ms
              (fn []
-               (qdo
+               (qjoin
                  (retry-callback e retries backoff-ms)
                  (retry f
                    {::retrying      true

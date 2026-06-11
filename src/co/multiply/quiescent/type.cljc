@@ -102,7 +102,7 @@
   "Wrap a value to indicate it contains no nested tasks and should skip grounding.
 
    This is an optimization for combinators that produce values from already-resolved
-   task results (e.g., `qmerge`, `qdo`). The `ground` phase checks for `Plain` and
+   task results (e.g., `qmerge`, `qjoin`). The `ground` phase checks for `Plain` and
    unwraps directly instead of walking the data structure.
 
    Internal use only - not exposed in the public API."

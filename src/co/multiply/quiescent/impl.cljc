@@ -474,7 +474,7 @@
    Unlike `-live-task` which runs a function, this applies a value directly.
    The value is grounded (nested tasks resolved in parallel), then optionally
    transformed by `tf`. Used by coordination functions like `then`, `qmerge`,
-   and `qdo` to await multiple values and apply a combining function.
+   and `qjoin` to await multiple values and apply a combining function.
 
    Arities:
      `[delegator v]`       - Ground v, no transform

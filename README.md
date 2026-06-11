@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.2.6"}
+co.multiply/quiescent {:mvn/version "0.3.0"}
 ```
 
 Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -363,18 +363,30 @@ The side-effect function receives four arguments: value (or nil), exception (or 
 milliseconds. By default, timing starts when `time` is called. To include task construction time, capture the start
 time beforehand and pass it as the second argument.
 
-`qdo` awaits all tasks but returns only the last result. Useful for awaiting side effects:
+`qdo` executes clauses sequentially, like an async `do`: each clause is awaited before the next one is evaluated, and
+the result of the last clause is returned. If a clause fails, the remaining clauses are never evaluated. Use it for
+imperative sequencing of side effects:
 
   ```clojure
   (q/qdo
+    (mark-pending! id)
+    (upload! id payload)
+    (mark-active! id))
+  ```
+
+`qjoin` awaits all tasks in parallel but returns only the last result. Since tasks are hot (already running when passed
+in), `qjoin` controls only the fan-in. Useful for awaiting side effects:
+
+  ```clojure
+  (q/qjoin
     (log-event)
     (perform-work))
   ```
 
 If `perform-work` were fast enough, and `log-event` slow enough, `log-event` might be cancelled without completing.
 
-Where `compel` would allow `log-event` to complete independently (and resist cancellation), `qdo` delays the return of
-`perform-work` until both are done (and won't resist cancellation).
+Where `compel` would allow `log-event` to complete independently (and resist cancellation), `qjoin` delays the return
+of `perform-work` until both are done (and won't resist cancellation).
 
 ### Cancellation
 

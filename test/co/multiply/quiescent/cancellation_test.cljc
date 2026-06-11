@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.cancellation-test
   (:require
     [clojure.test :refer [deftest is testing #?(:cljs async)]]
-    [co.multiply.quiescent :as q :refer [q qdo]]
+    [co.multiply.quiescent :as q :refer [q qjoin]]
     [co.multiply.quiescent.impl :as impl]
     [co.multiply.quiescent.impl.state-machine :as sm]
     [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results result with-task make-exception]]
@@ -171,7 +171,7 @@
           task-done       (q/done task-a (record! :done))]
       (q/finally [task-then task-catch task-handle task-ok task-err task-done]
                  (record! :finally))
-      (with-task (qdo (q/cancel task-a) first-completed)
+      (with-task (qjoin (q/cancel task-a) first-completed)
         (result [v]
           (is (= #{:finally} @results) "Only finally should run on cancellation")
           (is (= :finally v) "Only finally should run on cancellation"))))))
@@ -291,7 +291,7 @@
           chained      (q/finally upstream
                                   (fn [v e cancelled]
                                     (finally-args [v e cancelled])))]
-      (with-task (qdo (q/cancel upstream) finally-args)
+      (with-task (qjoin (q/cancel upstream) finally-args)
         (result [v]
           (let [[_v err cancelled] v]
             (is (true? cancelled))
@@ -307,7 +307,7 @@
           chained       (q/finally upstream
                                    (fn [_ _ cancelled]
                                      (was-cancelled cancelled)))]
-      (with-task (qdo (q/cancel upstream) was-cancelled)
+      (with-task (qjoin (q/cancel upstream) was-cancelled)
         (result [v]
           (is (false? v))
           (is (not (q/cancelled? chained)))))))
@@ -318,7 +318,7 @@
           chained       (q/finally upstream
                                    (fn [_ _ cancelled]
                                      (was-cancelled cancelled)))]
-      (with-task (qdo (q/sleep 10 #(q/cancel upstream)) was-cancelled)
+      (with-task (qjoin (q/sleep 10 #(q/cancel upstream)) was-cancelled)
         (result [v]
           (is (false? v))
           (is (not (q/cancelled? chained))))))))
@@ -359,8 +359,8 @@
   (clause :ignores-cascade-cancellation "Compelled task ignores cascade cancellation from parent"
     (let [inner     (q/sleep 20 :inner-result)
           compelled (q/compel inner)
-          parent    (qdo compelled (q/sleep 100 :parent-result))]
-      (with-task (qdo (q/sleep 10 #(q/cancel parent)) inner)
+          parent    (qjoin compelled (q/sleep 100 :parent-result))]
+      (with-task (qjoin (q/sleep 10 #(q/cancel parent)) inner)
         (result [v]
           (is (= :inner-result v) "Compelled task completes despite parent cancellation")
           (is (q/cancelled? parent) "Parent was cancelled")
@@ -453,7 +453,7 @@
                                     (let [signal (q/abort-signal)]
                                       (.addEventListener signal "abort" #(signal-aborted true))
                                       (q/sleep 10000)))]
-               (with-task (qdo (q/cancel task) signal-aborted)
+               (with-task (qjoin (q/cancel task) signal-aborted)
                  (result [v]
                    (is (true? v) "Signal should be aborted when task is cancelled")))))
 
@@ -463,7 +463,7 @@
                                     (let [signal (q/abort-signal)]
                                       (.addEventListener signal "abort" #(signal-aborted true))
                                       :success))]
-               (with-task (qdo task signal-aborted)
+               (with-task (qjoin task signal-aborted)
                  (result [v]
                    (is (true? v) "Signal should be aborted at settling")))))
 
@@ -473,8 +473,8 @@
                                     (let [signal (q/abort-signal)]
                                       (.addEventListener signal "abort" #(signal-aborted true))
                                       (throw (make-exception "Task fails"))))]
-               ;; Catch the failure so qdo doesn't propagate it, then await signal-aborted
-               (with-task (qdo (q/catch task (constantly nil)) signal-aborted)
+               ;; Catch the failure so qjoin doesn't propagate it, then await signal-aborted
+               (with-task (qjoin (q/catch task (constantly nil)) signal-aborted)
                  (result [v]
                    (is (true? v) "Signal should be aborted at settling")))))
 
@@ -492,7 +492,7 @@
                                     (let [signal (q/abort-signal)]
                                       (.addEventListener signal "abort" #(signal-aborted true))
                                       (q/sleep 10000)))]
-               (with-task (qdo (q/cancel task) signal-aborted)
+               (with-task (qjoin (q/cancel task) signal-aborted)
                  (result [v]
                    (is (true? v) "Signal should be aborted when q-task is cancelled")))))))
 
@@ -518,7 +518,7 @@
                                       (.addEventListener signal "abort"
                                         #(aborted-result (q/aborted? signal)))
                                       (q/sleep 10000)))]
-               (with-task (qdo (q/cancel task) aborted-result)
+               (with-task (qjoin (q/cancel task) aborted-result)
                  (result [v]
                    (is (true? v) "Signal should report aborted after abort event")))))))
 
@@ -543,6 +543,6 @@
                                    (catch js/Error _e
                                      (threw true)))))
                              (q/sleep 10000)))]
-               (with-task (qdo (q/cancel task) threw)
+               (with-task (qjoin (q/cancel task) threw)
                  (result [v]
                    (is (true? v) "comply-abort should throw for aborted signal")))))))

@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.gate-test
   (:require
     [clojure.test :refer [is]]
-    [co.multiply.quiescent :as q :refer [q qdo]]
+    [co.multiply.quiescent :as q :refer [q qjoin]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results make-exception result with-task]]))
 
 
@@ -103,7 +103,7 @@
 (def-results gate-cancellation
   (clause :gate-cancel-cancels-tasks "Cancelling gate cancels gated tasks"
     (let [g (q/gate 2)]
-      (with-task (qdo (q/sleep 20 #(q/cancel g))
+      (with-task (qjoin (q/sleep 20 #(q/cancel g))
                    (q/gate-task g (q/sleep 10000 :should-not-complete)))
         (result [_v _e c]
           (is (true? c) "Gated task should be cancelled")))))

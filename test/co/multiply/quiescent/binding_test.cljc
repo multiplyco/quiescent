@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.binding-test
   (:require
     [clojure.test :refer [deftest is testing #?(:cljs async)]]
-    [co.multiply.quiescent :as q :refer [qdo]]
+    [co.multiply.quiescent :as q :refer [qjoin]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park make-exception with-task]]
     [co.multiply.scoped :refer [ask scoping]]))
 
@@ -124,7 +124,7 @@
           obs3 (atom nil)
           task (q/task :result)]
       (with-task (scoping [*test-binding* :outer]
-                   (qdo
+                   (qjoin
                      (scoping [*test-binding* :first]
                        (q/ok task (fn [_] (reset! obs1 (ask *test-binding*)))))
                      (scoping [*test-binding* :second]

@@ -185,88 +185,88 @@
       (result [v] (is (= {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7 :h 8 :i 9 :j 10 :k 11 :l 12} v))))))
 
 
-(def-results qdo-arities-test
+(def-results qjoin-arities-test
   (clause :arity-0
-    (with-task (q/qdo)
+    (with-task (q/qjoin)
       (result [v] (is (nil? v)))))
 
   (clause :arity-1
-    (with-task (q/qdo :a)
+    (with-task (q/qjoin :a)
       (result [v] (is (= :a v)))))
 
   (clause :arity-2
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) :done)
+      (with-task (q/qjoin (log-run ran 1) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1} @ran))))))
 
   (clause :arity-3
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2} @ran))))))
 
   (clause :arity-4
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3} @ran))))))
 
   (clause :arity-5
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4} @ran))))))
 
   (clause :arity-6
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5} @ran))))))
 
   (clause :arity-7
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6} @ran))))))
 
   (clause :arity-8
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6 7} @ran))))))
 
   (clause :arity-9
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6 7 8} @ran))))))
 
   (clause :arity-10
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6 7 8 9} @ran))))))
 
   (clause :arity-11 "Variadic"
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) (log-run ran 10) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) (log-run ran 10) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6 7 8 9 10} @ran))))))
 
   (clause :arity-12 "Variadic"
     (let [ran (atom #{})]
-      (with-task (q/qdo (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) (log-run ran 10) (log-run ran 11) :done)
+      (with-task (q/qjoin (log-run ran 1) (log-run ran 2) (log-run ran 3) (log-run ran 4) (log-run ran 5) (log-run ran 6) (log-run ran 7) (log-run ran 8) (log-run ran 9) (log-run ran 10) (log-run ran 11) :done)
         (result [v]
           (is (= :done v))
           (is (= #{1 2 3 4 5 6 7 8 9 10 11} @ran)))))))
