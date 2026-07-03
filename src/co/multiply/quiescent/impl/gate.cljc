@@ -1,4 +1,5 @@
 (ns ^:no-doc co.multiply.quiescent.impl.gate
+  #?(:cljs (:require-macros co.multiply.quiescent.impl.gate))
   (:require
     [co.multiply.quiescent.impl :as impl]
     [co.multiply.quiescent.impl.executor :as executor]
@@ -8,7 +9,7 @@
     [co.multiply.conc.integer :as integer :refer [new-integer]]
     [co.multiply.conc.queue :as queue :refer [new-queue]]
     [co.multiply.quiescent.type.call :as call]
-    [co.multiply.scoped :refer [ask scoping]])
+    [co.multiply.scoped :refer [ask assoc-scope]])
   #?(:clj (:import
             [co.multiply.quiescent.impl ICancellable TaskState])))
 
@@ -21,6 +22,13 @@
 
 
 (deftype QueueEntry [task f])
+
+
+;; Scope marker carried by every queued task: which gate admitted it, and the
+;; task that holds the permit. Reentrant enqueues are only run immediately
+;; while the holder has not settled — a settled holder has provably released
+;; its permit, so nothing can deadlock on its descendants acquiring normally.
+(deftype GateGrant [gate task])
 
 
 (defn dec-when-positive
@@ -41,38 +49,53 @@
 
   IGate
   (enqueue [this f]
-    (cond
-      ;; Cancelled: return cancelled task.
-      (call/isCancelled control-task)
-      (doto (impl/-pending-task executor/delegate-virtual)
-        (call/doCancel "Gate cancelled."))
+    (let [grant (ask *current-gate* nil)]
+      (cond
+        ;; Cancelled: return cancelled task.
+        (call/isCancelled control-task)
+        (doto (impl/-pending-task executor/delegate-virtual)
+          (call/doCancel "Gate cancelled."))
 
-      ;; Reentrant: run immediately.
-      (identical? (ask *current-gate* nil) this)
-      (doto (impl/-pending-task executor/delegate-virtual)
-        (call/doRun f))
+        ;; Reentrant while the enclosing gated task still holds its permit:
+        ;; run immediately on that permit, so a body that awaits a nested
+        ;; enqueue can't deadlock the gate.
+        (and (some? grant)
+          (identical? (.-gate ^GateGrant grant) this)
+          (not (call/atOrPast (.-task ^GateGrant grant) sm/phase-settling)))
+        (doto (impl/-pending-task executor/delegate-virtual)
+          (call/doRun f))
 
-      :else
-      (let [task (scoping [impl/*this*    control-task
-                           *current-gate* this]
-                   (impl/-pending-task executor/delegate-virtual))]
-        (queue/add queue (QueueEntry. task f))
-        (acquire this)
-        task)))
+        :else
+        ;; The task keeps its natural parent (structured under its creator,
+        ;; like any task; `compel` detaches). The gate additionally owns it:
+        ;; cancelling the gate tears down every task enqueued through it.
+        (let [task (impl/-pending-task executor/delegate-virtual)]
+          (subs/subscribe-teardown control-task task)
+          (call/setScope task
+            (assoc-scope (call/getScope task) *current-gate* (GateGrant. this task)))
+          (queue/add queue (QueueEntry. task f))
+          (acquire this)
+          task))))
 
 
   (tryRun [this]
-    (if-some [unit (queue/poll queue)]
-      (let [task (.-task ^QueueEntry unit)
-            f    (.-f ^QueueEntry unit)]
-        (doto task
-          (subs/subscribe-callback sm/phase-settling
-            (fn [_state]
-              (if (call/isCancelled control-task)
-                (release this)
-                (tryRun this))))
-          (call/doRun f)))
-      (release this)))
+    ;; Entries cancelled while queued are already settled; subscribing to them
+    ;; would fire synchronously, so skip them iteratively — recursing through a
+    ;; long run of them would overflow the stack and wedge the gate.
+    (loop []
+      (if-some [unit (queue/poll queue)]
+        (let [task (.-task ^QueueEntry unit)
+              f    (.-f ^QueueEntry unit)]
+          (if (call/atOrPast task sm/phase-settling)
+            (recur)
+            (doto task
+              (subs/subscribe-callback sm/phase-settling
+                (fn [_state]
+                  (if (call/isCancelled control-task)
+                    (release this)
+                    (tryRun this))))
+              (call/doRun f))))
+        (release this))))
 
   (acquire [this]
     (when (and (not (queue/isEmpty queue))

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 - 2026-07-04
+
+- Fix a stack overflow that could permanently wedge a gate. Draining a long run of tasks cancelled while queued
+  recursed one stack frame set per settled entry; at ~10k consecutive cancelled entries the overflow was swallowed
+  by the subscription runner, the permit was lost, and every subsequent `gate-task` queued forever. The queue now
+  skips settled entries iteratively.
+- **Changed**: gate reentrancy now expires with its permit. A `gate-task` created within a gate's scope runs
+  immediately only while the enclosing gated task still holds its permit — awaited nested enqueues still can't
+  deadlock the gate. Once the holder settles (provably releasing the permit), descendants — e.g. compelled
+  fire-and-forget tasks — acquire a permit like any other caller. Previously, anything created under the gate's
+  scope bypassed the concurrency limit indefinitely.
+- **Changed**: gated tasks are now structured under the task that created them, like any other task: when the
+  creator settles, cascade cancellation reaches fire-and-forget gated work. The gate still owns every task enqueued
+  through it — cancelling the gate cancels them all. Wrap with `compel` to detach gated work from its creator
+  (the previous behavior).
+
 ## 0.3.0 - 2026-06-11
 
 - **BREAKING**: `qdo` is now a macro with sequential semantics, like an async `do`: each clause is evaluated only

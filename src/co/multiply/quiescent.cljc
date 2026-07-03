@@ -95,6 +95,16 @@
 
    Returns immediately with a task that will eventually contain the result of `body`.
 
+   Reentrancy: a `gate-task` created inside a gated body whose task still holds
+   its permit runs immediately on that permit, so awaiting a nested `gate-task`
+   cannot deadlock the gate. Once the holder settles — provably releasing its
+   permit — descendants (e.g. compelled fire-and-forget tasks) acquire normally.
+
+   Gated tasks are structured like any other task: when the task that created
+   one settles, cascade cancellation reaches it. The gate additionally owns it —
+   cancelling the gate cancels every task enqueued through it. Wrap with
+   [[compel]] to detach a gated task from its creator (pool-owned work).
+
    Example:
    ```clojure
    (let [g (gate 2)]  ; max 2 concurrent

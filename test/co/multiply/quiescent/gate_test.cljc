@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [is]]
     [co.multiply.quiescent :as q :refer [q qjoin]]
-    [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results make-exception result with-task]]))
+    [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results expect make-exception result with-task]]))
 
 
 (allow-platform-park)
@@ -94,7 +94,22 @@
     (let [g (q/gate 2)]
       (with-task (q/gate-task g (throw (make-exception "test error")))
         (result [_v e]
-          (is (some? e)))))))
+          (is (some? e))))))
+
+  (clause :error-churn "Permits survive a churn of failing tasks"
+    (let [g         (q/gate 1)
+          completed (atom [])
+          _tasks    (mapv (fn [i]
+                            (q/gate-task g
+                              (if (even? i)
+                                (throw (make-exception "churn"))
+                                (do (swap! completed conj i) i))))
+                      (range 20))]
+      (with-task (q/gate-task g :done)
+        (result [v]
+          (is (= :done v))
+          (is (= [1 3 5 7 9 11 13 15 17 19] @completed)
+            "Every non-failing task should run, in order"))))))
 
 
 ;; # Cancellation
@@ -128,7 +143,96 @@
     (let [g (doto (q/gate 2) (q/cancel))]
       (with-task (q/gate-task g :should-not-run)
         (result [_v _e c]
-          (is (true? c) "Task should be cancelled"))))))
+          (is (true? c) "Task should be cancelled")))))
+
+  (clause :many-cancelled-while-queued "Long run of tasks cancelled while queued doesn't wedge the gate"
+    (let [g      (q/gate 1)
+          _head  (q/gate-task g (q/sleep 100 :head))
+          queued (mapv (fn [i] (q/gate-task g i)) (range 10000))
+          tail   (q/gate-task g :tail)]
+      (run! q/cancel queued)
+      (with-task tail
+        (result [v]
+          (is (= :tail v) "Tail task should run after cancelled entries are skipped")))))
+
+  (clause :creator-cascade "Creator settle cascades to fire-and-forget gated tasks"
+    (let [g      (q/gate 2)
+          ran    (atom false)
+          holder (q/promise)
+          ;; Deliver the task wrapped in a fn so the promise doesn't ground it.
+          _outer (q/task
+                   (holder (constantly (q/gate-task g (q/sleep 100 #(reset! ran true)))))
+                   :done)]
+      (with-task (q/then holder (fn [get-t] (expect (get-t) (fn [_v _e c] [c @ran]))))
+        (result [[c ran?]]
+          (is (true? c) "Gated task should be cascade-cancelled when its creator settles")
+          (is (false? ran?) "Cancelled body should never produce its side effect")))))
+
+  (clause :compel-detaches "compel detaches a gated task from its creator"
+    (let [g      (q/gate 2)
+          holder (q/promise)
+          _outer (q/task
+                   (holder (constantly (q/compel (q/gate-task g (q/sleep 30 :survived)))))
+                   :done)]
+      (with-task (q/then holder (fn [get-t] (expect (get-t) (fn [v _e c] [v c]))))
+        (result [[v c]]
+          (is (= :survived v) "Compelled gated task should survive its creator's settle")
+          (is (false? c))))))
+
+  (clause :gate-cancel-settles-queued "Cancelling gate settles all running and queued tasks"
+    (let [g        (q/gate 2)
+          tasks    (mapv (fn [i] (q/gate-task g (q/sleep 10000 i))) (range 12))
+          statuses (mapv (fn [t] (expect t (fn [_v _e c] c))) tasks)
+          _cancel  (q/then (q/sleep 20) (fn [_] (q/cancel g)))]
+      (with-task (q statuses)
+        (result [v]
+          (is (= 12 (count v)))
+          (is (every? true? v) "Running and queued tasks should all settle cancelled"))))))
+
+
+;; # Stress
+;; ################################################################################
+
+(def-results gate-stress
+  (clause :cancel-storm "Cancellation storm neither leaks permits nor wedges the gate"
+    (let [g     (q/gate 2)
+          tasks (mapv (fn [i] (q/gate-task g (q/sleep 2 i))) (range 100))]
+      (doseq [i (range 0 100 3)]
+        (q/cancel (nth tasks i)))
+      (with-task (q/then (q (mapv (fn [t] (expect t (fn [_v _e _c] true))) tasks))
+                   (fn [statuses] (q/gate-task g [(count statuses) :after])))
+        (result [v]
+          (is (= [100 :after] v)
+            "Every task settles and the gate still admits work afterwards")))))
+
+  #?(:clj
+     (clause :concurrent-enqueue "Permit ceiling holds under multi-threaded enqueue with failures"
+       (let [g          (q/gate 4)
+             total      200
+             concurrent (atom 0)
+             max-seen   (atom 0)
+             tasks      (object-array total)
+             threads    (mapv (fn [t]
+                                (Thread.
+                                  (fn []
+                                    (doseq [i (range t total 8)]
+                                      (aset tasks i
+                                        (q/gate-task g
+                                          (let [c (swap! concurrent inc)]
+                                            (swap! max-seen max c)
+                                            (q/sleep 1
+                                              (fn []
+                                                (swap! concurrent dec)
+                                                (when (zero? (mod i 7))
+                                                  (throw (make-exception "stress")))
+                                                i)))))))))
+                          (range 8))]
+         (run! #(Thread/.start ^Thread %) threads)
+         (run! #(Thread/.join ^Thread %) threads)
+         (with-task (q (mapv (fn [t] (expect t (fn [_v _e _c] true))) tasks))
+           (result [v]
+             (is (= total (count v)) "Every task settles")
+             (is (<= @max-seen 4) "Should never exceed 4 concurrent")))))))
 
 
 ;; # Chaining
@@ -146,4 +250,29 @@
     (let [g (q/gate 1)]
       (with-task (q/gate-task g (q/gate-task g 42))
         (result [v]
-          (is (= 42 v)))))))
+          (is (= 42 v))))))
+
+  (clause :fast-path-expires "Reentrant fast path expires when the permit holder settles"
+    (let [g          (q/gate 1)
+          concurrent (atom 0)
+          max-seen   (atom 0)
+          p          (q/promise)
+          track      (fn [ms tag]
+                       (swap! concurrent inc)
+                       (swap! max-seen max @concurrent)
+                       (q/sleep ms (fn [] (swap! concurrent dec) tag)))
+          ;; Spawner settles immediately; its compelled descendant enqueues
+          ;; only after the permit was released, while `hog` holds it.
+          _spawner   (q/gate-task g
+                       (q/compel
+                         (q/then (q/sleep 50)
+                           (fn [_]
+                             (q/then (q/gate-task g (track 100 :child))
+                               (fn [v] (p v))))))
+                       :spawned)
+          _hog       (q/gate-task g (track 300 :hog))]
+      (with-task p
+        (result [v]
+          (is (= :child v))
+          (is (= 1 @max-seen)
+            "Descendant enqueued after the holder settled must wait for a permit"))))))

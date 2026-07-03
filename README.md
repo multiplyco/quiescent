@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.3.0"}
+co.multiply/quiescent {:mvn/version "0.4.0"}
 ```
 
 Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -486,6 +486,9 @@ To limit how many tasks run concurrently, use a gate:
 Gates participate in structured concurrency: cancelling a gate cancels all tasks created through it. Any task created
 via a gate that hasn't already been cancelled, or run to completion, is immediately cancelled in turn.
 
+Gated tasks also remain structured under the task that created them, like any other task: when the creator settles,
+cascade cancellation reaches fire-and-forget gated work. Wrap with `compel` to detach gated work from its creator.
+
 Gates are also **reentrant**: nested `gate-task` calls on the same gate don't consume additional permits:
 
 ```clojure
@@ -496,6 +499,10 @@ Gates are also **reentrant**: nested `gate-task` calls on the same gate don't co
      (q/gate-task g :inner-result)))
 ;; => :inner-result
 ```
+
+Reentrancy lasts exactly as long as the enclosing gated task holds its permit. Once it settles — provably releasing
+the permit — descendant `gate-task` calls (say, from a compelled fire-and-forget task) acquire a permit like any
+other caller.
 
 To run the gated code on a platform thread, just return a `cpu-task` directly or inside a data structure.
 
