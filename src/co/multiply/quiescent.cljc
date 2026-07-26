@@ -38,8 +38,8 @@
             (Thread/sleep (long ms-or-dur))
 
             (and (instance? Duration ms-or-dur)
-              (not (Duration/.isZero ms-or-dur))
-              (not (Duration/.isNegative ms-or-dur)))
+                 (not (Duration/.isZero ms-or-dur))
+                 (not (Duration/.isNegative ms-or-dur)))
             (Thread/sleep ^Duration ms-or-dur)
 
             :else nil)))
@@ -71,9 +71,9 @@
           "Execute body while holding a semaphore permit. Releases on completion or exception."
           [^Semaphore sem & body]
           `(do (acquire ~sem)
-             (try ~@body
-               (finally
-                 (release ~sem))))))
+               (try ~@body
+                 (finally
+                   (release ~sem))))))
 
 
 (defn gate
@@ -966,18 +966,35 @@
    Roughly equivalent to `(deref task ms-or-dur default)`, except it's asynchronous
    and doesn't block the calling thread unless dereferenced.
 
+   `t` wins the race the moment it SETTLES, however it settles — with a value, with
+   an exception, or by being cancelled. The timer speaks only when `t` has said
+   nothing at all by the deadline. Note the asymmetry this avoids: the timer is not
+   a competitor doing the same work, it is a watchdog that is guaranteed to succeed
+   eventually, so deciding the race on the first non-exceptional result would let it
+   win by walkover every time `t` failed — reporting a timeout, at the deadline, for
+   something that was already over.
+
    Args:
      - `t` Task to race against timeout
      - `ms-or-dur` Timeout duration as either:
        - Long: milliseconds
        - `java.time.Duration`: duration object
-     - `default` Optional value/behavior on timeout:
+     - `default` Optional value/behavior when THE TIMER FIRES:
        - Value: returned on timeout
        - Function: executed and its result returned
        - Exception: thrown on timeout
        - Omitted: throws `TimeoutException`
 
-   Returns a task that completes with either the task's result or the timeout `default`.
+   `default` covers the timer firing and nothing else. It is not an error handler: a
+   failing `t` throws its own exception, promptly, rather than resolving to `default`
+   at the deadline — swallowing failures is `catch`'s job, and conflating the two
+   makes \"bound the wait, but let me see errors\" inexpressible. Compose them where
+   you want both.
+
+   Cancellation is likewise passed through rather than laundered: cancelling `t`
+   settles the returned task as cancelled, not as a timeout and not as `default`.
+   Cancelling the returned task cancels `t`, as usual. The timer is torn down as soon
+   as `t` settles, so it never outlives the work it was watching.
 
    Example:
 
@@ -986,19 +1003,34 @@
    @(timeout my-task 1000 :timed-out)        ; Return :timed-out after 1s
    @(timeout my-task 1000 #(rand-int 10))    ; Call fallback fn on timeout
    @(timeout my-task (Duration/ofSeconds 5)) ; Throw after 5 seconds
+
+   ;; A fallback for BOTH slowness and failure — `default` alone won't do it:
+   @(-> my-task (timeout 1000 :timed-out) (catch (fn [_] :failed)))
    ```"
   ([t ms-or-dur]
    (timeout t ms-or-dur (type/timeout-exception (str "Task timed out after " ms-or-dur "."))))
   ([t ms-or-dur default]
-   (race/race [t (sleep ms-or-dur ::timeout)]
-     {:tf (fn handle-default
-            [res]
-            (if (= ::timeout res)
+   (let [s (sleep ms-or-dur ::timeout)]
+     (race/race
+       [(-> t
+          ;; Exceptions must count as winning the race.
+          (catch (fn [e] [::exception e]))
+          ;; If `t` settles for any reason, including cancellation, also cancel `s`.
+          (doto (subs/subscribe-teardown s)))
+        s]
+       {:tf (fn handle-default
+              [res]
               (cond
-                (fn? default) (default)
-                (instance? #?(:clj Throwable :cljs js/Error) default) (throw default)
-                :else default)
-              res))})))
+                (= ::timeout res)
+                (cond
+                  (fn? default) (default)
+                  (instance? #?(:clj Throwable :cljs js/Error) default) (throw default)
+                  :else default)
+
+                (and (vector? res) (= ::exception (type/vecNth res 0)))
+                (throw (type/vecNth res 1))
+
+                :else res))}))))
 
 
 (defn monitor
@@ -1071,10 +1103,10 @@
    (time t #?(:clj (System/currentTimeMillis) :cljs (js/performance.now)) side-effect-fn))
   ([t start side-effect-fn]
    (finally t
-            (fn [v e c]
-              (side-effect-fn v e c
-                #?(:clj  (- (System/currentTimeMillis) start)
-                   :cljs (- (js/performance.now) start)))))))
+     (fn [v e c]
+       (side-effect-fn v e c
+         #?(:clj  (- (System/currentTimeMillis) start)
+            :cljs (- (js/performance.now) start)))))))
 
 
 (defn- default-validate

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0 - 2026-07-26
+
+- **BREAKING**: `timeout` no longer resolves to its `default` when the awaited task *fails*. `default` now covers
+  the timer firing and nothing else; a failing task throws its own exception, promptly. Previously `timeout` was
+  built on `race`, which is decided by the first non-exceptional result — and since the timer is not a competitor
+  but a watchdog guaranteed to succeed eventually, it won by walkover whenever the task failed. The consequences
+  were that every failure under a `timeout` cost the full timeout to report, the original exception was discarded
+  outright (no cause, no data, not chained) in favour of a `TimeoutException`, and — least obviously — a `timeout`
+  anywhere between a failure and its handler silently disabled that handler, since the exception never reached it.
+  Call sites that relied on a `default` absorbing errors as well as slowness need an explicit `catch`:
+  `(-> t (timeout ms fallback) (catch (fn [_] fallback)))`, which also reports failures without waiting out the
+  deadline.
+- **Changed**: cancelling the task awaited by a `timeout` now settles the timeout as *cancelled*, rather than
+  reporting a timeout at the deadline. Cancellation cascades from parent to child, not between siblings, so the
+  timer previously kept running after the task it raced was cancelled and went on to win. The timer is now torn
+  down as soon as the awaited task settles, for any reason, and so never outlives the work it was watching.
+  Cancelling the task returned by `timeout` continues to cancel the awaited task, as before.
+
 ## 0.4.0 - 2026-07-04
 
 - Fix a stack overflow that could permanently wedge a gate. Draining a long run of tasks cancelled while queued

@@ -36,6 +36,62 @@
           (is (= :result v)))))))
 
 
+(def-results timeout-settlement-test
+  ;; `timeout` races the task against a timer, and the timer is guaranteed to
+  ;; eventually succeed. So if the race is decided on the first NON-EXCEPTIONAL
+  ;; result, the timer wins by walkover whenever the task fails or is cancelled
+  ;; — reporting a timeout for something that settled long before the deadline,
+  ;; with the real outcome discarded. The task must win on ANY settlement.
+  ;;
+  ;; The timeouts below are set far longer than the task takes, so a regression
+  ;; does not merely slow these tests down: the timer's result is a different
+  ;; value from the task's, and the assertions read the difference.
+
+  (clause :exception "A failing task wins the race with its own exception"
+    (let [e1   (make-exception "Boom")
+          task (q/sleep 1 e1)]
+      (with-task (q/timeout task 1000)
+        (result [_v e c]
+          (is (false? c))
+          (is (identical? e1 e)
+            "the task's own exception, not a TimeoutException at the deadline")))))
+
+  (clause :exception-with-default "A default covers the timer firing, not the task failing"
+    ;; The distinction matters: swallowing failures is `catch`'s job. Conflating
+    ;; the two makes "bound the wait, but let me see errors" inexpressible, and
+    ;; costs the full timeout to report a failure that already happened.
+    (let [e1   (make-exception "Boom")
+          task (q/sleep 1 e1)]
+      (with-task (q/timeout task 1000 :timed-out)
+        (result [v e c]
+          (is (false? c))
+          (is (identical? e1 e))
+          (is (nil? v) "must not resolve to the default"))))))
+
+
+(def-results timeout-cancellation-test
+  (clause :awaited-task "Cancelling the awaited task settles the timeout as cancelled"
+    ;; Cancellation cascades from parent to child, not between siblings, so the
+    ;; timer does not stop merely because the task it races has been cancelled.
+    ;; `timeout` links the two, tearing the timer down when the task settles for
+    ;; any reason — otherwise this reports a timeout at the deadline instead.
+    (let [task  (q/sleep 1000 :never)
+          timed (q/timeout task 100 :timed-out)]
+      (q/cancel task)
+      (with-task timed
+        (result [v _e c]
+          (is (true? c) "cancellation must stay cancellation, not become a timeout")
+          (is (not= :timed-out v))))))
+
+  (clause :timeout-task "Cancelling the timeout cancels the awaited task"
+    (let [task  (q/sleep 1000 :never)
+          timed (q/timeout task 1000 :timed-out)]
+      (with-task (q/cancel timed)
+        (result []
+          (is (q/cancelled? timed))
+          (is (q/cancelled? task)))))))
+
+
 (def-results with-promise-test
   (clause :success "Timeout with promise - completes before timeout"
     (let [p (q/promise)]
@@ -65,9 +121,9 @@
           (is (identical? e1 e))))))
 
   #?(:clj (testing :duration "Using duration"
-                   (with-task (q/timeout (q/sleep 1 :result) (Duration/ofSeconds 1))
-                     (result [v]
-                       (is (= :result v)))))))
+            (with-task (q/timeout (q/sleep 1 :result) (Duration/ofSeconds 1))
+              (result [v]
+                (is (= :result v)))))))
 
 
 (def-results sleep-test
