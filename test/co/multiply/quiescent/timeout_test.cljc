@@ -92,6 +92,64 @@
           (is (q/cancelled? task)))))))
 
 
+(def-results timeout-passthrough-test
+  ;; `timeout` adopts the awaited task's settled state wholesale rather than
+  ;; re-applying its value, which is sound only because a settled task's result
+  ;; is already grounded — the task boundary guarantees no inner task survives
+  ;; it. Re-applying would walk the entire value a second time looking for
+  ;; tasks that cannot be there, at a cost that scales with the value's size.
+  ;; This pins the assumption from `timeout`'s side: were it ever to stop
+  ;; holding, the passthrough would hand callers an unresolved task.
+
+  (clause :grounded "Inner tasks in the awaited value are resolved, not passed through"
+    (let [task (q/task {:a (q/sleep 1 :inner) :b [(q/sleep 1 :deep)]})]
+      (with-task (q/timeout task 1000)
+        (result [v e c]
+          (is (nil? e))
+          (is (false? c))
+          (is (= {:a :inner :b [:deep]} v)))))))
+
+
+(def-results timeout-precedence-test
+  ;; A settled task and a zero deadline is a nonsense proposition, and precisely
+  ;; because of that it is the sharpest test of precedence: there is no interval
+  ;; in which the task can be said to have got there first. It must still win.
+  ;;
+  ;; What makes that hold is construction order — `t` is subscribed before the
+  ;; timer exists, so an already-settled task claims the result synchronously,
+  ;; during the call, with nothing to contest it. Build the timer first and this
+  ;; degrades to a genuine race that the timer sometimes wins.
+
+  (clause :settled "A settled task beats a zero deadline"
+    (let [task (q :immediate)]
+      (with-task (q/timeout task 0 :timed-out)
+        (result [v e c]
+          (is (nil? e))
+          (is (false? c))
+          (is (= :immediate v))
+          (is (not (q/cancelled? task)))))))
+
+  (clause :settled-repeatedly "A settled task beats a zero deadline every single time"
+    ;; Run inline rather than through `with-task`: the point is that each timeout
+    ;; settles synchronously within its own construction, so `getNow` can read the
+    ;; outcome without waiting. A regression shows up as `:timed-out` in the tally
+    ;; on some fraction of iterations, which one assertion could easily miss.
+    (let [outcomes (frequencies
+                     (for [_ (range 500)]
+                       (call/getNow (q/timeout (q :immediate) 0 :timed-out) ::pending)))]
+      (is (= {:immediate 500} outcomes))))
+
+  (clause :fast "A quick task beats a realistic deadline"
+    ;; Below some duration, scheduler and JIT jitter make any expectation
+    ;; meaningless. 100ms is comfortably above that on CI.
+    (let [task (q/sleep 1 :result)]
+      (with-task (q/timeout task 100 :timed-out)
+        (result [v e c]
+          (is (nil? e))
+          (is (false? c))
+          (is (= :result v)))))))
+
+
 (def-results with-promise-test
   (clause :success "Timeout with promise - completes before timeout"
     (let [p (q/promise)]

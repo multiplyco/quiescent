@@ -961,21 +961,21 @@
 
 
 (defn timeout
-  "Asynchronous timeout that races a task against a sleep timer.
+  "Asynchronous deadline on a task.
 
    Roughly equivalent to `(deref task ms-or-dur default)`, except it's asynchronous
    and doesn't block the calling thread unless dereferenced.
 
-   `t` wins the race the moment it SETTLES, however it settles — with a value, with
-   an exception, or by being cancelled. The timer speaks only when `t` has said
-   nothing at all by the deadline. Note the asymmetry this avoids: the timer is not
-   a competitor doing the same work, it is a watchdog that is guaranteed to succeed
-   eventually, so deciding the race on the first non-exceptional result would let it
-   win by walkover every time `t` failed — reporting a timeout, at the deadline, for
-   something that was already over.
+   `t` prevails the moment it SETTLES, however it settles — with a value, with an
+   exception, or by being cancelled. The timer speaks only when `t` has said nothing
+   at all by the deadline, and a `t` that is already settled when `timeout` is called
+   wins outright, whatever the duration. Note that this is deliberately NOT a race:
+   the timer is not a competitor doing the same work, it is a watchdog guaranteed to
+   succeed eventually, so first-to-succeed would hand it a walkover every time `t`
+   failed — reporting a timeout, at the deadline, for something already over.
 
    Args:
-     - `t` Task to race against timeout
+     - `t` Task to bound
      - `ms-or-dur` Timeout duration as either:
        - Long: milliseconds
        - `java.time.Duration`: duration object
@@ -1010,27 +1010,45 @@
   ([t ms-or-dur]
    (timeout t ms-or-dur (type/timeout-exception (str "Task timed out after " ms-or-dur "."))))
   ([t ms-or-dur default]
-   (let [s (sleep ms-or-dur ::timeout)]
-     (race/race
-       [(-> t
-          ;; Exceptions must count as winning the race.
-          (catch (fn [e] [::exception e]))
-          ;; If `t` settles for any reason, including cancellation, also cancel `s`.
-          (doto (subs/subscribe-teardown s)))
-        s]
-       {:tf (fn handle-default
-              [res]
-              (cond
-                (= ::timeout res)
-                (cond
-                  (fn? default) (default)
-                  (instance? #?(:clj Throwable :cljs js/Error) default) (throw default)
-                  :else default)
-
-                (and (vector? res) (= ::exception (type/vecNth res 0)))
-                (throw (type/vecNth res 1))
-
-                :else res))}))))
+   (let [t (type/as-task t)
+         ;; The unification point. Both `t` and the timer are candidates for it;
+         ;; the first to settle claims it by CAS and the other is torn down.
+         p (-pending-task delegate-sync)]
+     ;; `t` is wired up before the timer is constructed. A task that has ALREADY
+     ;; settled runs this subscription synchronously, right here, and so claims `p`
+     ;; before a timer exists to contest it. The ordering is the whole guarantee
+     ;; that a ready value beats a deadline; don't reorder these two blocks.
+     (subs/subscribe-teardown p t)
+     (subs/subscribe-callback t sm/phase-settling
+       (fn settle-from-task
+         [^TaskState state]
+         ;; `p` adopts `t`'s settlement whole — value, failure or cancellation —
+         ;; without inspecting it. Nothing is rewrapped, so a caller sees the
+         ;; original exception rather than a report about a deadline that had
+         ;; nothing to do with it. Note that this deliberately isn't `doApply`:
+         ;; a settled task's result is already grounded, so applying it would
+         ;; walk the whole value a second time to find inner tasks that the task
+         ;; boundary guarantees aren't there.
+         (call/doWrite p state)))
+     (let [s (sleep ms-or-dur)]
+       ;; Whichever candidate claims `p`, both are torn down once it settles, and
+       ;; covers `p` being cancelled from outside.
+       (subs/subscribe-teardown p s)
+       (subs/subscribe-callback s sm/phase-settling
+         (fn settle-from-timer
+           [^TaskState state]
+           ;; A torn-down timer is exceptional, and has nothing to say.
+           (when-not (.-exceptional state)
+             ;; Applied as a transform so that a `default` which throws, or which
+             ;; returns a task, is the machinery's business rather than ours.
+             (call/doApply p nil nil
+               (fn expire
+                 [_]
+                 (cond
+                   (fn? default) (default)
+                   (instance? #?(:clj Throwable :cljs js/Error) default) (throw default)
+                   :else default)))))))
+     p)))
 
 
 (defn monitor

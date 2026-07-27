@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.1 - 2026-07-27
+
+- **Performance**: `timeout` no longer re-grounds the value of the task it bounds. A settled task's result is already
+  grounded — the task boundary guarantees no inner task survives it — but `timeout` was re-applying that value, which
+  walked the entire structure a second time looking for tasks that cannot be there. The cost scaled with the size of
+  the value: bounding a task that succeeded with a ~10k-node structure cost ~1.4ms per call in overhead alone. The
+  settled state is now adopted as-is, so the overhead is flat at a few microseconds regardless of the value's size.
+  Values that aren't traversed structurally, such as strings, were never affected by the scaling and gain only the
+  smaller saving from a shorter chain.
+- **Guaranteed**: a task that has already settled when `timeout` is called now wins outright, whatever the duration —
+  including a zero deadline. This held in practice before and is now structural: the task is subscribed before the
+  timer is constructed, so an already-settled task claims the result synchronously, with nothing yet in existence to
+  contest it.
+- **Changed**: cancelling the awaited task now surfaces that task's own `CancellationException`, rather than a fresh
+  one describing a race that callers were never party to. Cancellation was already reported as cancellation (see
+  0.5.0); only the exception's identity and message change.
+- Internally, `timeout` no longer builds on `race`. A deadline is not a race — the timer is a watchdog guaranteed to
+  succeed eventually, not a competitor doing the same work — and expressing it as one required wrapping the awaited
+  task's exceptions as values to stop the timer winning by walkover, then unwrapping them in a transform. Both that
+  wrapper and the sentinel marking the timer's own result are gone; the task and the timer now settle a shared result
+  directly, the first to arrive claiming it.
+
 ## 0.5.0 - 2026-07-26
 
 - **BREAKING**: `timeout` no longer resolves to its `default` when the awaited task *fails*. `default` now covers
