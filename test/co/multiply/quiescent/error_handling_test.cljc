@@ -201,13 +201,19 @@
         (is (some? e))
         (is (false? c)))))
 
-  (clause :monitor-error "Error in `monitor` side-effect propagates"
-    (let [slow (q/sleep 1000 :done)]
-      (with-task (q/monitor slow 1 #(throw (make-exception "Bang!")))
+  ;; `monitor` is the deliberate exception to the rule these clauses establish:
+  ;; its side effect fires while the monitored task is still in flight, so
+  ;; propagating would cancel live work rather than merely report on finished
+  ;; work. Its exception is contained instead — see `monitor-test/:contained`.
+
+  (clause :nested-structure-siblings "Error in nested structure cancels siblings"
+    (let [sibling (q/sleep 1000 :never)]
+      (with-task (q {:a sibling
+                     :b (q/task (throw (make-exception "Boom!")))})
         (result [_v e c]
           (is (some? e))
           (is (false? c))
-          (is (q/cancelled? slow)))))))
+          (is (q/cancelled? sibling)))))))
 
 
 (defn run-handler-exception-propagates-on-success-test

@@ -1054,9 +1054,9 @@
 (defn monitor
   "Non-destructive monitoring wrapper that observes a task without affecting its outcome.
 
-   Unlike `timeout`, this does NOT race the task or change its result. Instead, it runs
-   a side-effect function if the task hasn't completed within the specified duration.
-   The original task continues running and its result is returned unchanged.
+   Unlike `timeout`, this imposes no deadline and changes nothing. It runs a side-effect
+   function if the task hasn't settled within the specified duration; `t` itself is
+   returned, and goes on exactly as it would have.
 
    This is useful for diagnostics: log warnings when operations are slow without
    actually timing them out or affecting their execution.
@@ -1066,9 +1066,22 @@
      - `ms-or-dur` Duration after which to trigger side effect:
        - Long: milliseconds
        - `java.time.Duration`: duration object
-     - `side-effect-fn` Function (or value) passed to timeout's default parameter.
-       If a function, it's called when the timeout fires.
-       Exceptions from the side effect propagate and fail the task.
+     - `side-effect-fn` Function called when the duration elapses. A non-function is
+       simply the timer's value and does nothing.
+
+   WARNING: exceptions thrown by `side-effect-fn` are neither propagated nor reported.
+   This differs from the side-effect handlers (`ok`, `err`, `done`, `finally`),
+   whose exceptions do fail the chain, and the difference is deliberate: those run
+   once a task has settled, where propagating can only affect what happens next,
+   whereas a monitor fires while the task is still running, where propagating would
+   destroy work that was about to succeed.
+
+   Since the side effect only runs when things are slow, a latent bug in one would
+   otherwise lie dormant until the system was under load and then take out the very work
+   it was added to observe.
+
+   If your side effect does something that can reasonably fail, handle its
+   failure inside the function. Nothing outside will see it.
 
    Returns the original task unchanged - result and timing are unaffected.
 
@@ -1080,9 +1093,16 @@
        #(log/warn \"Operation exceeded 5s\")))
    ```"
   [t ms-or-dur side-effect-fn]
-  (qjoin (timeout (co.multiply.quiescent/compel t) ms-or-dur side-effect-fn)
-    ;; Return `t` uncompelled to allow outside cancellations to cascade.
-    t))
+  ;; A timer, torn down the moment `t` settles for any reason. If it survives to
+  ;; its deadline it runs the side effect and that is the end of it — nothing
+  ;; observes the timer, so nothing it does or fails to do can reach `t`.
+  ;;
+  ;; Note there is no unification point here, and deliberately no `timeout`: a
+  ;; monitor has no deadline to enforce and no result to arbitrate. Expressed via
+  ;; `timeout` it needed a `compel` moat purely to disarm the one thing `timeout`
+  ;; exists to do — cancel whichever side loses — which is a fair sign it was
+  ;; never a timeout to begin with.
+  (doto (type/as-task t) (subs/subscribe-teardown (sleep ms-or-dur side-effect-fn))))
 
 
 (defn time

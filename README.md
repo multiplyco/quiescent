@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.5.1"}
+co.multiply/quiescent {:mvn/version "0.6.0"}
 ```
 
 Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -350,6 +350,14 @@ Use `monitor` to trigger a side effect when a task doesn't finish within the spe
 (-> (q/task (Thread/sleep 5000) :ok)
   (q/monitor 500 #(println "This is taking a long time.")))
 ```
+
+`monitor` returns the task it was given and cannot affect its outcome. Unlike the side-effect handlers above, an
+exception thrown by the side effect is contained rather than propagated: it fires while the task is still running,
+so failing the chain would destroy work that was about to succeed, and it fires only when things are slow, so a bug
+in one would lie dormant until load and then take out the very work it was watching. Nothing reports it either —
+Quiescent has no logging of its own, and a logger that throws is not something a call site can handle anyway, since
+logging is what just failed. If your side effect has consequences beyond reporting, handle its failure inside the
+function; nothing outside will see it.
 
 Use `time` to measure how long a task takes:
 

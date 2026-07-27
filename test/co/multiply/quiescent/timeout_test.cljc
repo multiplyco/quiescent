@@ -266,6 +266,25 @@
           (is (= :result v))
           (is (false? @side-effect-ran))))))
 
+  (clause :identity "The monitored task itself is returned"
+    ;; `monitor` observes; it does not wrap. Anything that interposed a task
+    ;; between the caller and `t` would be in a position to alter the outcome,
+    ;; which is the one thing this must not do.
+    (let [t (q/sleep 1 :result)]
+      (is (identical? t (q/monitor t 1000 (fn [] nil))))))
+
+  (clause :contained "A failing side effect cannot disturb the monitored task"
+    ;; Diagnostics are the usual caller here — a log line, a metric. Letting one
+    ;; of those take down the work it was only supposed to be watching inverts
+    ;; the whole point of a non-destructive wrapper.
+    (let [e1 (make-exception "Boom")
+          t  (q/sleep 30 :result)]
+      (with-task (q/monitor t 1 (fn [] (throw e1)))
+        (result [v e c]
+          (is (nil? e) "the side effect's exception must not reach the caller")
+          (is (false? c) "nor may it cancel the task being watched")
+          (is (= :result v))))))
+
   #?(:clj (clause :duration "monitor with Duration"
             (let [side-effect-ran (atom false)
                   slow-task       (q/sleep 5 :result)]

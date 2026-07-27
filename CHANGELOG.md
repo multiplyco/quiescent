@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0 - 2026-07-27
+
+- **BREAKING**: an exception thrown by a `monitor` side effect is now contained rather than propagated. Previously it
+  failed the returned task *and* cancelled the task being monitored — so a diagnostic could destroy the work it was
+  only supposed to observe. This was consistent with the side-effect handlers (`ok`, `err`, `done`, `finally`), whose
+  exceptions do fail the chain, but the consequence is not comparable: those run once a task has settled, where
+  propagating can only affect what happens next, whereas a monitor fires while the task is still running. Worse, the
+  side effect runs only when things are slow, so a latent bug in one lay dormant until the system was under load and
+  then took out the very work it was added to observe. Nothing reports the exception now either — Quiescent carries
+  no logging of its own, and since the side effect is nearly always a log line, a call site could not have handled it
+  regardless: there is nothing to write in the `catch` block when logging is what failed. Side effects with
+  consequences beyond reporting should handle their own failures.
+- **Changed**: `monitor` returns the task it was given, rather than a wrapper around it. It no longer builds on
+  `timeout`, which required a `compel` moat purely to disarm the cancellation that `timeout` exists to perform; it is
+  now a timer torn down the moment the monitored task settles. Roughly halves the per-call overhead, and makes the
+  documented promise that `monitor` cannot affect the outcome structural rather than a matter of care.
+
 ## 0.5.1 - 2026-07-27
 
 - **Performance**: `timeout` no longer re-grounds the value of the task it bounds. A settled task's result is already
