@@ -3,8 +3,8 @@
 [![Clojars Project](https://img.shields.io/clojars/v/co.multiply/quiescent.svg)](https://clojars.org/co.multiply/quiescent)
 [![cljdoc](https://cljdoc.org/badge/co.multiply/quiescent)](https://cljdoc.org/d/co.multiply/quiescent)
 
-A Clojure/ClojureScript library for composable async tasks with automatic parallelization, structured concurrency,
-and parent-child and chain cancellation.
+A Clojure/ClojureScript library for composable async tasks with automatic parallelization, structured concurrency, and
+parent-child and chain cancellation.
 
 In particular, Quiescent has been designed with these constraints in mind:
 
@@ -24,28 +24,28 @@ the task tree has come to rest.
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Core concepts](#core-concepts)
-  - [Tasks](#tasks)
-  - [Promises](#promises)
-  - [Structured Concurrency](#structured-concurrency)
-  - [Grounding](#grounding)
-  - [Handling outcomes and chaining transformations](#handling-outcomes-and-chaining-transformations)
-  - [Transformations and error handling](#transformations-and-error-handling)
-  - [Cancellation](#cancellation)
-  - [Controlling parallelism](#controlling-parallelism)
-  - [Retry](#retry)
-  - [Scopes](#scopes)
+    - [Tasks](#tasks)
+    - [Promises](#promises)
+    - [Structured Concurrency](#structured-concurrency)
+    - [Grounding](#grounding)
+    - [Handling outcomes and chaining transformations](#handling-outcomes-and-chaining-transformations)
+    - [Transformations and error handling](#transformations-and-error-handling)
+    - [Cancellation](#cancellation)
+    - [Controlling parallelism](#controlling-parallelism)
+    - [Retry](#retry)
+    - [Scopes](#scopes)
 - [Performance and overhead](#performance-and-overhead)
 - [Platform thread safety](#platform-thread-safety)
 - [Integration](#integration)
-  - [CompletableFuture (CLJ)](#completablefuture-clj)
-  - [JS Promise (CLJS)](#js-promise-cljs)
-  - [core.async (CLJ + CLJS)](#coreasync-clj--cljs)
+    - [CompletableFuture (CLJ)](#completablefuture-clj)
+    - [JS Promise (CLJS)](#js-promise-cljs)
+    - [core.async (CLJ + CLJS)](#coreasync-clj--cljs)
 - [ClojureScript Differences](#clojurescript-differences)
 - [Examples](#examples)
-  - [Graceful Shutdown](#graceful-shutdown)
-  - [Racing Structures](#racing-structures)
-  - [Automatic Parallelization with qlet](#automatic-parallelization-with-qlet)
-  - [Happy Eyeballs](#happy-eyeballs)
+    - [Graceful Shutdown](#graceful-shutdown)
+    - [Racing Structures](#racing-structures)
+    - [Automatic Parallelization with qlet](#automatic-parallelization-with-qlet)
+    - [Happy Eyeballs](#happy-eyeballs)
 - [License](#license)
 
 ## Requirements
@@ -67,13 +67,45 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.6.0"}
+co.multiply/quiescent {:mvn/version "0.6.1"}
 ```
 
-Quiescent depends on three other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
-[Scoped](https://github.com/multiplyco/scoped), and [Pathling](https://github.com/multiplyco/pathling), which will be
-transitively available when using this library. Machine Latch in turn depends on Scoped. There are no further
-dependencies.
+Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
+[Scoped](https://github.com/multiplyco/scoped), [Pathling](https://github.com/multiplyco/pathling),
+and [Conc](https://github.com/multiplyco/conc), which will be transitively available when using this library. Machine
+Latch in turn depends on Scoped. There are no further dependencies.
+
+### Claude Code plugin
+
+This repository ships a Claude Code plugin providing a `quiescent` skill, so Claude knows the library's semantics when
+writing async code against it, plus a companion `quiescent-cljs` skill covering the ClojureScript delta. Both load only
+when the conversation is actually working with Quiescent.
+
+From Claude Code:
+
+```
+/plugin marketplace add multiplyco/quiescent
+/plugin install quiescent@quiescent
+```
+
+This installs the plugin for yourself only.
+
+To offer it to everyone working in a project, commit this to the project's `.claude/settings.json` instead. Both keys
+are needed: `enabledPlugins` on its own names a marketplace that a fresh clone has never heard of. Collaborators are
+prompted to install on trusting the repo, rather than having it installed for them.
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "quiescent": {
+      "source": { "source": "github", "repo": "multiplyco/quiescent" }
+    }
+  },
+  "enabledPlugins": {
+    "quiescent@quiescent": true
+  }
+}
+```
 
 ## Core concepts
 
@@ -173,8 +205,8 @@ Cascade cancellation from ancestors stops at the moat created by `compel`.
 
 ### Grounding
 
-When a task returns a data structure containing nested tasks, those tasks aren't orphans but part of the result.
-Their values are resolved in parallel and inlined into the final structure in a process called "grounding."
+When a task returns a data structure containing nested tasks, those tasks aren't orphans but part of the result. Their
+values are resolved in parallel and inlined into the final structure in a process called "grounding."
 
 ```clojure
 (def result
@@ -213,13 +245,13 @@ Quiescent provides several handlers for reacting to task outcomes:
 
 | Handler   | Primary purpose | Runs on success | Runs on error | Runs on cancellation |
 |-----------|-----------------|-----------------|---------------|----------------------|
-| `then`    | Transformation  | ✓               |               |                      |
-| `catch`   | Transformation  |                 | ✓             |                      |
-| `handle`  | Transformation  | ✓               | ✓             |                      |
-| `ok`      | Side-effect     | ✓               |               |                      |
-| `err`     | Side-effect     |                 | ✓             |                      |
-| `done`    | Side-effect     | ✓               | ✓             |                      |
-| `finally` | Teardown        | ✓               | ✓             | ✓                    |
+| `then`    | Transformation  | ✓              |               |                      |
+| `catch`   | Transformation  |                 | ✓            |                      |
+| `handle`  | Transformation  | ✓              | ✓            |                      |
+| `ok`      | Side-effect     | ✓              |               |                      |
+| `err`     | Side-effect     |                 | ✓            |                      |
+| `done`    | Side-effect     | ✓              | ✓            |                      |
+| `finally` | Teardown        | ✓              | ✓            | ✓                   |
 
 - **Transformation**: Transform the outcome. The handler's return value becomes the new result.
 - **Side-effect**: Observe the outcome. The original value/error passes through unchanged.
@@ -329,8 +361,8 @@ Use `done` to observe success or error (but not cancellation):
         (metrics/record-success)))))
 ```
 
-Use `finally` to release resources that must be cleaned up regardless of outcome. It receives a third
-argument indicating whether the task was cancelled:
+Use `finally` to release resources that must be cleaned up regardless of outcome. It receives a third argument
+indicating whether the task was cancelled:
 
 ```clojure
 (let [resource (acquire-resource)]
@@ -352,12 +384,12 @@ Use `monitor` to trigger a side effect when a task doesn't finish within the spe
 ```
 
 `monitor` returns the task it was given and cannot affect its outcome. Unlike the side-effect handlers above, an
-exception thrown by the side effect is contained rather than propagated: it fires while the task is still running,
-so failing the chain would destroy work that was about to succeed, and it fires only when things are slow, so a bug
-in one would lie dormant until load and then take out the very work it was watching. Nothing reports it either —
-Quiescent has no logging of its own, and a logger that throws is not something a call site can handle anyway, since
-logging is what just failed. If your side effect has consequences beyond reporting, handle its failure inside the
-function; nothing outside will see it.
+exception thrown by the side effect is contained rather than propagated: it fires while the task is still running, so
+failing the chain would destroy work that was about to succeed, and it fires only when things are slow, so a bug in one
+would lie dormant until load and then take out the very work it was watching. Nothing reports it either — Quiescent has
+no logging of its own, and a logger that throws is not something a call site can handle anyway, since logging is what
+just failed. If your side effect has consequences beyond reporting, handle its failure inside the function; nothing
+outside will see it.
 
 Use `time` to measure how long a task takes:
 
@@ -368,8 +400,8 @@ Use `time` to measure how long a task takes:
 ```
 
 The side-effect function receives four arguments: value (or nil), exception (or nil), cancelled flag, and elapsed
-milliseconds. By default, timing starts when `time` is called. To include task construction time, capture the start
-time beforehand and pass it as the second argument.
+milliseconds. By default, timing starts when `time` is called. To include task construction time, capture the start time
+beforehand and pass it as the second argument.
 
 `qdo` executes clauses sequentially, like an async `do`: each clause is awaited before the next one is evaluated, and
 the result of the last clause is returned. If a clause fails, the remaining clauses are never evaluated. Use it for
@@ -393,8 +425,8 @@ in), `qjoin` controls only the fan-in. Useful for awaiting side effects:
 
 If `perform-work` were fast enough, and `log-event` slow enough, `log-event` might be cancelled without completing.
 
-Where `compel` would allow `log-event` to complete independently (and resist cancellation), `qjoin` delays the return
-of `perform-work` until both are done (and won't resist cancellation).
+Where `compel` would allow `log-event` to complete independently (and resist cancellation), `qjoin` delays the return of
+`perform-work` until both are done (and won't resist cancellation).
 
 ### Cancellation
 
@@ -508,9 +540,9 @@ Gates are also **reentrant**: nested `gate-task` calls on the same gate don't co
 ;; => :inner-result
 ```
 
-Reentrancy lasts exactly as long as the enclosing gated task holds its permit. Once it settles — provably releasing
-the permit — descendant `gate-task` calls (say, from a compelled fire-and-forget task) acquire a permit like any
-other caller.
+Reentrancy lasts exactly as long as the enclosing gated task holds its permit. Once it settles — provably releasing the
+permit — descendant `gate-task` calls (say, from a compelled fire-and-forget task) acquire a permit like any other
+caller.
 
 To run the gated code on a platform thread, just return a `cpu-task` directly or inside a data structure.
 
@@ -650,8 +682,8 @@ If you add in some coordination, for example:
 ```
 
 This comes out to **~266µs**, or about **~0.27µs** per task. If we disregard that the `mapv` to which `qfor` expands
-will cost some portion of this, most of the overhead is due to there being a parent task, with subtasks in its scope.
-So the tasks engage in coordination:
+will cost some portion of this, most of the overhead is due to there being a parent task, with subtasks in its scope. So
+the tasks engage in coordination:
 
 - Signalling to ensure that if one task throws, all uncompelled siblings are torn down immediately
 - Tracking to ensure that uncompelled tasks in the scope of the parent don't exceed the lifetime of the same parent
@@ -774,14 +806,13 @@ adapter:
 (q-async/as-chan my-task)
 ```
 
-Unlike CompletableFuture and js/Promise, channels require explicit conversion with `as-task`. Channels are
-intentionally not auto-converted during grounding, since a channel in a return value is often meant to remain
-a channel.
+Unlike CompletableFuture and js/Promise, channels require explicit conversion with `as-task`. Channels are intentionally
+not auto-converted during grounding, since a channel in a return value is often meant to remain a channel.
 
 ## ClojureScript Differences
 
-Quiescent aims to provide the same semantics on both platforms, but some differences arise from the underlying
-runtime environments.
+Quiescent aims to provide the same semantics on both platforms, but some differences arise from the underlying runtime
+environments.
 
 ### No blocking deref
 
@@ -824,8 +855,9 @@ CLJS provides `abort-signal` for integrating with the Fetch API and other AbortC
   (process response))
 ```
 
-When the task is cancelled, the AbortSignal is triggered, which cancels the fetch request. Each call to
-`abort-signal` returns a fresh signal tied to the current task's lifecycle.
+The AbortSignal is triggered when the task settles — whether it completes, fails or is cancelled — so a cancelled task
+aborts its in-flight fetch request. Each call to `abort-signal` creates a fresh `AbortController` and returns its
+signal, tied to the current task's lifecycle. Calling it outside a task scope throws.
 
 Related utilities:
 
@@ -871,8 +903,8 @@ mechanism is used. The API (`scoping`, `ask`) remains the same.
 When processing work that acquires external resources, cleanup must run even if the parent task is cancelled. Use
 `compel` to protect critical cleanup from cancellation.
 
-Resources should protect their own cleanup. By placing `compel` inside `close-conn`, safety is guaranteed wherever
-it's used and callers don't need to remember to protect it ad-hoc.
+Resources should protect their own cleanup. By placing `compel` inside `close-conn`, safety is guaranteed wherever it's
+used and callers don't need to remember to protect it ad-hoc.
 
 ```clojure
 (require '[co.multiply.quiescent :as q])
@@ -935,8 +967,8 @@ cleanup gets cancelled along with everything else, and connections leak.
 
 ### Racing Structures
 
-You can race not just individual tasks, but entire data structures. Grounding resolves all tasks within a structure,
-so racing structures means "first group to fully complete wins."
+You can race not just individual tasks, but entire data structures. Grounding resolves all tasks within a structure, so
+racing structures means "first group to fully complete wins."
 
 ```clojure
 (require '[co.multiply.quiescent :as q])
@@ -965,13 +997,13 @@ so racing structures means "first group to fully complete wins."
 The pair containing the two fastest tasks wins. They execute in parallel, so the race is effectively decided by the
 slowest task in the fastest group. Losing pairs are cancelled mid-flight.
 
-Each task appears in multiple pairs. This is safe: cancelling an already-completed task is a no-op, and its
-resolved value won't be overwritten with a cancellation exception. In this case, only `:a` was actually cancelled.
+Each task appears in multiple pairs. This is safe: cancelling an already-completed task is a no-op, and its resolved
+value won't be overwritten with a cancellation exception. In this case, only `:a` was actually cancelled.
 
 ### Automatic Parallelization with qlet
 
-`qlet` analyzes symbol dependencies and automatically parallelizes independent bindings. You don't specify what runs
-in parallel. `qlet` instead infers it from the data flow.
+`qlet` analyzes symbol dependencies and automatically parallelizes independent bindings. You don't specify what runs in
+parallel. `qlet` instead infers it from the data flow.
 
 ```clojure
 (require '[co.multiply.quiescent :as q])
@@ -1064,7 +1096,7 @@ The `qlet` above expands to:
               orders param-1
               recs   param-2
               promos param-3]
-          {:user (:name user)  :orders orders  :recs recs  :promos promos})))))
+          {:user (:name user) :orders orders :recs recs :promos promos})))))
 ```
 
 Note that forms with no dependencies remain unchanged and are not automatically wrapped with task conversion. This is

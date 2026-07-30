@@ -1,0 +1,15 @@
+{
+  "name": "quiescent",
+  "description": "Claude Code plugin for co.multiply/quiescent — async task coordination for Clojure on virtual threads.",
+  "owner": {
+    "name": "Multiply",
+    "url": "https://github.com/multiplyco"
+  },
+  "plugins": [
+    {
+      "name": "quiescent",
+      "source": "./plugins/quiescent",
+      "description": "Async task coordination with co.multiply.quiescent: q/task, qlet, qfor, structured concurrency, cancellation, grounding."
+    }
+  ]
+}

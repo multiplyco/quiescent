@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.1 - 2026-07-30
+
+- **Added**: a Claude Code plugin, shipped from this repository, providing a `quiescent` skill that documents the
+  semantics a model is most likely to guess wrong — grounding, the structured-concurrency lifetime rules, what `compel`
+  does and does not exempt from, and the fact that the side-effect handlers (`ok`, `err`, `done`, `finally`) ignore
+  what the handler returns. A companion `quiescent-cljs` skill covers the ClojureScript delta and loads only when the
+  work is `.cljs` or `.cljc`. See the README for both per-user and per-project installation.
+- **Docs**: `task?` and `promise?` no longer suggest `(satisfies? ITask v)` for testing either — `ITask` is a Java
+  interface under Clojure, where `satisfies?` does not apply. Each now states plainly that it returns false for the
+  other type. `exceptional?`'s example called `completed-exceptionally?`, a name the function has not had.
+- No changes to library behaviour.
+
 ## 0.6.0 - 2026-07-27
 
 - **BREAKING**: an exception thrown by a `monitor` side effect is now contained rather than propagated. Previously it

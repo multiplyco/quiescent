@@ -1,0 +1,21 @@
+{
+  "name": "quiescent",
+  "version": "0.6.1",
+  "description": "Async task coordination with co.multiply.quiescent: q/task, q/then, qlet, qfor, qdo, qjoin, ok/catch/handle/finally, race, gate, retry, compel, promise — structured concurrency, cancellation and grounding on virtual threads. Includes a companion quiescent-cljs skill for the ClojureScript delta.",
+  "author": {
+    "name": "Multiply",
+    "url": "https://github.com/multiplyco"
+  },
+  "homepage": "https://github.com/multiplyco/quiescent",
+  "repository": "https://github.com/multiplyco/quiescent",
+  "license": "EPL-2.0",
+  "keywords": [
+    "clojure",
+    "clojurescript",
+    "async",
+    "concurrency",
+    "structured-concurrency",
+    "virtual-threads",
+    "tasks"
+  ]
+}

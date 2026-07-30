@@ -33,9 +33,23 @@
   tag               {:doc  "Create and push version tag"
                      :task (shell "clj -T:build tag")}
 
-  deploy            {:doc  "Tag, push, and deploy to Clojars"
-                     :task (do (shell "clj -T:build tag")
-                             (shell "clj -T:build deploy"))}
+  version:check     {:doc  "Check the version in build.clj is reflected in the plugin manifest and docs"
+                     :task (let [version (second (re-find (re-pattern "\\(def version \"([^\"]+)\"\\)") (slurp "build.clj")))
+                                 coord   (re-pattern (str "co\\.multiply/quiescent \\{:mvn/version \"" version "\"\\}"))
+                                 sources {"plugins/quiescent/.claude-plugin/plugin.json" (re-pattern (str "\"version\"\\s*:\\s*\"" version "\""))
+                                          "README.md"                                   coord
+                                          "plugins/quiescent/skills/quiescent/SKILL.md" coord}
+                                 stale   (remove (fn [[f re]] (re-find re (slurp f))) sources)]
+                             (if (seq stale)
+                               (do (println "Version" version "(build.clj) is not reflected in:")
+                                 (doseq [[f _] stale] (println "  -" f))
+                                 (System/exit 1))
+                               (println "Version" version "in sync.")))}
+
+  deploy            {:doc     "Tag, push, and deploy to Clojars"
+                     :depends [version:check]
+                     :task    (do (shell "clj -T:build tag")
+                                (shell "clj -T:build deploy"))}
 
   cljdoc            {:doc     "Test cljdoc analysis locally"
                      :depends [build]

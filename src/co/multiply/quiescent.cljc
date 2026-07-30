@@ -204,7 +204,7 @@
 (defn task?
   "Returns true if v is a Task, false otherwise.
 
-   Note: Returns false for Promises. Use `(satisfies? ITask v)` to check for both."
+   Note: Returns false for Promises."
   [v]
   (instance? Task v))
 
@@ -234,7 +234,7 @@
    Example:
 
    ```clojure
-   (when (completed-exceptionally? task)
+   (when (exceptional? task)
      (log/error \"Task failed\" {:task task}))
    ```"
   [t]
@@ -1463,7 +1463,9 @@
 
 
 (defn promise?
-  "Returns true if p is a Promise, false otherwise."
+  "Returns true if p is a Promise, false otherwise.
+
+   Note: returns false for tasks."
   [p]
   (instance? Promise p))
 

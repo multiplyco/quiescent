@@ -1,6 +1,7 @@
 *.class
 *.iml
 *.jar
+.claude/settings.local.json
 .clj-kondo/.cache/
 .cpcache/
 .idea/
