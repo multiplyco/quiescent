@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.0 - 2026-07-31
+
+- **BREAKING**: `qfor` now resolves its collection expression before mapping, like a `qlet` binding: the collection may
+  itself be a task, and any task elements are grounded first, so the body always sees plain values. Previously the body
+  received whatever the literal collection contained — including unresolved tasks. Most code degrades gracefully, since
+  the chaining functions accept plain values, but bodies that treated elements *as* tasks (cancelling them, checking
+  identity) must drop to ordinary Clojure: `(q (mapv f tasks))`. Two subtler shifts: the body now runs only once every
+  element has settled, and a failing element fails the whole `qfor` rather than handing the body a failed task.
+- **BREAKING**: `qfor` now maps on a virtual thread instead of the calling thread, consistent with how `then` and
+  `qlet` treat user code. The body may therefore park (deref, await) — though a blocking body serializes the loop;
+  wrap it in `task` to run elements in parallel, as before. A `qfor` of pure synchronous work consequently no longer
+  completes before the call returns — await the task, as with any other.
+- **Added**: `any-of` — race tasks without owning them. Where `race` cancels its losers once a winner settles, `any-of`
+  merely observes: losers keep running, and cancelling the returned task does not propagate to the entrants. Use it for
+  tasks that are shared or owned elsewhere. Settlement follows `race`: first non-exceptional result wins, all failures
+  combine into one error, all-cancelled entrants cancel the result. Internally this is `race` with a new
+  `:cancel-losers?` option. The non-cancelling "all of" needs no function: a data structure already is one.
+- **Docs**: documented the tagged-entrant idiom for recovering the winner's identity from a race —
+  `(q/race [:a t1] [:b t2])` returns e.g. `[:b value]`, since each vector grounds exactly when its task settles. With
+  `race-stateful`, `release` then receives the tagged pair: `#(-> % last Socket/.close)`. A test locks the idiom in.
+
 ## 0.6.1 - 2026-07-30
 
 - **Added**: a Claude Code plugin, shipped from this repository, providing a `quiescent` skill that documents the

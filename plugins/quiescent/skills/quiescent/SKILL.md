@@ -3,9 +3,9 @@ name: quiescent
 description: >-
   Use when working with async task coordination using Quiescent
   (co.multiply.quiescent). Covers q/task, q/then, qlet, qfor,
-  qdo, qjoin, q/ok, q/catch, q/handle, q/finally, q/race, q/gate,
-  q/retry, q/compel, q/promise, structured concurrency, grounding
-  and cancellation.
+  qdo, qjoin, q/ok, q/catch, q/handle, q/finally, q/race, q/any-of,
+  q/gate, q/retry, q/compel, q/promise, structured concurrency,
+  grounding and cancellation.
 ---
 
 # Quiescent
@@ -14,7 +14,7 @@ Clojure/ClojureScript library for composable async tasks with automatic parallel
 parent-child/chain cancellation.
 
 **Repository**: https://github.com/multiplyco/quiescent —
-`co.multiply/quiescent {:mvn/version "0.6.1"}`, JDK 21+ (25 recommended), Clojure 1.12+.
+`co.multiply/quiescent {:mvn/version "0.7.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
 
 This file covers the semantics you cannot infer — the ones where a reasonable guess from other async libraries is wrong.
 It is not an API reference. **Every public var carries a thorough docstring**, so for signatures, arities and options,
@@ -324,10 +324,18 @@ inline task construction.
   (q/task
     (Thread/sleep wait)
     (process-batch batch)))
+
+;; The collection may itself be a task
+(qfor [user (fetch-users)]
+  (enrich user))
 ```
 
-The body of `qfor` executes **synchronously** during mapping. Blocking operations must be wrapped in `q/task`. `qfor`
-expands to `(q (mapv ...))`.
+Mapping runs on a **single virtual thread**, elements in order. The body may park (deref, await), but a blocking body
+serializes the loop — wrap it in `q/task` to run elements in parallel.
+
+Like a `qlet` binding, the collection expression is **resolved before mapping**: it may be a task, and any task
+elements are grounded first, so the body always sees plain values. To map over tasks *as* tasks, use ordinary Clojure:
+`(q (mapv f tasks))`.
 
 Unlike `clojure.core/for`, `qfor` takes a **single** binding pair and supports **no** `:let`, `:when` or `:while`
 modifiers. Filter the collection before the loop, or bind inside the body.
@@ -428,7 +436,7 @@ Behaviours you can assume:
 ## Racing
 
 ```clojure
-;; Race individual tasks
+;; Race individual tasks — first *successful* result wins, losers are cancelled
 (q/race task-a task-b task-c)
 
 ;; Race data structures (first group to fully ground wins)
@@ -436,7 +444,19 @@ Behaviours you can assume:
 
 ;; race-stateful: cleanup function for realized-but-losing tasks
 (q/race-stateful Socket/.close task-a task-b)
+
+;; any-of: like race, but observes instead of owns — losers keep running,
+;; and cancelling the result does not propagate to the entrants. Use for
+;; tasks that are shared or owned elsewhere.
+(q/any-of cache-lookup fresh-fetch)
 ```
+
+**Naming the winner.** A race settles with the winner's *value* — the winning task's identity is not in the result. Tag
+entrants with data structures to recover it: `(q/race [:eu eu-fetch] [:us us-fetch])` → `[:us result]`. Each vector
+grounds exactly when its task settles, so race ordering is unchanged. With `race-stateful`, `release` then receives the
+tagged pair, not the raw resource: `(q/race-stateful #(-> % last Socket/.close) [:a conn-a] [:b conn-b])`.
+
+**"All of" needs no function**: a data structure is one — `[t1 t2 t3]` grounds when every task has completed.
 
 ## Scoped Values
 

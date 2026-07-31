@@ -19,13 +19,17 @@
    Losing tasks are cancelled via cascade cancellation.
 
    Options (second arity):
-   - `:tf`      - Transform function applied to winner's result
-   - `:release` - Cleanup function for stateful resources from losing tasks
-                  (only called for non-nil results that weren't the winner)
+   - `:tf`            - Transform function applied to winner's result
+   - `:release`       - Cleanup function for stateful resources from losing tasks
+                        (only called for non-nil results that weren't the winner)
+   - `:cancel-losers?` - When true (default), the race owns its entrants: losers
+                         are cancelled when the winner settles. When false, the
+                         race merely observes: losers keep running, and no
+                         cancellation ever propagates from the returned task.
 
    Edge cases:
    - Empty tasks: Returns a task containing nil
-   - Single task: Returns that task directly
+   - Single task: Returns that task directly (owning mode only)
    - All fail: Returns task with exception (single error or ex-info with :errors key)
    - All cancelled: Returns cancelled task
 
@@ -33,15 +37,18 @@
    is tracked per unique value."
   ([tasks]
    (race tasks nil))
-  ([tasks {:keys [tf release]}]
+  ([tasks {:keys [tf release cancel-losers?] :or {cancel-losers? true}}]
    (let [tasks (mapv type/as-task tasks)]
      (cond
        ;; Racing nothing returns nil.
        (empty? tasks)
        (impl/do-applier delegate-sync nil)
 
-       ;; In a race with one task, the task given wins (or throws).
-       (= 1 (count tasks))
+       ;; In a race with one task, the task given wins (or throws). Only valid
+       ;; when owning: handing back the entrant itself would let callers cancel
+       ;; it through the result. Observing races fall through to the general
+       ;; case, which wraps the entrant.
+       (and cancel-losers? (= 1 (count tasks)))
        (first tasks)
 
        :else
@@ -51,7 +58,9 @@
              errors     (cset/new-set)]
          (doseq [t tasks]
            ;; Register participating tasks to be torn down when `winner` settles.
-           (subs/subscribe-teardown winner t)
+           ;; Skipped when observing: entrants outlive the race untouched.
+           (when cancel-losers?
+             (subs/subscribe-teardown winner t))
            ;; Set up the race.
            (subs/subscribe-callback t sm/phase-settling
              (fn handle-race-participant

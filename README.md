@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.6.1"}
+co.multiply/quiescent {:mvn/version "0.7.0"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -521,7 +521,10 @@ To limit how many tasks run concurrently, use a gate:
 ;; => [0 1 2 … 999]
 ```
 
-`qfor` is nothing special; it expands to `(q (mapv …))`.
+`qfor` is a task-aware `(mapv …)`: like a `qlet` binding, the collection expression is resolved before mapping — it may
+itself be a task, and any task elements are grounded first, so the body always sees plain values. Mapping runs on a
+single virtual thread, elements in order, so the body may park — but a blocking body serializes the loop; wrap it in
+`task` to run elements in parallel. To map over tasks *as* tasks, use ordinary Clojure: `(q (mapv f tasks))`.
 
 Gates participate in structured concurrency: cancelling a gate cancels all tasks created through it. Any task created
 via a gate that hasn't already been cancelled, or run to completion, is immediately cancelled in turn.
@@ -681,7 +684,7 @@ If you add in some coordination, for example:
   (q n))
 ```
 
-This comes out to **~266µs**, or about **~0.27µs** per task. If we disregard that the `mapv` to which `qfor` expands
+This comes out to **~266µs**, or about **~0.27µs** per task. If we disregard that the `mapv` at the heart of `qfor`
 will cost some portion of this, most of the overhead is due to there being a parent task, with subtasks in its scope. So
 the tasks engage in coordination:
 
@@ -999,6 +1002,43 @@ slowest task in the fastest group. Losing pairs are cancelled mid-flight.
 
 Each task appears in multiple pairs. This is safe: cancelling an already-completed task is a no-op, and its resolved
 value won't be overwritten with a cancellation exception. In this case, only `:a` was actually cancelled.
+
+#### Naming the winner
+
+A race settles with the winner's *value* — the identity of the winning task is not part of the result. Since arbitrary
+data structures can be raced, the fix is to tag each entrant:
+
+```clojure
+@(q/race [:eu eu-fetch] [:us us-fetch] [:ap ap-fetch])
+;; => [:us {:status 200 …}]
+```
+
+Each vector grounds exactly when its task settles, so the ordering of the race is unchanged — you just get the tag back
+alongside the value. Losers are cancelled through their wrappers as usual.
+
+Two things to keep in mind when tagging:
+
+- With `race-stateful`, the `release` function receives the tagged pair, not the raw resource — adapt it accordingly:
+  `(q/race-stateful #(-> % last Socket/.close) [:a conn-a] [:b conn-b])`.
+- Tags make every entrant distinct, so racing the same task under two different tags tracks two results where an
+  untagged race would deduplicate them.
+
+#### Observing instead of owning: `any-of`
+
+`race` *owns* its entrants: once a winner settles, the losers are cancelled. When the tasks are shared or owned
+elsewhere — racing work that belongs to another scope, where tearing it down would be rude — use `any-of`, which merely
+*observes*:
+
+```clojure
+(q/any-of cache-lookup fresh-fetch)
+```
+
+The first successful result wins, exactly as with `race` — a fast-failing or externally-cancelled entrant doesn't
+poison the result — but the losers keep running, and cancelling the task returned by `any-of` does not propagate to the
+entrants. If all entrants fail, the errors are combined; if all are cancelled, the result is cancelled.
+
+The counterpart in the other direction needs no function at all: "all of" is just a data structure. `[t1 t2 t3]`
+grounds when every task has completed.
 
 ### Automatic Parallelization with qlet
 

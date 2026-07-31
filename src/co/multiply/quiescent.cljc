@@ -785,9 +785,19 @@
 
    Returns a Task that completes with the value of whichever task settles first
    with a non-exceptional result. Losing tasks are cancelled (unless compelled).
+   To race without cancelling the losers, see [[any-of]].
 
    If all tasks fail, returns an exception. If one task fails, returns the
-   combined errors as ex-info with :errors key."
+   combined errors as ex-info with :errors key.
+
+   The winner's identity is not part of the result — only its value. To recover
+   it, tag each entrant with a data structure, which grounds exactly when its
+   task settles:
+
+   ```clojure
+   (race [:a t1] [:b t2] [:c t3])
+   ;; => [:b \"hello world\"]
+   ```"
   [& tasks]
   (race/race tasks))
 
@@ -810,10 +820,42 @@
    (race-stateful #(.close %) alloc-a alloc-b alloc-c)
    ```
 
+   When tagging entrants to recover the winner's identity (see [[race]]),
+   `release` receives the tagged pair, not the raw resource:
+
+   ```clojure
+   (race-stateful #(-> % last .close) [:a alloc-a] [:b alloc-b])
+   ```
+
    Returns a Task that completes with the first successful result.
    Losing tasks are cancelled. If all tasks fail, returns the combined errors."
   [release & tasks]
   (race/race tasks {:release release}))
+
+
+(defn any-of
+  "Race tasks without owning them: first successful result wins, losers keep running.
+
+   Where [[race]] owns its entrants — cancelling losers once a winner settles —
+   `any-of` merely observes them:
+   - Losing tasks are not cancelled; they run to completion.
+   - Cancelling the returned task does not propagate to the entrants.
+
+   Use for tasks that are shared or owned elsewhere, where tearing them down
+   would be rude. If the entrants are yours to dispose of, use [[race]].
+
+   Settlement follows [[race]]: the first non-exceptional result wins, so a
+   fast-failing or externally-cancelled entrant does not poison the result.
+   If all tasks fail, returns the combined errors. If all entrants are
+   cancelled, the returned task is cancelled."
+  [& tasks]
+  (race/race tasks {:cancel-losers? false}))
+
+
+(defn ^:no-doc -qfor
+  [coll f]
+  (do-applier delegate-virtual coll nil
+    (fn per-coll [coll'] (mapv f coll'))))
 
 
 (defmacro qfor
@@ -821,6 +863,15 @@
 
    Returns a Task containing a vector of results. If the body returns tasks,
    they execute in parallel and are awaited concurrently.
+
+   Like `qlet` bindings, the collection expression is resolved before mapping:
+   it may itself be a task, and any task elements are grounded first, so the
+   body always sees plain values. To map over tasks *as* tasks, drop down to
+   ordinary Clojure: `(q (mapv f tasks))`.
+
+   Mapping runs on a single virtual thread, elements in order. The body may
+   therefore park (deref, await), but a blocking body serializes the loop —
+   wrap it in `task` to run elements in parallel.
 
    Does not automatically wrap the body in a task.
 
@@ -832,9 +883,12 @@
    @(qfor [id user-ids]
       (fetch-user id))
    ;; => [{:id 1 ...} {:id 2 ...} ...]
+
+   @(qfor [user (fetch-users)]  ; collection may be a task
+      (enrich user))
    ```"
   [[bind-to coll] & body]
-  `(co.multiply.quiescent/q (mapv (fn per-item# [~bind-to] ~@body) ~coll)))
+  `(co.multiply.quiescent/-qfor ~coll (fn per-item# [~bind-to] ~@body)))
 
 
 (def ^:private plain-merge

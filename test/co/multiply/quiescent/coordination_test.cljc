@@ -31,7 +31,19 @@
     (with-task (q/qfor [x [1 2 3]]
                  (q/task (* x 2)))
       (result [v]
-        (is (= [2 4 6] v))))))
+        (is (= [2 4 6] v)))))
+
+  (clause :task-coll "qfor accepts a task in the collection position"
+    (with-task (q/qfor [x (q/task [1 2 3])]
+                 (q/task (* x 2)))
+      (result [v]
+        (is (= [2 4 6] v)))))
+
+  (clause :task-elements "qfor resolves task elements before the body runs"
+    (with-task (q/qfor [x [(q/task 1) 2 (q/task 3)]]
+                 (inc x))
+      (result [v]
+        (is (= [2 3 4] v))))))
 
 
 (def-results qmerge-test
@@ -119,6 +131,14 @@
           (is (= :immediate v))
           (is (q/cancelled? task))))))
 
+  (clause :tagged-winner "Tagging entrants preserves winner identity"
+    (let [t1 (q/sleep 100 :slow)
+          t2 (q/sleep 10 :fast)]
+      (with-task (q/race [:a t1] [:b t2])
+        (result [v]
+          (is (= [:b :fast] v))
+          (is (q/cancelled? t1) "Loser is cancelled through its wrapper")))))
+
   (clause :stateful-nils "racing nils results in nil winning"
     (let [released (atom [])]
       (with-task (q/race-stateful #(swap! released conj %) (q nil) (q nil))
@@ -169,6 +189,72 @@
           (let [loser (if (= v :r1) :r2 :r1)]
             (is (contains? #{:r1 :r2} v) "There is a winner.")
             (is (= [loser] @released) "Only loser released, exactly once")))))))
+
+
+(def-results any-of-test
+  (clause :empty "any-of with no tasks returns nil"
+    (with-task (q/any-of)
+      (result [v]
+        (is (nil? v)))))
+
+  (clause :first-completed "any-of returns first completed"
+    (with-task (q/any-of (q/sleep 100 :slow) (q/sleep 10 :fast))
+      (result [v]
+        (is (= :fast v)))))
+
+  (clause :losers-survive "any-of losers keep running and complete"
+    (let [slow (q/sleep 30 :slow)]
+      (with-task (q/then (q/any-of slow (q/sleep 5 :fast)) slow vector)
+        (result [v]
+          (is (= [:fast :slow] v) "Winner won; loser ran to completion.")))))
+
+  (clause :scalar-task "any-of with mix returns non-taskable without cancelling tasks"
+    (let [task (q/sleep 30 :slow)]
+      (with-task (q/any-of task :immediate)
+        (result [v]
+          (is (= :immediate v))
+          (is (not (q/cancelled? task)) "Entrant is not cancelled.")))))
+
+  (clause :skips-failures "any-of skips failing entrants"
+    (with-task (q/any-of (q/failed-task (make-exception "boom")) (q/sleep 10 :ok))
+      (result [v]
+        (is (= :ok v)))))
+
+  (clause :single-error "any-of with single failure throws that error directly"
+    (let [e1 (make-exception "Single error")]
+      (with-task (q/any-of (q/task (throw e1)))
+        (result [_v e]
+          (is (identical? e1 e))))))
+
+  (clause :all-fail "any-of collects all errors when all fail"
+    (let [e1 (make-exception "Error 1")
+          e2 (make-exception "Error 2")]
+      (with-task (q/any-of (q/task (throw e1)) (q/task (throw e2)))
+        (result [_v e]
+          (is (= "All tasks failed." (ex-message e)))
+          (let [errors (-> e ex-data :errors)]
+            (is (= 2 (count errors)))
+            (is (some #{e1} errors))
+            (is (some #{e2} errors)))))))
+
+  (clause :all-cancelled "any-of with all entrants cancelled is cancelled"
+    (let [t1 (doto (q/sleep 5000 :a) (q/cancel))
+          t2 (doto (q/sleep 5000 :b) (q/cancel))]
+      (with-task (q/any-of t1 t2)
+        (result [_v _e c]
+          (is (true? c) "any-of should be cancelled")))))
+
+  (clause :cancel-not-propagated "cancelling any-of leaves entrants running"
+    (let [slow (q/sleep 30 :slow)
+          a    (doto (q/any-of slow (q/sleep 40 :other)) (q/cancel))]
+      (with-task (q/then slow (fn [v] [v (q/cancelled? a)]))
+        (result [v]
+          (is (= [:slow true] v) "Entrant completes; any-of itself is cancelled.")))))
+
+  (clause :tagged-winner "Tagging preserves winner identity without ownership"
+    (with-task (q/any-of [:a (q/sleep 100 :slow)] [:b (q/sleep 10 :fast)])
+      (result [v]
+        (is (= [:b :fast] v))))))
 
 
 #?(:clj (defmacro deep-qdo
