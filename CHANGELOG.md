@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1 - 2026-08-01
+
+- Executor threads' context classloader is now a `DynamicClassLoader` wrapping the captured `baseLoader`, instead of
+  the raw capture. In an AOT-compiled host the raw capture is the plain application loader, so by-name class lookup
+  from inside a task (`Class/forName` via the context loader — e.g. nippy `thaw`) threw `ClassNotFoundException` for
+  any class compiled mid-session, such as a `defrecord` eval'd through a REPL against the deployed host. Any
+  `DynamicClassLoader` consults Clojure's JVM-global class cache during `loadClass`, so the empty wrapper bridges the
+  gap; delegation for already-loaded classes is unchanged, and in a source-loaded JVM the wrapper is an inert extra
+  parent hop.
+
 ## 0.8.0 - 2026-08-01
 
 - **BREAKING**: `await` is now a pure observer, holding no claim on the task it watches. Previously the quiescence

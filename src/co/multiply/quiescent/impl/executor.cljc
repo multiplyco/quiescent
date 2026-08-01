@@ -2,6 +2,7 @@
   #?(:cljs (:require
              [co.multiply.scoped :refer [ask]]))
   #?(:clj (:import
+            [clojure.lang DynamicClassLoader RT]
             [java.lang Thread$Builder]
             [java.time Duration]
             [java.util.concurrent ExecutorService Executors ForkJoinPool ForkJoinPool$ForkJoinWorkerThreadFactory ScheduledExecutorService ThreadFactory ThreadPerTaskExecutor TimeUnit]
@@ -15,9 +16,18 @@
                          Clojure's own classes (e.g. a Rama module/daemon loader), lazy class generation on
                          the worker - Specter dynamic-path eval, runtime reflection, agent fns - fails with
                          `ClassNotFoundException: clojure.lang.AFunction`. baseLoader at load time is a
-                         DynamicClassLoader that can resolve clojure.lang.* (and the loaded app classes)."}
+                         DynamicClassLoader that can resolve clojure.lang.* (and the loaded app classes).
+
+                         The captured loader is wrapped in a DynamicClassLoader so that by-name lookups from
+                         task threads (Class/forName via the context loader, e.g. nippy thaw) can also find
+                         classes compiled mid-session. In an AOT-compiled host baseLoader is the plain
+                         application loader, which neither delegates down to REPL-created loaders nor knows
+                         Clojure's global class cache - so a defrecord eval'd on a deployed host would be
+                         unresolvable by name inside tasks. Any DynamicClassLoader instance consults that
+                         static cache during loadClass, so an empty wrapper bridges the gap; in a
+                         source-loaded JVM it adds one inert parent hop."}
           ^ClassLoader base-classloader
-          (clojure.lang.RT/baseLoader)))
+          (DynamicClassLoader. (RT/baseLoader))))
 
 
 #?(:clj (defonce ^{:doc "Virtual thread executor for IO-bound tasks. Creates a new virtual thread per task.

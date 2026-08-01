@@ -14,7 +14,7 @@ Clojure/ClojureScript library for composable async tasks with automatic parallel
 parent-child/chain cancellation.
 
 **Repository**: https://github.com/multiplyco/quiescent —
-`co.multiply/quiescent {:mvn/version "0.8.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
+`co.multiply/quiescent {:mvn/version "0.8.1"}`, JDK 21+ (25 recommended), Clojure 1.12+.
 
 This file covers the semantics you cannot infer — the ones where a reasonable guess from other async libraries is wrong.
 It is not an API reference. **Every public var carries a thorough docstring**, so for signatures, arities and options,
