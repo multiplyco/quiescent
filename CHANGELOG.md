@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0 - 2026-08-01
+
+- **BREAKING**: `await` is now a pure observer, holding no claim on the task it watches. Previously the quiescence
+  proxy behind it carried a teardown link to the awaited task, with two destructive consequences: an expired bound —
+  `(await t ms)` is `timeout` over the proxy — cancelled the awaited task through the proxy, and cancelling the task
+  returned by `await` (directly, or via a dying scope) did the same. Both silently contradicted `await`'s stated
+  purpose of watching a task "while being unaffected by the outcome", and had been so since `await` was introduced.
+  It now sits squarely in the observer family with `monitor` and `any-of`: an expired bound settles the observation
+  to `false` and leaves the task running; cancelling the observation cancels only the observation. To impose a
+  deadline that tears the task down, use `timeout`, which owns what it bounds.
+- **Docs**: `await`'s docstring described an API that never existed — blocking, returning a bare boolean — with its
+  first line truncated mid-word, all unchanged since the function was introduced. It, the README, and the skill now
+  state the real contract: `await` returns a task settling to a boolean; deref it to block (CLJ), chain on it (CLJS);
+  it never throws, and now never cancels.
+
 ## 0.7.0 - 2026-07-31
 
 - **BREAKING**: `qfor` now resolves its collection expression before mapping, like a `qlet` binding: the collection may

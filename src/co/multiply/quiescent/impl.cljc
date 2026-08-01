@@ -113,12 +113,13 @@
 
   (newQuiescenceProxy [this default]
     ;; Return a task which completes with `default` when `this`
-    ;; reaches quiescent.
+    ;; reaches quiescent. A pure observer: it holds no claim on `this`,
+    ;; so cancelling the proxy — directly or via cascade — tears down
+    ;; only the observation, never the observed task.
     (let [prx (-pending-task delegate-sync)]
       (subs/subscribe-callback this sm/phase-quiescent
         (fn [_task-state]
           (call/doApply prx default)))
-      (subs/subscribe-teardown prx this)
       prx))
 
   ;; Waiting

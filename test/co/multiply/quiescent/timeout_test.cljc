@@ -295,7 +295,7 @@
 
 
 (def-results await-test
-  ;; await blocks until a task reaches a specified phase.
+  ;; await observes a task until quiescence, without owning it.
 
   (clause :basic "await returns true when task is quiescent"
     (let [task (q :immediate)]
@@ -315,7 +315,14 @@
       (with-task (q/await task 1)
         (result [v]
           (is (false? v) "Should return false when timeout expires")
+          (is (not (q/cancelled? task)) "Expiry does not cancel the observed task")
           (q/cancel task)))))
+
+  (clause :expiry-non-destructive "await expiry leaves the task to complete"
+    (let [task (q/sleep 30 :done)]
+      (with-task (q/then (q/await task 5) task vector)
+        (result [v]
+          (is (= [false :done] v) "Bound expired; task completed untouched")))))
 
   #?(:clj (clause :duration "await can have Duration timeout"
             (let [task (q/sleep 5 :result)]
@@ -324,13 +331,14 @@
                   (is (true? v) "Should return true when settled before Duration timeout")
                   (q/cancel task))))))
 
-  (clause :cancelling "cancelling await cancels task"
-    (let [task   (q/sleep 1000 :success)
+  (clause :cancelling "cancelling await cancels the observation, not the task"
+    (let [task   (q/sleep 30 :success)
           waiter (q/await task 1000)]
-      (with-task (q/cancel waiter)
-        (result []
-          (is (q/cancelled? task))
-          (is (q/cancelled? waiter)))))))
+      (with-task (qjoin (q/cancel waiter) task)
+        (result [v]
+          (is (q/cancelled? waiter) "The observation is cancelled")
+          (is (= :success v) "The observed task completes untouched")
+          (is (not (q/cancelled? task))))))))
 
 
 (def-results time-test

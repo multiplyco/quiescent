@@ -1255,23 +1255,31 @@
 
 
 (defn await
-  "Re until a task has settled (has a result available).
+  "Observe a task until it comes to rest, without owning it.
 
-   Returns true when settled, false if timeout expires.
-   Without timeout, blocks indefinitely.
+   Returns a Task that settles to a boolean: true once `t` is quiescent —
+   however it got there: value, failure or cancellation — or false if
+   `ms-or-dur` expires first. Without a bound, it settles only when `t` does.
 
-   Unlike `deref`, does not throw if the task failed or was cancelled.
+   Unlike `deref`, never throws: a failed or cancelled `t` still yields true.
+   Unlike `timeout`, never touches `t`: an expired bound does not cancel it,
+   and cancelling the returned task cancels only the observation. `await` is
+   an observer, in the family of [[monitor]] and [[any-of]]. To impose a
+   deadline that tears the task down, use [[timeout]].
+
+   On the JVM, deref the returned task to block. In ClojureScript there is no
+   blocking; chain on it instead.
 
    Args:
      - `t`         The task to await
-     - `ms-or-dur` Optional timeout as milliseconds (long) or `java.time.Duration`
+     - `ms-or-dur` Optional bound as milliseconds (long) or `java.time.Duration`
 
    Example:
 
    ```clojure
-   (await task)                            ; Block until settled
-   (await task 1000)                       ; With 1 second timeout
-   (await task (Duration/ofSeconds 5))     ; With Duration timeout
+   @(await task)                        ; Block until settled, returns true
+   @(await task 1000)                   ; Bounded; false if 1s passes first
+   @(await task (Duration/ofSeconds 5)) ; Duration bound
    ```"
   ([t]
    (call/newQuiescenceProxy (type/as-task t) true))

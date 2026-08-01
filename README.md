@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.7.0"}
+co.multiply/quiescent {:mvn/version "0.8.0"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -483,6 +483,10 @@ Use `await` to wait until a task reaches quiescence:
 `await` returns a task containing a boolean: `true` when settled, `false` if the timeout expired. Unlike `deref`, it
 never throws on failure or cancellation. This is useful when you need to know a task has finished while being unaffected
 by the outcome.
+
+`await` is an **observer**, like `monitor` and `any-of`: it holds no claim on the task it watches. An expired bound
+does not cancel the task, and cancelling the task returned by `await` cancels only the observation. To impose a
+deadline that tears the task down, use `timeout`.
 
 Dereferencing cannot be done in ClojureScript. You can chain off the task returned by `await` on both platforms.
 

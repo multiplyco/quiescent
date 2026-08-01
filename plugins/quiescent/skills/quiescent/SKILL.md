@@ -14,7 +14,7 @@ Clojure/ClojureScript library for composable async tasks with automatic parallel
 parent-child/chain cancellation.
 
 **Repository**: https://github.com/multiplyco/quiescent —
-`co.multiply/quiescent {:mvn/version "0.7.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
+`co.multiply/quiescent {:mvn/version "0.8.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
 
 This file covers the semantics you cannot infer — the ones where a reasonable guess from other async libraries is wrong.
 It is not an API reference. **Every public var carries a thorough docstring**, so for signatures, arities and options,
@@ -351,8 +351,9 @@ A cancelled task contains a `CancellationException` and throws if dereferenced.
 
 **See also** for reading a task without `deref`'s throwing behaviour:
 
-- `(q/await task)` / `(q/await task 1000)` — block until quiescent, returns true, or false if the timeout expired. Never
-  throws on failure or cancellation.
+- `(q/await task)` / `(q/await task 1000)` — a task settling to true at quiescence, or false if the bound expired
+  (deref to block; CLJ only). Never throws on failure or cancellation, and never touches the observed task: an expired
+  bound does not cancel it — `await` observes where `timeout` owns.
 - `(q/get-now task :not-ready)` — the value if settled, else the default. Does throw if it settled exceptionally.
 
 ### Detecting cancellation
