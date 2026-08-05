@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.8.1"}
+co.multiply/quiescent {:mvn/version "0.9.0"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -507,6 +507,16 @@ Inside a `finally` handler, check the third argument:
     (when c
       (log/info "Task was cancelled"))))
 ```
+
+`catch` and `handle` never run for cancelled tasks — cancellation propagates past them. To read the exception out of a
+cancelled (or failed) task as a value, use `get-ex`:
+
+```clojure
+(q/get-ex some-task)  ; => the exception if settled exceptionally, else nil
+```
+
+Like `get-now`, it's a non-blocking snapshot: `nil` also means the task hasn't settled yet, or settled with a value —
+use `exceptional?` to disambiguate.
 
 ### Controlling parallelism
 

@@ -38,8 +38,8 @@
             (Thread/sleep (long ms-or-dur))
 
             (and (instance? Duration ms-or-dur)
-                 (not (Duration/.isZero ms-or-dur))
-                 (not (Duration/.isNegative ms-or-dur)))
+              (not (Duration/.isZero ms-or-dur))
+              (not (Duration/.isNegative ms-or-dur)))
             (Thread/sleep ^Duration ms-or-dur)
 
             :else nil)))
@@ -71,9 +71,9 @@
           "Execute body while holding a semaphore permit. Releases on completion or exception."
           [^Semaphore sem & body]
           `(do (acquire ~sem)
-               (try ~@body
-                 (finally
-                   (release ~sem))))))
+             (try ~@body
+               (finally
+                 (release ~sem))))))
 
 
 (defn gate
@@ -199,6 +199,34 @@
    ```"
   [t default]
   (call/getNow (type/as-task t) default))
+
+
+(defn get-ex
+  "Get the task's exception as a value, if it settled exceptionally —
+   whether through failure or cancellation.
+
+   Returns the thrown value (always a `Throwable` on the JVM; in CLJS anything
+   can be thrown). For a cancelled task this is a `CancellationException` (CLJ)
+   or an ex-info with `{:cancelled true}` (CLJS). Returns `nil` for a task that
+   has not settled, or settled with a value — use `exceptional?` to disambiguate.
+
+   Non-blocking snapshot, like `get-now`. Unlike `catch` and `handle`, which
+   never see cancellation, this reads the exception out of any exceptionally
+   settled task. Useful for:
+   - Inspecting cancelled tasks, which error combinators skip
+   - Collecting errors from settled tasks without deref/try
+   - Metrics and logging
+
+   Example:
+
+   ```clojure
+   (when-let [e (get-ex task)]
+     (log/warn \"Task settled exceptionally\" e))
+   ```"
+  [t]
+  (let [t (type/as-task t)]
+    (when (call/isExceptional t)
+      (call/getResult t))))
 
 
 (defn task?
@@ -420,7 +448,8 @@
    - Throw a new exception (task fails with new error)
 
    If the task succeeds, the handler is not called and the value passes through.
-   Cancellation always propagates through catch without invoking handlers.
+   Cancellation always propagates through catch without invoking handlers. To
+   read a cancelled task's exception as a value, see `get-ex`.
 
    Multi-pair catch provides exclusive-or semantics like try/catch: only one handler
    runs, and if that handler throws, the exception propagates (not caught by later
@@ -477,7 +506,8 @@
    - Throw a new exception (task fails with new error)
 
    If the task succeeds, the handler is not called and the value passes through.
-   Cancellation always propagates through catch without invoking handlers.
+   Cancellation always propagates through catch without invoking handlers. To
+   read a cancelled task's exception as a value, see `get-ex`.
 
    Multi-pair catch provides exclusive-or semantics like try/catch: only one handler
    runs, and if that handler throws, the exception propagates (not caught by later
@@ -532,7 +562,8 @@
    a different value based on success/error.
 
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
-   cleanup that must run on cancellation.
+   cleanup that must run on cancellation, or `get-ex` to read the exception
+   from a cancelled task.
 
    Example:
 
@@ -562,7 +593,8 @@
    a different value based on success/error.
 
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
-   cleanup that must run on cancellation.
+   cleanup that must run on cancellation, or `get-ex` to read the exception
+   from a cancelled task.
 
    Example:
 
@@ -658,7 +690,8 @@
    - `done`: runs on success/error, passes through original result
 
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
-   cleanup that must run on cancellation."
+   cleanup that must run on cancellation, or `get-ex` to read the exception
+   from a cancelled task."
   [t f]
   (call/doDone (type/as-task t) delegate-virtual f))
 
@@ -680,7 +713,8 @@
    - `done`: runs on success/error, passes through original result
 
    **Cancellation**: Does NOT run when task is cancelled. Use `finally` for
-   cleanup that must run on cancellation."
+   cleanup that must run on cancellation, or `get-ex` to read the exception
+   from a cancelled task."
   [t f]
   (call/doDone (type/as-task t) delegate-cpu f))
 
@@ -1195,10 +1229,10 @@
    (time t #?(:clj (System/currentTimeMillis) :cljs (js/performance.now)) side-effect-fn))
   ([t start side-effect-fn]
    (finally t
-     (fn [v e c]
-       (side-effect-fn v e c
-         #?(:clj  (- (System/currentTimeMillis) start)
-            :cljs (- (js/performance.now) start)))))))
+            (fn [v e c]
+              (side-effect-fn v e c
+                #?(:clj  (- (System/currentTimeMillis) start)
+                   :cljs (- (js/performance.now) start)))))))
 
 
 (defn- default-validate

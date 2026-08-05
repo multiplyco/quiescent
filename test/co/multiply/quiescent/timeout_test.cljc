@@ -179,9 +179,9 @@
           (is (identical? e1 e))))))
 
   #?(:clj (testing :duration "Using duration"
-            (with-task (q/timeout (q/sleep 1 :result) (Duration/ofSeconds 1))
-              (result [v]
-                (is (= :result v)))))))
+                   (with-task (q/timeout (q/sleep 1 :result) (Duration/ofSeconds 1))
+                     (result [v]
+                       (is (= :result v)))))))
 
 
 (def-results sleep-test

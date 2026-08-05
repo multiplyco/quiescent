@@ -249,3 +249,35 @@
           elapsed    (- (get-time-now) start-time)]
       (is (= :not-ready result))
       (is (< elapsed 50) "Should return immediately, not block"))))
+
+
+(def-results get-ex-test
+  (clause :unsettled "get-ex returns nil for unsettled task"
+    (is (nil? (q/get-ex (q/sleep 1000 :result)))))
+
+  (clause :settled-with-value "get-ex returns nil for task settled with a value"
+    (let [task (q 42)]
+      (with-task task
+        (result []
+          (is (nil? (q/get-ex task)))))))
+
+  (clause :failed "get-ex returns the exception from a failed task"
+    (let [ex   (make-exception "Boom")
+          task (q/task (throw ex))]
+      (with-task task
+        (result [_v e c]
+          (is (identical? ex (q/get-ex task)))
+          (is (identical? e (q/get-ex task)))
+          (is (false? c))))))
+
+  (clause :cancelled "get-ex returns the cancellation exception from a cancelled task"
+    (let [task (q/sleep 1000 :result)]
+      (with-task (q/cancel task)
+        (result []
+          (is (q/cancelled? task))
+          (let [e (q/get-ex task)]
+            #?(:clj  (is (instance? java.util.concurrent.CancellationException e))
+               :cljs (is (true? (:cancelled (ex-data e))))))))))
+
+  (clause :plain-value "get-ex returns nil for a plain value"
+    (is (nil? (q/get-ex 42)))))

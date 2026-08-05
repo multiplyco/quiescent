@@ -30,7 +30,8 @@
     (deref p 5000 ::timeout)))
 
 
-(defn- worker-context-classloader [submit!]
+(defn- worker-context-classloader
+  [submit!]
   (on-worker submit! #(Thread/.getContextClassLoader (Thread/currentThread))))
 
 
@@ -81,8 +82,8 @@
                        (fn []
                          (try (Class/forName "clojure.lang.AFunction" false
                                 (Thread/.getContextClassLoader (Thread/currentThread)))
-                              :ok
-                              (catch Throwable e (.getName (class e)))))))
+                           :ok
+                           (catch Throwable e (.getName (class e)))))))
             "worker's context classloader must resolve clojure.lang.* despite a restricted submitter")))
       (finally
         (Thread/.setContextClassLoader (Thread/currentThread) original)))))

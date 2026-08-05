@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.0 - 2026-08-05
+
+- New `get-ex`: reads a task's exception as a value if it settled exceptionally — whether through failure or
+  cancellation — and `nil` otherwise. A non-blocking snapshot in the `get-now` family. Fills the gap left by
+  `catch`/`handle`, which by design never run for cancelled tasks: previously there was no way to extract the
+  exception from a cancelled task without dereferencing and catching.
+
 ## 0.8.1 - 2026-08-01
 
 - Executor threads' context classloader is now a `DynamicClassLoader` wrapping the captured `baseLoader`, instead of
