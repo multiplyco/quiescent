@@ -1,7 +1,7 @@
 (ns co.multiply.quiescent.gate-test
   (:require
     [clojure.test :refer [is]]
-    [co.multiply.quiescent :as q :refer [q qjoin]]
+    [co.multiply.quiescent :as q :refer [q]]
     [co.multiply.quiescent.test-support :refer [allow-platform-park clause def-results expect make-exception result with-task]]))
 
 
@@ -116,12 +116,39 @@
 ;; ################################################################################
 
 (def-results gate-cancellation
-  (clause :gate-cancel-cancels-tasks "Cancelling gate cancels gated tasks"
-    (let [g (q/gate 2)]
-      (with-task (qjoin (q/sleep 20 #(q/cancel g))
-                   (q/gate-task g (q/sleep 10000 :should-not-complete)))
-        (result [_v _e c]
-          (is (true? c) "Gated task should be cancelled")))))
+  (clause :cancel-gate-throws "Cancelling a gate is a loud type error, not a no-op"
+    (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs cljs.core/ExceptionInfo)
+          (q/cancel (q/gate 1)))
+      "A gate is a coordinator; it holds no claim on gated work"))
+
+  (clause :gate-survives-creator "Gate created inside a task survives that task's settle"
+    (let [holder (q/promise)
+          _outer (q/task (holder (q/gate 2)) :done)]
+      (with-task (q/then holder
+                   (fn [g]
+                     (q/then (q/sleep 20)
+                       (fn [_] (q/gate-task g :alive)))))
+        (result [v]
+          (is (= :alive v)
+            "A gate has no lifecycle of its own; it must keep admitting work after its creator settles")))))
+
+  (clause :cohort-isolation "Cancelling one cohort does not cancel an adjacent cohort sharing the gate"
+    (let [g        (q/gate 1)
+          a-ran    (atom 0)
+          cohort-a (q/qfor [n (range 4)]
+                     (q/gate-task g
+                       (q/sleep 10000 (fn [] (swap! a-ran inc) n))))
+          cohort-b (q/qfor [n (range 4)]
+                     (q/gate-task g (q/sleep 5 n)))]
+      (with-task (q/then (q/sleep 20)
+                   (fn [_]
+                     (q/then (q/cancel cohort-a)
+                       (fn [_] cohort-b))))
+        (result [v]
+          (is (= [0 1 2 3] v)
+            "Adjacent cohort runs to completion through the shared gate")
+          (is (zero? @a-ran)
+            "Cancelled cohort's queued and running bodies never produce their effects")))))
 
   (clause :task-cancel-releases-permit "Cancelled task releases permit"
     (let [g         (q/gate 1)
@@ -138,12 +165,6 @@
         (result [v]
           (is (= :task2-done v))
           (is (true? @completed) "Task2 should run after task1 cancelled")))))
-
-  (clause :enqueue-after-cancel "Enqueueing after gate cancelled returns cancelled task"
-    (let [g (doto (q/gate 2) (q/cancel))]
-      (with-task (q/gate-task g :should-not-run)
-        (result [_v _e c]
-          (is (true? c) "Task should be cancelled")))))
 
   (clause :many-cancelled-while-queued "Long run of tasks cancelled while queued doesn't wedge the gate"
     (let [g      (q/gate 1)
@@ -177,17 +198,7 @@
       (with-task (q/then holder (fn [get-t] (expect (get-t) (fn [v _e c] [v c]))))
         (result [[v c]]
           (is (= :survived v) "Compelled gated task should survive its creator's settle")
-          (is (false? c))))))
-
-  (clause :gate-cancel-settles-queued "Cancelling gate settles all running and queued tasks"
-    (let [g        (q/gate 2)
-          tasks    (mapv (fn [i] (q/gate-task g (q/sleep 10000 i))) (range 12))
-          statuses (mapv (fn [t] (expect t (fn [_v _e c] c))) tasks)
-          _cancel  (q/then (q/sleep 20) (fn [_] (q/cancel g)))]
-      (with-task (q statuses)
-        (result [v]
-          (is (= 12 (count v)))
-          (is (every? true? v) "Running and queued tasks should all settle cancelled"))))))
+          (is (false? c)))))))
 
 
 ;; # Stress

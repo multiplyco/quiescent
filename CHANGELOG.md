@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0 - 2026-08-14
+
+- **BREAKING**: Gates no longer participate in cancellation. A gate is now a pure coordinator, like `semaphore`: off
+  the cancellation tree, no lifecycle of its own, holding no claim on the tasks that run through it. `(cancel gate)`
+  now throws (`Gate` no longer implements `ICancellable`), and the internal control-task is gone, along with the
+  cancelled-gate state and its silent failure mode where `gate-task` on a dead gate returned an already-cancelled task
+  whose `then`/`catch`/`handle` never ran. Gated tasks are unchanged: they remain structured under their creator, so
+  cancelling the task that spawned a cohort tears down exactly that cohort — running or queued — releasing permits as
+  they settle, while other cohorts sharing the gate, and the gate itself, are untouched. `compel` still detaches.
+
+  Rationale: the old semantics were implicit scope capture, not structured concurrency — the control-task was parented
+  under whichever task happened to be running when `(gate n)` was evaluated. A top-level `(def gate (gate n))`
+  evaluated through a task-running REPL or a namespace reload therefore died with that evaluation, permanently and
+  silently. Binding the gate to a compelled control-task instead was considered and rejected: it fixes the reload trap
+  but keeps the cancelled state (and its silent-dead-gate mode) representable, and keeps bulk-cancel-through-the-gate
+  as ambient authority over unrelated cohorts. The taxonomy is now uniform: tasks and promises are work — tree
+  members, mortal; gates and semaphores are coordinators — off-tree, immortal, GC-managed, safe to `def` globally.
+  Holding a gate grants admission width only; cancellation authority flows only through task handles. For a
+  cancellable group spanning parents, make the group a task (spawn the fleet under a supervisor task and cancel that).
+
 ## 0.9.0 - 2026-08-05
 
 - New `get-ex`: reads a task's exception as a value if it settled exceptionally — whether through failure or

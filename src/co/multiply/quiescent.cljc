@@ -83,8 +83,14 @@
    an available permit before running. When a task completes (success, error,
    or cancellation), its permit is released for the next waiting task.
 
-   Gates participate in structured concurrency: cancelling a gate cancels
-   all tasks created through it."
+   A gate is a coordinator, not a task: it is off the cancellation tree, has
+   no lifecycle of its own, and holds no claim on the tasks that run through
+   it. Holding a gate grants admission width only.
+
+   To cancel gated work, cancel the task handles returned by [[gate-task]],
+   or the task that spawned them.
+
+   Calling [[cancel]] on a gate is a type error."
   [n]
   (gate/gate n))
 
@@ -101,9 +107,10 @@
    permit — descendants (e.g. compelled fire-and-forget tasks) acquire normally.
 
    Gated tasks are structured like any other task: when the task that created
-   one settles, cascade cancellation reaches it. The gate additionally owns it —
-   cancelling the gate cancels every task enqueued through it. Wrap with
-   [[compel]] to detach a gated task from its creator (pool-owned work).
+   one settles, cascade cancellation reaches it — running or still queued. The
+   gate holds no claim on it; cancellation flows only through the task's own
+   parentage. Wrap with [[compel]] to detach a gated task from its creator
+   (pool-owned work).
 
    Example:
    ```clojure
@@ -782,7 +789,11 @@
 ;; # Coordination
 ;; ################################################################################
 (defn cancel
-  "Attempt to cancel a task, promise, or gate. Returns a `Task[Boolean]`.
+  "Attempt to cancel a task or promise. Returns a `Task[Boolean]`.
+
+   Gates are not cancellable — a gate is a coordinator holding no claim on
+   the work that runs through it, so passing one throws. Cancel the gated
+   tasks themselves, or the task that spawned them.
 
    The returned task settles with:
    - `true`: This cancel call won the race and successfully cancelled the target

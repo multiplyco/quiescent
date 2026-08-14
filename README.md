@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.9.0"}
+co.multiply/quiescent {:mvn/version "0.10.0"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -540,11 +540,16 @@ itself be a task, and any task elements are grounded first, so the body always s
 single virtual thread, elements in order, so the body may park — but a blocking body serializes the loop; wrap it in
 `task` to run elements in parallel. To map over tasks *as* tasks, use ordinary Clojure: `(q (mapv f tasks))`.
 
-Gates participate in structured concurrency: cancelling a gate cancels all tasks created through it. Any task created
-via a gate that hasn't already been cancelled, or run to completion, is immediately cancelled in turn.
+A gate is a **coordinator, not a task**: it sits off the cancellation tree, has no lifecycle of its own, and holds no
+claim on the work that runs through it — cancelling a gate is a type error. Holding a gate grants admission width only,
+never the authority to cancel anyone's work. That makes a top-level `(def gate (q/gate 20))` safe, even when the `def`
+is evaluated inside a task (say, a REPL evaluation or a namespace reload): the gate does not die with its creator.
 
-Gated tasks also remain structured under the task that created them, like any other task: when the creator settles,
-cascade cancellation reaches fire-and-forget gated work. Wrap with `compel` to detach gated work from its creator.
+Gated tasks remain structured under the task that created them, like any other task: when the creator settles, cascade
+cancellation reaches fire-and-forget gated work, whether running or still queued, and permits are released as tasks
+settle. To cancel a cohort of gated work, cancel the tasks you got back from `gate-task` — or the task that spawned
+them, as in the `qfor` above. Other cohorts sharing the gate, and the gate itself, are untouched. Wrap with `compel` to
+detach gated work from its creator.
 
 Gates are also **reentrant**: nested `gate-task` calls on the same gate don't consume additional permits:
 

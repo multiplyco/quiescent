@@ -5,13 +5,10 @@
     [co.multiply.quiescent.impl.executor :as executor]
     [co.multiply.quiescent.impl.state-machine :as sm]
     [co.multiply.quiescent.impl.subscription :as subs]
-    [co.multiply.quiescent.type #?@(:cljs [:refer [ICancellable TaskState]])]
     [co.multiply.conc.integer :as integer :refer [new-integer]]
     [co.multiply.conc.queue :as queue :refer [new-queue]]
     [co.multiply.quiescent.type.call :as call]
-    [co.multiply.scoped :refer [ask assoc-scope]])
-  #?(:clj (:import
-            [co.multiply.quiescent.impl ICancellable TaskState])))
+    [co.multiply.scoped :refer [ask assoc-scope]]))
 
 
 (defprotocol IGate
@@ -41,36 +38,27 @@
 (def ^:dynamic *current-gate*)
 
 
-(deftype Gate [control-task permits queue]
-  ICancellable
-  (doCancel [_this msg] (call/doCancel control-task msg))
-  (doCancelDirect [_this] (call/doCancelDirect control-task))
-  (doCancelCascade [_this] (call/doCancelCascade control-task))
-
+;; A gate is a coordinator, not a task: it is off the cancellation tree,
+;; holds no claim on the tasks that run through it, and has no lifecycle of
+;; its own — GC manages it, so it is safe to `def` globally. Cancellation of
+;; gated work flows exclusively through each task's own parentage.
+(deftype Gate [permits queue]
   IGate
   (enqueue [this f]
     (let [grant (ask *current-gate* nil)]
-      (cond
-        ;; Cancelled: return cancelled task.
-        (call/isCancelled control-task)
-        (doto (impl/-pending-task executor/delegate-virtual)
-          (call/doCancel "Gate cancelled."))
-
-        ;; Reentrant while the enclosing gated task still holds its permit:
-        ;; run immediately on that permit, so a body that awaits a nested
-        ;; enqueue can't deadlock the gate.
-        (and (some? grant)
-          (identical? (.-gate ^GateGrant grant) this)
-          (not (call/atOrPast (.-task ^GateGrant grant) sm/phase-settling)))
+      ;; Reentrant while the enclosing gated task still holds its permit:
+      ;; run immediately on that permit, so a body that awaits a nested
+      ;; enqueue can't deadlock the gate.
+      (if (and (some? grant)
+            (identical? (.-gate ^GateGrant grant) this)
+            (not (call/atOrPast (.-task ^GateGrant grant) sm/phase-settling)))
         (doto (impl/-pending-task executor/delegate-virtual)
           (call/doRun f))
 
-        :else
         ;; The task keeps its natural parent (structured under its creator,
-        ;; like any task; `compel` detaches). The gate additionally owns it:
-        ;; cancelling the gate tears down every task enqueued through it.
+        ;; like any task; `compel` detaches). The gate takes no ownership:
+        ;; cancel the creator to tear down its cohort of gated work.
         (let [task (impl/-pending-task executor/delegate-virtual)]
-          (subs/subscribe-teardown control-task task)
           (call/setScope task
             (assoc-scope (call/getScope task) *current-gate* (GateGrant. this task)))
           (queue/add queue (QueueEntry. task f))
@@ -90,10 +78,7 @@
             (recur)
             (doto task
               (subs/subscribe-callback sm/phase-settling
-                (fn [_state]
-                  (if (call/isCancelled control-task)
-                    (release this)
-                    (tryRun this))))
+                (fn [_state] (tryRun this)))
               (call/doRun f))))
         (release this))))
 
@@ -104,10 +89,9 @@
 
   (release [this]
     (integer/incrementAndGet permits)
-    (when-not (call/isCancelled control-task)
-      (acquire this))))
+    (acquire this)))
 
 
 (defmacro gate
   [n]
-  `(Gate. (impl/-pending-task executor/delegate-sync) (new-integer ~n) (new-queue)))
+  `(Gate. (new-integer ~n) (new-queue)))

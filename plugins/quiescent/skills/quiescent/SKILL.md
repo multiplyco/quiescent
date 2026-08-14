@@ -14,7 +14,7 @@ Clojure/ClojureScript library for composable async tasks with automatic parallel
 parent-child/chain cancellation.
 
 **Repository**: https://github.com/multiplyco/quiescent —
-`co.multiply/quiescent {:mvn/version "0.9.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
+`co.multiply/quiescent {:mvn/version "0.10.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
 
 This file covers the semantics you cannot infer — the ones where a reasonable guess from other async libraries is wrong.
 It is not an API reference. **Every public var carries a thorough docstring**, so for signatures, arities and options,
@@ -386,9 +386,15 @@ Limit concurrent tasks:
        (process n))))
 ```
 
-Gates participate in structured concurrency: cancelling a gate cancels every task enqueued through it, and a gated task
-is also structured under whatever created it, so cascade cancellation from its creator reaches it. Wrap in `compel` to
-detach fire-and-forget gated work from its creator.
+A gate is a coordinator, not a task: it is off the cancellation tree, holds no claim on gated work, and `q/cancel` on a
+gate throws. It is safe to `def` a gate globally — even from inside a task — and share it: holding a gate grants
+admission width only. A gated task is structured under whatever created it, so cascade cancellation from its creator
+reaches it (running or queued); cancelling one cohort's spawning task leaves other cohorts sharing the gate untouched.
+Wrap in `compel` to detach fire-and-forget gated work from its creator.
+
+Rule of thumb: tasks and promises are *work* — tree members, mortal, cancel them through their handles. Gates and
+semaphores are *coordinators* — off-tree, immortal, GC-managed. The constructs you would `def` globally are exactly the
+ones that are safe to.
 
 Gates are **reentrant while the permit is held**: a `gate-task` created inside a gated body runs immediately on the
 enclosing task's permit, so awaiting a nested `gate-task` cannot deadlock the gate. Once the enclosing task settles and
