@@ -14,7 +14,7 @@ Clojure/ClojureScript library for composable async tasks with automatic parallel
 parent-child/chain cancellation.
 
 **Repository**: https://github.com/multiplyco/quiescent —
-`co.multiply/quiescent {:mvn/version "0.10.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
+`co.multiply/quiescent {:mvn/version "0.11.0"}`, JDK 21+ (25 recommended), Clojure 1.12+.
 
 This file covers the semantics you cannot infer — the ones where a reasonable guess from other async libraries is wrong.
 It is not an API reference. **Every public var carries a thorough docstring**, so for signatures, arities and options,
@@ -386,6 +386,12 @@ Limit concurrent tasks:
        (process n))))
 ```
 
+Use `(q/try-gate-task g (process n))` for skip-when-busy admission. It attempts to reserve a permit before returning;
+if busy, it returns an already-cancelled task without queueing or evaluating the body. An admitted body runs
+asynchronously and grounds its result just like `gate-task`. Rejection skips `then`, `catch`, and `handle`; observe it
+with `cancelled?` or `finally`. `compel` does not bypass admission. Both operations share the reentrancy and cancellation
+rules below and work in CLJ and CLJS.
+
 A gate is a coordinator, not a task: it is off the cancellation tree, holds no claim on gated work, and `q/cancel` on a
 gate throws. It is safe to `def` a gate globally — even from inside a task — and share it: holding a gate grants
 admission width only. A gated task is structured under whatever created it, so cascade cancellation from its creator
@@ -396,11 +402,14 @@ Rule of thumb: tasks and promises are *work* — tree members, mortal, cancel th
 semaphores are *coordinators* — off-tree, immortal, GC-managed. The constructs you would `def` globally are exactly the
 ones that are safe to.
 
-Gates are **reentrant while the permit is held**: a `gate-task` created inside a gated body runs immediately on the
-enclosing task's permit, so awaiting a nested `gate-task` cannot deadlock the gate. Once the enclosing task settles and
-releases its permit, descendants acquire normally like any other caller — reentrancy does not outlive the permit.
+Gates are **reentrant while the enclosing gated task is unsettled**, including through other gates (`A → B → A`).
+Each nested gated task retains a share of that permit until it settles. The permit returns when all sharers settle,
+including compelled nested tasks that outlive the original holder. A descendant created from an already-settled
+holder's scope must acquire normally.
 
-Handlers chained onto `gate-task` run *after* the permit is returned.
+Chained handlers do not retain a gated task's permit; put their work inside the body if it needs the permit. Gates
+limit admission: cancellation releases a task's share at settlement, while already-running code must cooperate with
+cancellation. Capacity must be an integer from 0 through 2147483647; zero queues until cancellation or rejects tries.
 
 **See also** `q/semaphore` / `q/with-semaphore` (CLJ only) — a plain counting semaphore for guarding a blocking section,
 where `gate` limits task admission. Prefer `gate` unless you specifically need the lock shape.

@@ -111,7 +111,7 @@
            (if e#
              (co.multiply.quiescent.type.call/doWrite ~this
                (if-cljs
-                 (type/TaskState. true false e#)
+                 (co.multiply.quiescent.type/TaskState. true false e#)
                  (TaskState. true false e#)))
              (co.multiply.quiescent.type.call/doGround ~this ~v))))
        ([this v e tf]
@@ -119,6 +119,6 @@
            (if e#
              (co.multiply.quiescent.type.call/doWrite ~this
                (if-cljs
-                 (type/TaskState. true false e#)
+                 (co.multiply.quiescent.type/TaskState. true false e#)
                  (TaskState. true false e#)))
              (co.multiply.quiescent.type.call/doGround ~this ~v ~tf)))))))

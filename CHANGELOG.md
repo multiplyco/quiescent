@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0 - 2026-09-08
+
+- Add `try-gate-task` for immediate gate admission in Clojure and ClojureScript. It reserves a permit before returning
+  and runs the body asynchronously; when busy, it returns an already-cancelled task without evaluating or queueing the
+  body. It shares `gate-task`'s reentrancy and structured cancellation, and returns permits on success, failure, or
+  cancellation. `compel` does not bypass admission.
+- Fix reentrancy through multiple gates (`A → B → A`), which could deadlock or reject a nested try. Reentrant gated
+  tasks now retain shares of the permit, so compelled nested tasks cannot lose their permit when the original holder
+  settles. The permit returns when the last sharer settles; new descendants of a settled scope acquire normally.
+- Make queue draining iterative across synchronous completion and cancellation races, avoiding recursive handoff
+  that could overflow the stack and lose a permit. Cancelled queued closures are removed promptly, even if no permit
+  becomes free. Queued tasks preserve their creator's scope during handoff.
+- Settle gated tasks as failures if executor dispatch throws, returning their permits, and skip bodies cancelled
+  before executor dispatch. Validate gate capacities consistently across CLJ and CLJS.
+
 ## 0.10.0 - 2026-08-14
 
 - **BREAKING**: Gates no longer participate in cancellation. A gate is now a pure coordinator, like `semaphore`: off

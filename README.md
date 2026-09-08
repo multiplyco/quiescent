@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.10.0"}
+co.multiply/quiescent {:mvn/version "0.11.0"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),
@@ -540,6 +540,23 @@ itself be a task, and any task elements are grounded first, so the body always s
 single virtual thread, elements in order, so the body may park — but a blocking body serializes the loop; wrap it in
 `task` to run elements in parallel. To map over tasks *as* tasks, use ordinary Clojure: `(q (mapv f tasks))`.
 
+For work that should be skipped when busy, use `try-gate-task`:
+
+```clojure
+(def duty-gate (q/gate 1))
+
+(q/try-gate-task duty-gate
+  (run-duty))
+```
+
+Admission is attempted before the call returns. If no permit is immediately available, the returned task is already
+cancelled: the body is never evaluated and no work is queued. If admitted, the body runs asynchronously and its result
+is grounded as usual. The permit remains held until the task settles, including any work returned by its body.
+
+Rejection follows ordinary cancellation semantics: `then`, `catch`, and `handle` skip it. Use `cancelled?` to inspect
+the returned task or `finally` to observe cancellation. `compel` does not bypass admission. Both `gate-task` and
+`try-gate-task` share the reentrancy and structured cancellation rules below.
+
 A gate is a **coordinator, not a task**: it sits off the cancellation tree, has no lifecycle of its own, and holds no
 claim on the work that runs through it — cancelling a gate is a type error. Holding a gate grants admission width only,
 never the authority to cancel anyone's work. That makes a top-level `(def gate (q/gate 20))` safe, even when the `def`
@@ -562,9 +579,16 @@ Gates are also **reentrant**: nested `gate-task` calls on the same gate don't co
 ;; => :inner-result
 ```
 
-Reentrancy lasts exactly as long as the enclosing gated task holds its permit. Once it settles — provably releasing the
-permit — descendant `gate-task` calls (say, from a compelled fire-and-forget task) acquire a permit like any other
-caller.
+Reentrancy also works through other gates, such as `A → B → A`. Each nested gated task retains a share of the enclosing
+permit until it settles. The permit returns only when all sharers have settled, including compelled nested tasks that
+outlive the original holder. A descendant created from an already-settled holder's scope must acquire normally.
+The capacity bounds independent admissions; reentrant nested tasks share a slot and may run concurrently within it.
+
+Gates limit admission. Cancellation releases a task's share when the task settles; already-running code still needs
+to cooperate with interruption or cancellation. A gate does not guarantee that cancelled code has physically stopped.
+
+The capacity must be an integer from 0 through 2147483647. A zero-capacity gate never admits work: `gate-task` remains
+queued until cancelled, and `try-gate-task` rejects immediately. Cancelled queued tasks are removed promptly.
 
 To run the gated code on a platform thread, just return a `cpu-task` directly or inside a data structure.
 
@@ -587,8 +611,8 @@ Other than being dependent on a gate, `gate-task` is a normal task, and can be t
        (q/then (fn [value] …)))))
 ```
 
-Any handler chained onto the `gate-task` runs _after_ its permit has been returned to the gate. It does not extend the
-lifetime of the `gate-task` itself.
+Handlers chained onto a gated task are outside its gated body and do not retain its permit. Put a handler inside the
+body if its work should remain covered by the permit. A shared permit may still be held by other nested gated tasks.
 
 Gates can be used mid-chain:
 

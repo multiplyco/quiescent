@@ -77,11 +77,14 @@
 
 
 (defn gate
-  "Create a gate that limits concurrent task execution to `n` at a time.
+  "Create a gate with `n` permits for concurrent task admission.
 
    A gate acts like a semaphore: tasks created with [[gate-task]] wait for
-   an available permit before running. When a task completes (success, error,
-   or cancellation), its permit is released for the next waiting task.
+   an available permit before running. Use [[try-gate-task]] to cancel instead
+   of waiting when no permit is immediately available. When a task completes
+   (success, error, or cancellation), its share of the permit is released.
+   Reentrant tasks share a permit; it returns to the gate when all sharers settle.
+   Thus `n` bounds independent admissions, not the number of nested task bodies.
 
    A gate is a coordinator, not a task: it is off the cancellation tree, has
    no lifecycle of its own, and holds no claim on the tasks that run through
@@ -90,8 +93,14 @@
    To cancel gated work, cancel the task handles returned by [[gate-task]],
    or the task that spawned them.
 
+   `n` must be an integer from 0 through 2147483647. A zero-capacity gate
+   never admits tasks: [[gate-task]] waits until cancelled, and [[try-gate-task]]
+   rejects immediately.
+
    Calling [[cancel]] on a gate is a type error."
   [n]
+  (when-not (and (integer? n) (<= 0 n 2147483647))
+    (throw (ex-info "Gate capacity must be an integer from 0 through 2147483647." {:capacity n})))
   (gate/gate n))
 
 
@@ -101,10 +110,11 @@
 
    Returns immediately with a task that will eventually contain the result of `body`.
 
-   Reentrancy: a `gate-task` created inside a gated body whose task still holds
-   its permit runs immediately on that permit, so awaiting a nested `gate-task`
-   cannot deadlock the gate. Once the holder settles — provably releasing its
-   permit — descendants (e.g. compelled fire-and-forget tasks) acquire normally.
+   Reentrancy: a gated task created inside an unsettled gated body shares that
+   body's permit, even through other gates (A -> B -> A). Each nested gated task
+   retains its share until it settles. The permit returns only after all sharers
+   settle, including compelled nested tasks that outlive the original holder.
+   Descendants created from a settled holder's scope must acquire normally.
 
    Gated tasks are structured like any other task: when the task that created
    one settles, cascade cancellation reaches it — running or still queued. The
@@ -121,6 +131,32 @@
    ```"
   [gate & body]
   `(gate/enqueue ~gate (fn enqueued# [] ~@body)))
+
+
+(defmacro try-gate-task
+  "Attempt to run `body` through `gate` without waiting for a permit.
+
+   Admission is attempted synchronously, before this call returns. If the gate
+   is busy, returns an already-cancelled task without queueing or evaluating
+   `body`. Otherwise, runs `body` asynchronously and returns its task, grounding
+   the result just like [[gate-task]]. Immediate admission does not mean the
+   body has started executing before the call returns.
+
+   Shares [[gate-task]]'s reentrancy and structured cancellation: nested calls
+   on an enclosing gate share its permit while that enclosing task is unsettled.
+   Each gated task releases its share on success, failure, or cancellation;
+   the permit returns when all sharers settle.
+
+   Rejection is cancellation, so `then`, `catch`, and `handle` skip it; use
+   [[cancelled?]] or [[finally]] to observe it. [[compel]] does not bypass admission.
+
+   Example:
+   ```clojure
+   (try-gate-task duty-gate
+     (run-duty))  ; skipped when busy
+   ```"
+  [gate & body]
+  `(gate/tryEnter ~gate (fn admitted# [] ~@body)))
 
 
 #?(:cljs (defn abort-signal

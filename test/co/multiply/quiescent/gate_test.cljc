@@ -38,6 +38,193 @@
 ;; # Concurrency Limiting
 ;; ################################################################################
 
+(def-results try-gate-admission
+  (clause :available "Immediate admission grounds the body and holds the permit until it settles"
+    (let [g       (q/gate 1)
+          finish  (q/promise)
+          task    (q/try-gate-task g {:value finish})
+          skipped (q/try-gate-task g :should-not-run)]
+      (is (q/task? task))
+      (is (q/cancelled? skipped) "Rejection is visible before the call returns")
+      (finish 42)
+      (with-task (q/then (q/await task)
+                   (fn [_] (q [task (q/try-gate-task g :next)])))
+        (result [v]
+          (is (= [{:value 42} :next] v))))))
+
+  (clause :busy "Busy admission never evaluates the body or runs it after the gate becomes free"
+    (let [g       (q/gate 1)
+          finish  (q/promise)
+          holder  (q/gate-task g finish)
+          ran     (atom [])
+          queued  (q/gate-task g (swap! ran conj :queued))
+          skipped (q/try-gate-task g (swap! ran conj :skipped))
+          chain   (-> skipped
+                    (q/then (fn [_] (swap! ran conj :then)))
+                    (q/catch (fn [_] (swap! ran conj :catch)))
+                    (q/handle (fn [_ _] (swap! ran conj :handle)))
+                    (q/finally (fn [_ e c]
+                                 (is (some? e))
+                                 (is (true? c))
+                                 (swap! ran conj :finally))))]
+      (is (realized? skipped))
+      (is (q/cancelled? skipped))
+      (finish :done)
+      (with-task (q [(q/await holder) (q/await queued) (q/await chain)])
+        (result [_]
+          (is (q/cancelled? skipped))
+          (is (= #{:queued :finally} (set @ran)))
+          (is (= 2 (count @ran)))))))
+
+  (clause :multiple-permits "Each admitted task reserves a permit before the next attempt"
+    (let [g       (q/gate 2)
+          finish  (q/promise)
+          first   (q/try-gate-task g finish)
+          second  (q/try-gate-task g finish)
+          skipped (q/try-gate-task g :overflow)]
+      (is (not (q/cancelled? first)))
+      (is (not (q/cancelled? second)))
+      (is (q/cancelled? skipped))
+      (finish :done)
+      (with-task (q [first second])
+        (result [v]
+          (is (= [:done :done] v))))))
+
+  (clause :compel-still-rejects "Compel does not turn a rejected task into queued work"
+    (with-task (q/compel (q/try-gate-task (q/gate 0) :should-not-run))
+      (result [_ e c]
+        (is (some? e))
+        (is (true? c)))))
+
+  (clause :settlement-releases-permit "Success, failure, and cancellation pass permits to queued tasks"
+    (let [tasks (mapv (fn [outcome]
+                        (let [g      (q/gate 1)
+                              finish (q/promise)
+                              task   (q/try-gate-task g
+                                       (q/then finish
+                                         (fn [_]
+                                           (if (= :failure outcome)
+                                             (throw (make-exception "failed"))
+                                             :done))))
+                              queued (q/gate-task g :queued)]
+                          (if (= :cancel outcome)
+                            (q/cancel task)
+                            (finish :finish))
+                          (q/then (q [(expect task (fn [v e c] [v (some? e) c])) queued])
+                            (fn [v]
+                              (q [v (q/try-gate-task g :reused)])))))
+                  [:success :failure :cancel])]
+      (with-task (q tasks)
+        (result [v]
+          (is (= [[[[:done false false] :queued] :reused]
+                  [[[nil true false] :queued] :reused]
+                  [[[nil true true] :queued] :reused]]
+                 v)))))))
+
+
+(def-results try-gate-reentrancy
+  (clause :nested "Both admission operations reuse a permit held by either operation"
+    (with-task (q [(let [g (q/gate 1)] (q/gate-task g (q/try-gate-task g 1)))
+                   (let [g (q/gate 1)] (q/try-gate-task g (q/gate-task g 2)))
+                   (let [g (q/gate 1)] (q/try-gate-task g (q/try-gate-task g 3)))])
+      (result [v]
+        (is (= [1 2 3] v)))))
+
+  (clause :other-gate "Reentrancy does not bypass admission to a different gate"
+    (let [g (q/gate 1)]
+      (with-task (q/try-gate-task g (q/try-gate-task (q/gate 0) :should-not-run))
+        (result [_ _e c]
+          (is (true? c))))))
+
+  (clause :fast-path-expires "A descendant of a settled holder must attempt admission again"
+    (let [g        (q/gate 1)
+          attempt  (q/promise)
+          child    (q/promise)
+          finish   (q/promise)
+          spawner  (q/try-gate-task g
+                     (child (constantly
+                              (q/compel
+                                (q/then attempt
+                                  (fn [_] (q/try-gate-task g :should-not-run))))))
+                     :spawned)
+          hog      (q/gate-task g finish)]
+      (with-task (q/then (q/await spawner)
+                   (fn [_]
+                     (attempt :go)
+                     (q/then child
+                       (fn [get-child]
+                         (q/then (expect (get-child) (fn [_ _e c] c))
+                           (fn [c]
+                             (finish :done)
+                             (q [c (q/await hog)])))))))
+        (result [[c]]
+          (is (true? c)))))))
+
+
+(def-results try-gate-cancellation
+  (clause :creator-cascade "Creator settlement cancels admitted fire-and-forget work and frees the permit"
+    (let [g      (q/gate 1)
+          child  (q/promise)
+          outer  (q/task
+                   (child (constantly (q/try-gate-task g (q/promise))))
+                   :done)]
+      (with-task (q/then (q/await outer)
+                   (fn [_]
+                     (q/then child
+                       (fn [get-child]
+                         (q/then (expect (get-child) (fn [_ _e c] c))
+                           (fn [c] (q [c (q/try-gate-task g :next)])))))))
+        (result [v]
+          (is (= [true :next] v))))))
+
+  (clause :compel-detaches "Compelled admitted work survives its creator"
+    (let [g      (q/gate 1)
+          child  (q/promise)
+          finish (q/promise)
+          outer  (q/task
+                   (child (constantly (q/compel (q/try-gate-task g finish))))
+                   :done)]
+      (with-task (q/then (q/await outer)
+                   (fn [_]
+                     (is (q/cancelled? (q/try-gate-task g :busy)))
+                     (finish :survived)
+                     (q/then child (fn [get-child] (get-child)))))
+        (result [v]
+          (is (= :survived v)))))))
+
+
+#?(:clj
+   (def-results try-gate-stress
+     (clause :concurrent-admission "Concurrent immediate attempts reserve exactly the available permits"
+       (let [g       (q/gate 4)
+             total   200
+             finish  (q/promise)
+             start   (java.util.concurrent.CountDownLatch. 1)
+             ran     (atom 0)
+             tasks   (object-array total)
+             threads (mapv (fn [t]
+                             (Thread.
+                               (fn []
+                                 (.await start)
+                                 (doseq [i (range t total 8)]
+                                   (aset tasks i
+                                     (q/try-gate-task g
+                                       (swap! ran inc)
+                                       finish))))))
+                       (range 8))]
+         (run! #(Thread/.start ^Thread %) threads)
+         (.countDown start)
+         (run! #(Thread/.join ^Thread %) threads)
+         (is (= (- total 4) (count (filter q/cancelled? tasks))))
+         (finish :done)
+         (with-task (q/then (q (mapv (fn [t] (expect t (fn [_ _e c] c))) tasks))
+                      (fn [cancelled]
+                        (q [(count (filter false? cancelled)) (q/try-gate-task g :next)])))
+           (result [v]
+             (is (= [4 :next] v))
+             (is (= 4 @ran))))))))
+
+
 (def-results gate-concurrency
   (clause :limits-concurrent "Gate limits concurrent execution"
     (let [g          (q/gate 2)
@@ -168,12 +355,17 @@
 
   (clause :many-cancelled-while-queued "Long run of tasks cancelled while queued doesn't wedge the gate"
     (let [g      (q/gate 1)
-          _head  (q/gate-task g (q/sleep 100 :head))
-          queued (mapv (fn [i] (q/gate-task g i)) (range 10000))
+          finish (q/promise)
+          _head  (q/gate-task g finish)
+          ran    (atom 0)
+          queued (mapv (fn [_] (q/gate-task g (swap! ran inc))) (range 10000))
           tail   (q/gate-task g :tail)]
-      (run! q/cancel queued)
-      (with-task tail
+      (with-task (q/then (q (mapv q/cancel queued))
+                   (fn [_]
+                     (finish :head)
+                     tail))
         (result [v]
+          (is (zero? @ran) "Every cancellation finishes before the head releases its permit")
           (is (= :tail v) "Tail task should run after cancelled entries are skipped")))))
 
   (clause :creator-cascade "Creator settle cascades to fire-and-forget gated tasks"
