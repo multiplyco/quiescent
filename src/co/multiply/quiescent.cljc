@@ -845,8 +845,8 @@
    Usage:
 
    ```clojure
-   (cancel task)   ; Fire-and-forget: attempt cancellation without blocking
-   @(cancel task)  ; Wait for target to reach quiescent, returns boolean
+   (cancel task)         ; Fire-and-forget: attempt cancellation without blocking
+   (deref (cancel task)) ; Wait for target to reach quiescent, returns boolean
    ```"
   [t]
   (call/doCancelDirect
@@ -961,12 +961,12 @@
    Example:
 
    ```clojure
-   @(qfor [id user-ids]
-      (fetch-user id))
+   (deref (qfor [id user-ids]
+            (fetch-user id)))
    ;; => [{:id 1 ...} {:id 2 ...} ...]
 
-   @(qfor [user (fetch-users)]  ; collection may be a task
-      (enrich user))
+   (deref (qfor [user (fetch-users)]  ; collection may be a task
+            (enrich user)))
    ```"
   [[bind-to coll] & body]
   `(co.multiply.quiescent/-qfor ~coll (fn per-item# [~bind-to] ~@body)))
@@ -1074,11 +1074,11 @@
    Example:
 
    ```clojure
-   @(sleep 100)                       ; Sleep 100ms, return nil
-   @(sleep 100 :done)                 ; Sleep 100ms, return :done
-   @(sleep 100 #(rand-int 10))        ; Sleep 100ms, then call function
-   @(sleep (Duration/ofSeconds 1))    ; Sleep 1 second, return nil
-   @(sleep 100 (Exception. \"Boom\")) ; Sleep 100ms, then throw
+   (deref (sleep 100))                       ; Sleep 100ms, return nil
+   (deref (sleep 100 :done))                 ; Sleep 100ms, return :done
+   (deref (sleep 100 #(rand-int 10)))        ; Sleep 100ms, then call function
+   (deref (sleep (Duration/ofSeconds 1)))    ; Sleep 1 second, return nil
+   (deref (sleep 100 (Exception. \"Boom\"))) ; Sleep 100ms, then throw
    ```"
   ([ms-or-duration]
    (sleep ms-or-duration nil))
@@ -1134,13 +1134,13 @@
    Example:
 
    ```clojure
-   @(timeout my-task 1000)                   ; Throw TimeoutException after 1s
-   @(timeout my-task 1000 :timed-out)        ; Return :timed-out after 1s
-   @(timeout my-task 1000 #(rand-int 10))    ; Call fallback fn on timeout
-   @(timeout my-task (Duration/ofSeconds 5)) ; Throw after 5 seconds
+   (deref (timeout my-task 1000))                   ; Throw TimeoutException after 1s
+   (deref (timeout my-task 1000 :timed-out))        ; Return :timed-out after 1s
+   (deref (timeout my-task 1000 #(rand-int 10)))    ; Call fallback fn on timeout
+   (deref (timeout my-task (Duration/ofSeconds 5))) ; Throw after 5 seconds
 
    ;; A fallback for BOTH slowness and failure — `default` alone won't do it:
-   @(-> my-task (timeout 1000 :timed-out) (catch (fn [_] :failed)))
+   (deref (-> my-task (timeout 1000 :timed-out) (catch (fn [_] :failed))))
    ```"
   ([t ms-or-dur]
    (timeout t ms-or-dur (type/timeout-exception (str "Task timed out after " ms-or-dur "."))))
@@ -1358,9 +1358,9 @@
    Example:
 
    ```clojure
-   @(await task)                        ; Block until settled, returns true
-   @(await task 1000)                   ; Bounded; false if 1s passes first
-   @(await task (Duration/ofSeconds 5)) ; Duration bound
+   (deref (await task))                        ; Block until settled, returns true
+   (deref (await task 1000))                   ; Bounded; false if 1s passes first
+   (deref (await task (Duration/ofSeconds 5))) ; Duration bound
    ```"
   ([t]
    (call/newQuiescenceProxy (type/as-task t) true))

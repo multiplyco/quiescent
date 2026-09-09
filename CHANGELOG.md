@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.1 - 2026-09-09
+
+- Fix Closure JSDoc warnings during ClojureScript advanced compilation by replacing leading `@` dereference syntax
+  with explicit `deref` calls in docstring examples. No changes to runtime behaviour.
+
 ## 0.11.0 - 2026-09-08
 
 - Add `try-gate-task` for immediate gate admission in Clojure and ClojureScript. It reserves a permit before returning
