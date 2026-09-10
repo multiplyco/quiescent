@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.2 - 2026-09-10
+
+- Update Scoped to 0.1.17, which lazily evaluates the default in `ask`, and Machine Latch to 0.1.16,
+  which also depends on Scoped 0.1.17.
+
 ## 0.11.1 - 2026-09-09
 
 - Fix Closure JSDoc warnings during ClojureScript advanced compilation by replacing leading `@` dereference syntax

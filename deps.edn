@@ -1,7 +1,7 @@
 {:paths ["src" "target/classes" "java"]
 
- :deps  {co.multiply/scoped        {:mvn/version "0.1.16"}
-         co.multiply/machine-latch {:mvn/version "0.1.15"}
+ :deps  {co.multiply/scoped        {:mvn/version "0.1.17"}
+         co.multiply/machine-latch {:mvn/version "0.1.16"}
          co.multiply/pathling      {:mvn/version "0.2.1"}
          co.multiply/conc          {:mvn/version "0.1.3"}
 
