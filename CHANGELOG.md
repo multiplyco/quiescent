@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.3 - 2026-09-11
+
+- Update Scoped to 0.1.18, which adds a `skip` sentinel for conditional scoped bindings, and Machine Latch to 0.1.17,
+  which also depends on Scoped 0.1.18.
+
 ## 0.11.2 - 2026-09-10
 
 - Update Scoped to 0.1.17, which lazily evaluates the default in `ask`, and Machine Latch to 0.1.16,
