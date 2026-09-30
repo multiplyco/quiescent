@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4 - 2026-09-30
+
+- Fix `qlet` failing to compile with `Can't specify more than 20 params` when the body or a binding depends on more
+  than 20 bindings. Past 20 dependencies, the generated fn takes its values as rest args; forms with 20 or fewer
+  expand as before.
+
 ## 0.11.3 - 2026-09-11
 
 - Update Scoped to 0.1.18, which adds a `skip` sentinel for conditional scoped bindings, and Machine Latch to 0.1.17,

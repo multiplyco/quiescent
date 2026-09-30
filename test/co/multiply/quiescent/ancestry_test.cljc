@@ -157,13 +157,13 @@
             (let [child-cancelled (promise)
                   child-started   (promise)
                   link            (q/finally (q/task :done)
-                                             (fn [& _]
-                                               @(q/task
-                                                  (deliver child-started true)
-                                                  (try @(promise)
-                                                    (catch InterruptedException _
-                                                      (deliver child-cancelled true)
-                                                      :interrupted)))))]
+                                    (fn [& _]
+                                      @(q/task
+                                         (deliver child-started true)
+                                         (try @(promise)
+                                           (catch InterruptedException _
+                                             (deliver child-cancelled true)
+                                             :interrupted)))))]
               @child-started
               @(q/cancel link)
               (is @child-cancelled "Child in finally should be cancelled when link is cancelled")))))

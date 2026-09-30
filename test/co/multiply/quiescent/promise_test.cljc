@@ -13,13 +13,13 @@
           (is (= 42 v))))))
 
   (testing :in-qlet "Promise used in qlet"
-           (let [p    (q/promise)
-                 task (qlet [v      p
-                             result (+ v 10)]
-                        result)]
-             (with-task (qjoin (p 100) task)
-               (result [v]
-                 (is (= 110 v)))))))
+    (let [p    (q/promise)
+          task (qlet [v      p
+                      result (+ v 10)]
+                 result)]
+      (with-task (qjoin (p 100) task)
+        (result [v]
+          (is (= 110 v)))))))
 
 
 (def-results promise-fail-test

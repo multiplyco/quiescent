@@ -83,25 +83,25 @@
           (is (< @timing 20) "Independent tasks should run in parallel")))))
 
   (testing :complex-dag "Complex dependency graph with multiple levels"
-           (let [timing (atom 1000)]
-             (with-task (-> (q/qlet [;; Level 0: All independent
-                                     a (q/sleep 5 1)
-                                     b (q/sleep 5 2)
-                                     c (q/sleep 5 3)
+    (let [timing (atom 1000)]
+      (with-task (-> (q/qlet [;; Level 0: All independent
+                              a (q/sleep 5 1)
+                              b (q/sleep 5 2)
+                              c (q/sleep 5 3)
 
-                                     ;; Level 1: Depends on level 0
-                                     d (q/task (+ a b))            ; Depends on a, b
-                                     e (q/task (+ b c))            ; Depends on b, c
+                              ;; Level 1: Depends on level 0
+                              d (q/task (+ a b))            ; Depends on a, b
+                              e (q/task (+ b c))            ; Depends on b, c
 
-                                     ;; Level 2: Depends on level 1
-                                     f (q/task (+ d e))]           ; Depends on d, e
-                              f)
-                          (q/time
-                            (fn [_v _e _c t]
-                              (reset! timing t))))
-               (result [v]
-                 (is (= 8 v))
-                 (is (< @timing 15) "Should maximize parallelism"))))))
+                              ;; Level 2: Depends on level 1
+                              f (q/task (+ d e))]           ; Depends on d, e
+                       f)
+                   (q/time
+                     (fn [_v _e _c t]
+                       (reset! timing t))))
+        (result [v]
+          (is (= 8 v))
+          (is (< @timing 15) "Should maximize parallelism"))))))
 
 
 (def-results destructuring-test
@@ -205,6 +205,38 @@
         (is (= {:value 42 :processed 52} v))))))
 
 
+;; Clojure fns take at most 20 fixed params, so past 20 deps a form's values
+;; arrive as rest args instead.
+(def-results many-deps-test
+  (clause :body "Body depends on more than 20 bindings"
+    (with-task (qlet [v1  (q/task 1) v2 (q/task 2) v3 (q/task 3) v4 (q/task 4) v5 (q/task 5) v6 (q/task 6) v7 (q/task 7)
+                      v8  (q/task 8) v9 (q/task 9) v10 (q/task 10) v11 (q/task 11) v12 (q/task 12) v13 (q/task 13)
+                      v14 (q/task 14) v15 (q/task 15) v16 (q/task 16) v17 (q/task 17) v18 (q/task 18) v19 (q/task 19)
+                      v20 (q/task 20) v21 (q/task 21)]
+                 (+ v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16 v17 v18 v19 v20 v21))
+      (result [v]
+        (is (= 231 v)))))
+
+  (clause :binding "Binding depends on more than 20 bindings"
+    (with-task (qlet [v1  1 v2 2 v3 3 v4 4 v5 5 v6 6 v7 7 v8 8 v9 9 v10 10 v11 11
+                      v12 12 v13 13 v14 14 v15 15 v16 16 v17 17 v18 18 v19 19 v20 20 v21 21
+                      sum (+ v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16 v17 v18 v19 v20 v21)]
+                 sum)
+      (result [v]
+        (is (= 231 v)))))
+
+  (clause :destructure "Destructuring and shadowing hold past 20 dependencies"
+    (with-task (qlet [{:keys [x y]} (q/task {:x 1 :y 2})
+                      [head & tail] (q/task [3 4 5])
+                      {z :z :or {z 6}} {}
+                      x   7                                 ; Shadow destructured x
+                      v1  1 v2 2 v3 3 v4 4 v5 5 v6 6 v7 7 v8 8 v9 9
+                      v10 10 v11 11 v12 12 v13 13 v14 14 v15 15 v16 16 v17 17]
+                 [x y head tail z (+ v1 v2 v3 v4 v5 v6 v7 v8 v9 v10 v11 v12 v13 v14 v15 v16 v17)])
+      (result [v]
+        (is (= [7 2 3 [4 5] 6 153] v))))))
+
+
 (def-results error-handling-test
   (clause :propagate "Errors propagate correctly"
     (with-task (q/qlet [a 10
@@ -228,22 +260,22 @@
 
 (def-results readme-example-test
   (testing :complex "README-style example"
-           (let [fetch-user   (fn [id] (q/sleep 5 {:id id :name "Alice"}))
-                 fetch-posts  (fn [user-id] (q/sleep 5 [{:user-id user-id :title "Post 1"}]))
-                 process-user (fn [user] (q/sleep 5 (assoc user :processed true)))
-                 timing       (atom 1000)]
-             (with-task (-> (q/qlet [user    (fetch-user 1)        ; Starts immediately
-                                     posts   (fetch-posts 1)       ; Parallel with user fetch
-                                     profile (process-user user)]  ; Waits for user
-                              {:profile profile :posts posts})
-                          (q/time
-                            (fn [_v _e _c t]
-                              (reset! timing t))))
-               (result [v]
-                 (is (< @timing 15) "Should benefit from parallel execution")
-                 (is (= {:profile {:id 1 :name "Alice" :processed true}
-                         :posts   [{:user-id 1 :title "Post 1"}]}
-                        v)))))))
+    (let [fetch-user   (fn [id] (q/sleep 5 {:id id :name "Alice"}))
+          fetch-posts  (fn [user-id] (q/sleep 5 [{:user-id user-id :title "Post 1"}]))
+          process-user (fn [user] (q/sleep 5 (assoc user :processed true)))
+          timing       (atom 1000)]
+      (with-task (-> (q/qlet [user    (fetch-user 1)        ; Starts immediately
+                              posts   (fetch-posts 1)       ; Parallel with user fetch
+                              profile (process-user user)]  ; Waits for user
+                       {:profile profile :posts posts})
+                   (q/time
+                     (fn [_v _e _c t]
+                       (reset! timing t))))
+        (result [v]
+          (is (< @timing 15) "Should benefit from parallel execution")
+          (is (= {:profile {:id 1 :name "Alice" :processed true}
+                  :posts   [{:user-id 1 :title "Post 1"}]}
+         v)))))))
 
 
 (def-results if-qlet-test
@@ -262,35 +294,35 @@
         (is (= :not-found v)))))
 
   (testing :false "Falsy branch executes when test is false"
-           (with-task (q/if-qlet [x (q/task false)]
-                        :found
-                        :not-found)
-             (result [v]
-               (is (= :not-found v)))))
+    (with-task (q/if-qlet [x (q/task false)]
+                 :found
+                 :not-found)
+      (result [v]
+        (is (= :not-found v)))))
 
   (testing :destructure "Destructuring in binding"
-           (with-task (q/if-qlet [{:keys [a b]} (q/task {:a 10 :b 20})]
-                        (+ a b)
-                        0)
-             (result [v]
-               (is (= 30 v)))))
+    (with-task (q/if-qlet [{:keys [a b]} (q/task {:a 10 :b 20})]
+                 (+ a b)
+                 0)
+      (result [v]
+        (is (= 30 v)))))
 
   (testing :destructure-nil "Destructuring with nil value takes else branch"
-           (with-task (q/if-qlet [{:keys [value]} (q/task nil)]
-                        value
-                        :missing)
-             (result [v]
-               (is (= :missing v)))))
+    (with-task (q/if-qlet [{:keys [value]} (q/task nil)]
+                 value
+                 :missing)
+      (result [v]
+        (is (= :missing v)))))
 
   (testing :plain-values "Works with plain values (not just tasks)"
-           (with-task (q/if-qlet [x {:data 42}]
-                        :found
-                        :not-found)
-             (result [v]
-               (is (= :found v)))))
+    (with-task (q/if-qlet [x {:data 42}]
+                 :found
+                 :not-found)
+      (result [v]
+        (is (= :found v)))))
 
   (testing :returns-task "Returns a Task"
-           (is (q/task? (q/if-qlet [x (q/task 1)] :yes :no)))))
+    (is (q/task? (q/if-qlet [x (q/task 1)] :yes :no)))))
 
 
 (def-results when-qlet-test

@@ -67,7 +67,7 @@ Quiescent builds heavily on virtual threads and other features present only in r
 
 ```clojure
 ;; deps.edn
-co.multiply/quiescent {:mvn/version "0.11.3"}
+co.multiply/quiescent {:mvn/version "0.11.4"}
 ```
 
 Quiescent depends on four other libraries: [Machine Latch](https://github.com/multiplyco/machine-latch),

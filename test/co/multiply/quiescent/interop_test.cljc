@@ -98,11 +98,11 @@
                   (is (some? e))))))
 
           (testing :task-cancellation "Task cancellation propagates to Future"
-                   (let [fut  (future (Thread/sleep 10000) :result)
-                         task (q fut)]
-                     (with-task (q/cancel task)
-                       (result [v]
-                         (is (.isCancelled fut))))))))
+            (let [fut  (future (Thread/sleep 10000) :result)
+                  task (q fut)]
+              (with-task (q/cancel task)
+                (result [v]
+                  (is (.isCancelled fut))))))))
 
 
 #?(:cljs (def-results js-promise
@@ -152,8 +152,8 @@
           (is (instance? ManyToManyChannel (:channel v)))))))
 
   (testing :direct-conversion "Manual conversion with q works"
-           (let [ch (chan)]
-             (put! ch 123)
-             (with-task (q/as-task ch)
-               (result [v]
-                 (is (= 123 v)))))))
+    (let [ch (chan)]
+      (put! ch 123)
+      (with-task (q/as-task ch)
+        (result [v]
+          (is (= 123 v)))))))

@@ -1276,10 +1276,10 @@
    (time t #?(:clj (System/currentTimeMillis) :cljs (js/performance.now)) side-effect-fn))
   ([t start side-effect-fn]
    (finally t
-            (fn [v e c]
-              (side-effect-fn v e c
-                #?(:clj  (- (System/currentTimeMillis) start)
-                   :cljs (- (js/performance.now) start)))))))
+     (fn [v e c]
+       (side-effect-fn v e c
+         #?(:clj  (- (System/currentTimeMillis) start)
+            :cljs (- (js/performance.now) start)))))))
 
 
 (defn- default-validate
@@ -1422,6 +1422,29 @@
   (transduce prepare-extraction-xf perform-extraction bindings-form))
 
 
+(def ^:private max-fixed-params
+  "Clojure fns take at most 20 fixed parameters."
+  20)
+
+
+(defn- dep-fn
+  "Generate the fn that `then` calls with the values of `deps`, binding each
+   value to its original binding form around `body`.
+
+   Past `max-fixed-params` deps, the values arrive as rest args and are
+   destructured positionally instead."
+  [forms deps body]
+  (let [dep-bindings (mapv #(get-in forms [% :from]) deps)]
+    (if (< max-fixed-params (count deps))
+      `(fn [& params#]
+         (let [[~@dep-bindings] params#]
+           ~@body))
+      (let [temp-params (mapv (fn [_] (gensym "param")) deps)]
+        `(fn [~@temp-params]
+           (let [~@(interleave dep-bindings temp-params)]
+             ~@body))))))
+
+
 (defn ^:no-doc generate-task-let
   "Generate code for qlet from dependency analysis.
 
@@ -1437,38 +1460,32 @@
      Generated code form"
   [{:keys [forms depends bind-order body-idx]}]
   (let [;; Create lookup for sorting by original binding order
-        order-lookup      (zipmap bind-order (range))
-        sort-by-order     (fn [deps] (sort-by order-lookup deps))
+        order-lookup     (zipmap bind-order (range))
+        sort-by-order    (fn [deps] (sort-by order-lookup deps))
 
         ;; Use original binding order (already valid dependency order)
-        all-form-ids      bind-order
-        binding-form-ids  (filterv (partial not= body-idx) all-form-ids)
+        all-form-ids     bind-order
+        binding-form-ids (filterv (partial not= body-idx) all-form-ids)
 
         ;; Generate bindings for all non-body forms
-        bindings          (into []
-                            (mapcat
-                              (fn [form-id]
-                                (let [to   (get-in forms [form-id :to])
-                                      deps (get depends form-id)]
-                                  (if (empty? deps)
-                                    ;; No dependencies - use expression directly (no task wrapping)
-                                    [form-id to]
-                                    ;; Has dependencies - generate t/then with deps sorted by original order
-                                    (let [sorted-deps  (vec (sort-by-order deps))
-                                          dep-bindings (mapv #(get-in forms [% :from]) sorted-deps)
-                                          temp-params  (mapv (fn [_] (gensym "param")) sorted-deps)]
-                                      [form-id
-                                       `(then ~@sorted-deps
-                                          (fn [~@temp-params]
-                                            (let [~@(interleave dep-bindings temp-params)]
-                                              ~to)))])))))
-                            binding-form-ids)
+        bindings         (into []
+                           (mapcat
+                             (fn [form-id]
+                               (let [to   (get-in forms [form-id :to])
+                                     deps (get depends form-id)]
+                                 (if (empty? deps)
+                                   ;; No dependencies - use expression directly (no task wrapping)
+                                   [form-id to]
+                                   ;; Has dependencies - generate t/then with deps sorted by original order
+                                   (let [sorted-deps (vec (sort-by-order deps))]
+                                     [form-id
+                                      `(then ~@sorted-deps
+                                         ~(dep-fn forms sorted-deps [to]))])))))
+                           binding-form-ids)
 
         ;; Generate body
-        body-deps         (vec (sort-by-order (get depends body-idx)))
-        body-dep-bindings (mapv #(get-in forms [% :from]) body-deps)
-        body-temp-params  (mapv (fn [_] (gensym "param")) body-deps)
-        body-expr         (get-in forms [body-idx :to])]
+        body-deps        (vec (sort-by-order (get depends body-idx)))
+        body-expr        (get-in forms [body-idx :to])]
 
     ;; Return complete let expression that evaluates to the body task
     `(task
@@ -1478,9 +1495,7 @@
             `(q ~@body-expr)
             ;; Body depends on forms - generate final q/then
             `(then ~@body-deps
-               (fn [~@body-temp-params]
-                 (let [~@(interleave body-dep-bindings body-temp-params)]
-                   ~@body-expr))))))))
+               ~(dep-fn forms body-deps body-expr)))))))
 
 
 (defmacro qlet

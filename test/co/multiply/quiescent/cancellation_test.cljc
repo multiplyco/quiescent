@@ -170,7 +170,7 @@
           task-err        (q/err task-a (record! :err))
           task-done       (q/done task-a (record! :done))]
       (q/finally [task-then task-catch task-handle task-ok task-err task-done]
-                 (record! :finally))
+        (record! :finally))
       (with-task (qjoin (q/cancel task-a) first-completed)
         (result [v]
           (is (= #{:finally} @results) "Only finally should run on cancellation")
@@ -289,8 +289,8 @@
     (let [finally-args (q/promise)
           upstream     (q/sleep 10000 :result)
           chained      (q/finally upstream
-                                  (fn [v e cancelled]
-                                    (finally-args [v e cancelled])))]
+                         (fn [v e cancelled]
+                           (finally-args [v e cancelled])))]
       (with-task (qjoin (q/cancel upstream) finally-args)
         (result [v]
           (let [[_v err cancelled] v]
@@ -305,8 +305,8 @@
     (let [was-cancelled (q/promise)
           upstream      (q :success)
           chained       (q/finally upstream
-                                   (fn [_ _ cancelled]
-                                     (was-cancelled cancelled)))]
+                          (fn [_ _ cancelled]
+                            (was-cancelled cancelled)))]
       (with-task (qjoin (q/cancel upstream) was-cancelled)
         (result [v]
           (is (false? v))
@@ -316,8 +316,8 @@
     (let [was-cancelled (q/promise)
           upstream      (q/task (throw (make-exception "Oh no!")))
           chained       (q/finally upstream
-                                   (fn [_ _ cancelled]
-                                     (was-cancelled cancelled)))]
+                          (fn [_ _ cancelled]
+                            (was-cancelled cancelled)))]
       (with-task (qjoin (q/sleep 10 #(q/cancel upstream)) was-cancelled)
         (result [v]
           (is (false? v))

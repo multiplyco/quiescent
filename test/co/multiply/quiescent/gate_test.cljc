@@ -119,7 +119,7 @@
           (is (= [[[[:done false false] :queued] :reused]
                   [[[nil true false] :queued] :reused]
                   [[[nil true true] :queued] :reused]]
-                 v)))))))
+                v)))))))
 
 
 (def-results try-gate-reentrancy
@@ -137,17 +137,17 @@
           (is (true? c))))))
 
   (clause :fast-path-expires "A descendant of a settled holder must attempt admission again"
-    (let [g        (q/gate 1)
-          attempt  (q/promise)
-          child    (q/promise)
-          finish   (q/promise)
-          spawner  (q/try-gate-task g
-                     (child (constantly
-                              (q/compel
-                                (q/then attempt
-                                  (fn [_] (q/try-gate-task g :should-not-run))))))
-                     :spawned)
-          hog      (q/gate-task g finish)]
+    (let [g       (q/gate 1)
+          attempt (q/promise)
+          child   (q/promise)
+          finish  (q/promise)
+          spawner (q/try-gate-task g
+                    (child (constantly
+                             (q/compel
+                               (q/then attempt
+                                 (fn [_] (q/try-gate-task g :should-not-run))))))
+                    :spawned)
+          hog     (q/gate-task g finish)]
       (with-task (q/then (q/await spawner)
                    (fn [_]
                      (attempt :go)
@@ -163,11 +163,11 @@
 
 (def-results try-gate-cancellation
   (clause :creator-cascade "Creator settlement cancels admitted fire-and-forget work and frees the permit"
-    (let [g      (q/gate 1)
-          child  (q/promise)
-          outer  (q/task
-                   (child (constantly (q/try-gate-task g (q/promise))))
-                   :done)]
+    (let [g     (q/gate 1)
+          child (q/promise)
+          outer (q/task
+                  (child (constantly (q/try-gate-task g (q/promise))))
+                  :done)]
       (with-task (q/then (q/await outer)
                    (fn [_]
                      (q/then child
