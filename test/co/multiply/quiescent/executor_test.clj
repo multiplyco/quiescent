@@ -7,10 +7,15 @@
    reflection, agent fns) whenever the submitter is a thread whose loader can't
    resolve clojure.lang.* - e.g. a Rama module/daemon thread - surfacing as
    \"Syntax error compiling fn* ... ClassNotFoundException: clojure.lang.AFunction\".
-   The factories pin the loader captured at namespace load instead."
+   The factories pin the loader captured at namespace load instead.
+
+   The pinned loader must also resolve a redefined class to its newest version, since
+   threads that inherit it (e.g. Rama's) look up deserialized types by name."
   (:require
     [clojure.test :refer [deftest is testing]]
-    [co.multiply.quiescent.impl.executor :as executor]))
+    [co.multiply.quiescent.impl.executor :as executor])
+  (:import
+    [clojure.lang RT]))
 
 
 (def ^:private submitters
@@ -87,3 +92,56 @@
             "worker's context classloader must resolve clojure.lang.* despite a restricted submitter")))
       (finally
         (Thread/.setContextClassLoader (Thread/currentThread) original)))))
+
+
+(def ^:private probe-ns
+  "Scratch namespace for the redefined probe type, so the test namespace stays clean."
+  (create-ns 'co.multiply.quiescent.executor-test.class-version))
+
+
+(def ^:private probe-class-name
+  "co.multiply.quiescent.executor_test.class_version.Probe")
+
+
+(defn- define-probe!
+  "(Re)define the probe type, as a REPL reload would. Returns the new class."
+  []
+  (binding [*ns* probe-ns]
+    (eval '(clojure.core/deftype Probe []))))
+
+
+(defn- resolve-probe
+  "Resolve the probe by name on the worker reached via `submit!`, through each by-name path.
+   RT/classForName is given the context loader explicitly: that is what its one-arg form
+   uses on threads where Compiler/LOADER is unbound (e.g. Rama threads inheriting the
+   loader), and kaocha keeps LOADER bound, which would otherwise mask it."
+  [submit!]
+  (on-worker submit!
+    (fn []
+      (let [ctx (Thread/.getContextClassLoader (Thread/currentThread))]
+        {:class-for-name (RT/classForName probe-class-name true ctx)
+         :load-class     (ClassLoader/.loadClass ctx probe-class-name)}))))
+
+
+(deftest worker-classloader-resolves-latest-class-version
+  ;; The JVM remembers the first class a loader returns for a name and hands it back to every
+  ;; later Class/forName with that loader. RT/classForName consults Clojure's newest-version
+  ;; cache only when the loader is not a DynamicClassLoader, so a long-lived DCL as the context
+  ;; loader pinned every by-name lookup (Rama task deserialization, nippy record thaw) to the
+  ;; first version seen. Threads that inherit the context loader keep it, so the stale version
+  ;; outlived module redeploys.
+  (let [v1 (define-probe!)]
+    (doseq [[_ submit!] submitters]
+      ;; Prime every lookup path, including the JVM's own cache for Class/forName.
+      (resolve-probe submit!)
+      (on-worker submit! #(Class/forName probe-class-name false (Thread/.getContextClassLoader (Thread/currentThread)))))
+    (doseq [_ (range 2)]
+      (let [latest (define-probe!)]
+        (is (not (identical? v1 latest)) "redefinition should produce a new class")
+        (doseq [[label submit!] submitters]
+          (testing label
+            (let [{:keys [class-for-name load-class]} (resolve-probe submit!)]
+              (is (identical? latest class-for-name)
+                "RT/classForName via the worker's context loader must return the newest version")
+              (is (identical? latest load-class)
+                "loadClass on the worker's context loader must return the newest version"))))))))

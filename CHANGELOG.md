@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.5 - 2026-10-01
+
+- Fix by-name class lookups on executor threads returning a stale version of a redefined `deftype` or `defrecord`.
+  The context classloader was a long-lived `DynamicClassLoader` (since 0.8.1), and `RT/classForName` consults
+  Clojure's newest-version class cache only for loaders that aren't one; otherwise the JVM answers with the first
+  version that loader ever returned. Threads that inherit the loader kept the stale class indefinitely, e.g. Rama's
+  threads when a cluster is created on an executor thread, which resolve deserialized types by name. The context
+  loader is now `TaskClassLoader`, which isn't a `DynamicClassLoader`. `RT/classForName` and `loadClass` through it
+  return the newest version, and it still resolves `clojure.lang.*` and classes compiled mid-session. A direct
+  `Class/forName` with this loader is still answered from the JVM's cache.
+
 ## 0.11.4 - 2026-09-30
 
 - Fix `qlet` failing to compile with `Can't specify more than 20 params` when the body or a binding depends on more
