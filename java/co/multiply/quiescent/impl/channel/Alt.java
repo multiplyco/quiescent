@@ -198,7 +198,7 @@ public class Alt implements IChannel {
             if (t - h > 0) {
                 if (claim.tryClaim()) {
                     Object val = ch.buffer[(int)(h & ch.mask)];
-                    ch.buffer[(int)(h & ch.mask)] = null;
+                    if (ch.nullOnRead) ch.buffer[(int)(h & ch.mask)] = null;
                     BoundedChannel.HEAD.setVolatile(ch, h + 1);
                     node.release();
                     if ((long) BoundedChannel.TAIL.getAcquire(ch) - h >= ch.capacity) {

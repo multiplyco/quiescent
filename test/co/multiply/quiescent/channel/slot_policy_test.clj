@@ -20,8 +20,12 @@
 
 
 (def policies
-  [{:label "plain default" :make #(BoundedChannel. 8) :clear? true}
-   {:label "transducer default" :make #(BoundedChannel. 8 (map identity)) :clear? true}])
+  [{:label "plain default" :make #(BoundedChannel. 8) :clear? false}
+   {:label "transducer default" :make #(BoundedChannel. 8 (map identity)) :clear? false}
+   {:label "explicit clearing" :make #(BoundedChannel. 8 nil true) :clear? true}
+   {:label "transducer clearing" :make #(BoundedChannel. 8 (map identity) true) :clear? true}
+   {:label "explicit retention" :make #(BoundedChannel. 8 nil false) :clear? false}
+   {:label "transducer retention" :make #(BoundedChannel. 8 (map identity) false) :clear? false}])
 
 
 (defn- slots

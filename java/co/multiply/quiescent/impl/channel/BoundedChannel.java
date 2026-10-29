@@ -68,6 +68,7 @@ public class BoundedChannel implements IChannel, IBuffered {
     final Object[] buffer;
     final int capacity;
     final int mask;
+    final boolean nullOnRead;
 
     // ---- Put-side state (putLock only) ----
     final IFn rf;
@@ -80,14 +81,23 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     public BoundedChannel(int requestedSize) {
-        this(requestedSize, null);
+        this(requestedSize, null, false);
     }
 
     public BoundedChannel(int requestedSize, Object xf) {
+        this(requestedSize, xf, false);
+    }
+
+    /**
+     * Experimental slot policy. false retains consumed references until
+     * overwritten or channel collection; true preserves baseline clearing.
+     */
+    public BoundedChannel(int requestedSize, Object xf, boolean nullOnRead) {
         if (requestedSize < 1)
             throw new IllegalArgumentException("Buffer size must be >= 1, got " + requestedSize);
         this.capacity = nextPowerOf2(requestedSize);
         this.mask = capacity - 1;
+        this.nullOnRead = nullOnRead;
         this.buffer = new Object[capacity];
         this.putLock = new RelayLock();
         this.takeLock = new RelayLock();
@@ -261,7 +271,7 @@ public class BoundedChannel implements IChannel, IBuffered {
             long t = (long) TAIL.getAcquire(this);
             if (t - h > 0) {
                 Object ownValue = buffer[(int)(h & mask)];
-                buffer[(int)(h & mask)] = null;
+                if (nullOnRead) buffer[(int)(h & mask)] = null;
 
                 RelayLock.Node last = takeCombine(node, h + 1, t);
 
@@ -299,7 +309,7 @@ public class BoundedChannel implements IChannel, IBuffered {
             if (!(succObj instanceof RelayLock.Node succ)) break;
             if (succ instanceof Alt.AltNode) break;  // M1: don't combine alt nodes
             succ.value = buffer[(int)(newHead & mask)];
-            buffer[(int)(newHead & mask)] = null;
+            if (nullOnRead) buffer[(int)(newHead & mask)] = null;
             newHead++;
             succ.combined = true;
             succ.wake();
