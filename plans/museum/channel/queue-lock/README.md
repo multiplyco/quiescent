@@ -37,6 +37,8 @@ The benchmark tables are historical observations from the old harness. They
 do not establish a controlled comparison with the current channel benchmark
 suite and must not be pooled with its timing or allocation results.
 
-`channel/node-orientation` is a separate, later RelayLock experiment based on
-`channel/main`. Its refactor, memory-ordering changes, and optional buffer-slot
-clearing remain bundled for now; they are unrelated to this earlier archive.
+The later RelayLock work is described in [the isolated experiment map](../../../channel-experiments.md).
+Its node refactor, memory-ordering changes, and optional buffer-slot clearing
+are separate experiments based on `channel/main`; they are unrelated to this
+earlier archive. The original combined variant is preserved by the
+`archive/channel-node-orientation-combined` tag.
