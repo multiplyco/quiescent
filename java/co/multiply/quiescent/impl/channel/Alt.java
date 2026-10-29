@@ -199,7 +199,8 @@ public class Alt implements IChannel {
                 if (claim.tryClaim()) {
                     Object val = ch.buffer[(int)(h & ch.mask)];
                     ch.buffer[(int)(h & ch.mask)] = null;
-                    BoundedChannel.HEAD.setVolatile(ch, h + 1);
+                    // The node's SC release orders this publication before TAIL.
+                    BoundedChannel.HEAD.setRelease(ch, h + 1);
                     node.release();
                     if ((long) BoundedChannel.TAIL.getAcquire(ch) - h >= ch.capacity) {
                         ch.putLock.resume();

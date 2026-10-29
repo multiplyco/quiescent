@@ -15,13 +15,14 @@ import java.lang.invoke.VarHandle;
  * <p>
  * Cross-lock signaling uses a Dekker-style protocol: the producer
  * writes TAIL then reads HEAD; the consumer writes HEAD then reads
- * TAIL. Sequential consistency guarantees at least one side sees the
- * other's update, so the consumer only signals the producer when the
+ * TAIL. This experiment uses release stores for HEAD/TAIL publication,
+ * relying on the intervening SC exchanges in resume/release to order
+ * the subsequent cross-side read. The consumer only signals when the
  * buffer was observably full. The SIGNALED sentinel in RelayLock
  * handles the residual race between the Dekker check and the park.
  * <p>
  * Buffer writes are accumulated via {@link #putAccumulate} without
- * bumping the committed tail. A single volatile TAIL write flushes
+ * bumping the committed tail. A single release TAIL write flushes
  * all accumulated values at the end of {@link #put}, or earlier if
  * backpressure forces a mid-batch flush (e.g. mapcat expansion filling
  * the buffer). This batches volatile writes and gives consumers a
@@ -135,8 +136,8 @@ public class BoundedChannel implements IChannel, IBuffered {
                 putTail++;
                 return true;
             }
-            // Buffer full — flush accumulated writes so consumers can drain
-            TAIL.setVolatile(this, putTail);
+            // Publish writes before resume's SC REF exchange and the HEAD read.
+            TAIL.setRelease(this, putTail);
             takeLock.resume();
             // Dekker: re-read HEAD after TAIL write — if the consumer
             // already drained, skip the park
@@ -194,10 +195,10 @@ public class BoundedChannel implements IChannel, IBuffered {
             last = putCombine(node);
         }
 
-        // Flush accumulated writes (commit only — defer consumer notification)
+        // Publish before the SC exchange in last.release() and notification.
         boolean flushed = putTail != tail;
         if (flushed) {
-            TAIL.setVolatile(this, putTail);
+            TAIL.setRelease(this, putTail);
         }
 
         // Seal must precede release: successors must see SEALED state
@@ -265,7 +266,8 @@ public class BoundedChannel implements IChannel, IBuffered {
 
                 RelayLock.Node last = takeCombine(node, h + 1, t);
 
-                if (last == node) HEAD.setVolatile(this, h + 1);
+                // Node release below retains its SC exchange before the TAIL read.
+                if (last == node) HEAD.setRelease(this, h + 1);
 
                 last.release();
 
@@ -307,7 +309,8 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
 
         if (newHead > startHead) {
-            HEAD.setVolatile(this, newHead);
+            // The caller releases the last node before checking TAIL.
+            HEAD.setRelease(this, newHead);
         }
 
         return current;
