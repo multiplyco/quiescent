@@ -3,7 +3,7 @@
     [clojure.core.async :as a]
     [clojure.pprint :as pp]
     [clojure.string :as str]
-    [co.multiply.quiescent :as q :refer [qdo qfor]]
+    [co.multiply.quiescent :as q :refer [qjoin qfor]]
     [co.multiply.quiescent.channel :refer [chan pipe poll put! seal! take!]]
     [criterium.core :as c])
   (:import [java.time Duration]
@@ -38,7 +38,7 @@
       :ping-pong
       (let [ch-a (make-ch buffer)
             ch-b (make-ch buffer)]
-        @(-> (qdo
+        @(-> (qjoin
                (q/task (dotimes [_ n] (put! ch-b (take! ch-a))))
                (q/task (dotimes [_ n] (put! ch-a :ping) (take! ch-b))))
            (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes"))))
@@ -47,7 +47,7 @@
       (let [ch-a  (if xf (make-ch buffer xf) (make-ch buffer))
             ch-b  (make-ch buffer)
             per-p (quot n producers)]
-        @(-> (qdo
+        @(-> (qjoin
                (pipe ch-a ch-b)
                (qfor [_ (range consumers)]
                  (q/task (loop [] (poll [_ ch-b] (recur) nil))))
@@ -60,7 +60,7 @@
       ;; default: throughput (plain or xf, determined by :xf key)
       (let [ch    (if xf (make-ch buffer xf) (make-ch buffer))
             per-p (quot n producers)]
-        @(-> (qdo
+        @(-> (qjoin
                (qfor [_ (range consumers)]
                  (q/task (loop [] (poll [_ ch] (recur) nil))))
                (q/task

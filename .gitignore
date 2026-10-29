@@ -19,3 +19,4 @@
 node_modules
 pom.xml
 pom.xml.asc
+/benchmarks/results/
