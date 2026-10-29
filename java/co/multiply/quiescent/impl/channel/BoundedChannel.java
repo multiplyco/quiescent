@@ -2,7 +2,6 @@ package co.multiply.quiescent.impl.channel;
 
 import clojure.lang.AFn;
 import clojure.lang.IFn;
-import clojure.lang.RT;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 
@@ -20,7 +19,7 @@ import java.lang.invoke.VarHandle;
  * buffer was observably full. The SIGNALED sentinel in RelayLock
  * handles the residual race between the Dekker check and the park.
  * <p>
- * Buffer writes are accumulated via {@link #putAccumulate} without
+ * Buffer writes are accumulated via {@link PutNode#putAccumulate} without
  * bumping the committed tail. A single volatile TAIL write flushes
  * all accumulated values at the end of {@link #put}, or earlier if
  * backpressure forces a mid-batch flush (e.g. mapcat expansion filling
@@ -71,9 +70,13 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     // ---- Put-side state (putLock only) ----
     final IFn rf;
-    boolean putInterrupted;     // interrupt captured during putAccumulate
-    long putTail;               // accumulator cursor, diverges from tail until flushed
-    boolean putSealed;          // set when transducer returns Reduced
+    boolean putInterrupted;
+    long putTail;
+    boolean putSealed;
+
+    // ---- Take-side state (takeLock only) ----
+    long takeHead;
+    long takeTail;
 
     // ================================================================
     //  Constructors
@@ -97,7 +100,7 @@ public class BoundedChannel implements IChannel, IBuffered {
                     return acc;
                 }
                 public Object invoke(Object acc, Object val) {
-                    putAccumulate(val);
+                    ((PutNode) putLock.owner).putAccumulate(val);
                     return acc;
                 }
             };
@@ -113,129 +116,76 @@ public class BoundedChannel implements IChannel, IBuffered {
     }
 
     // ================================================================
-    //  PUT
+    //  Buffer operations
     // ================================================================
 
+    Object readSlot(long i) {
+        return buffer[(int)(i & mask)];
+    }
+
+    void writeSlot(long i, Object v) {
+        buffer[(int)(i & mask)] = v;
+    }
+
+    void clearSlot(long i) {
+        buffer[(int)(i & mask)] = null;
+    }
+
+    Object readAndClearSlot(long i) {
+        int idx = (int)(i & mask);
+        Object val = buffer[idx];
+        buffer[idx] = null;
+        return val;
+    }
+
+    boolean hasCapacity(long putTail) {
+        long h = (long) HEAD.getAcquire(this);
+        return putTail - h < capacity;
+    }
+
+    boolean isOpen() {
+        return this.state == OPEN;
+    }
+
     /**
-     * Write one value to the ring buffer without bumping TAIL.
-     * Flushes (commits TAIL, resumes takeLock) and suspends only
-     * when the buffer is full — backpressure for expanding
-     * transducers like mapcat. Called under putLock.
+     * Advance HEAD, release the node, and resume producers if the
+     * buffer was observably full before this drain.
      * <p>
-     * {@code putTail} must be initialized before the first call.
-     *
-     * @return true if written, false only when {@code state != OPEN}
+     * Preserve the baseline volatile HEAD publication before the handoff
+     * and subsequent TAIL check. Callers must not release the node separately.
      */
-    private boolean putAccumulate(Object value) {
-        while (true) {
-            if (state != OPEN) return false;
-            long h = (long) HEAD.getAcquire(this);
-            if (putTail - h < capacity) {
-                buffer[(int)(putTail & mask)] = value;
-                putTail++;
-                return true;
-            }
-            // Buffer full — flush accumulated writes so consumers can drain
-            TAIL.setVolatile(this, putTail);
-            takeLock.resume();
-            // Dekker: re-read HEAD after TAIL write — if the consumer
-            // already drained, skip the park
-            h = (long) HEAD.getAcquire(this);
-            if (putTail - h < capacity) continue;
-            if (putLock.suspend()) {
-                putInterrupted = true;
-            }
+    void commitHeadAndSignal(long newHead, long origHead, Node node) {
+        HEAD.setVolatile(this, newHead);
+        node.release();
+        long freshT = (long) TAIL.getAcquire(this);
+        if (freshT - origHead >= capacity) {
+            putLock.resume();
         }
     }
 
     /**
-     * Route a value through the transducer (if present) or directly
-     * to the buffer. Called for every value regardless of source.
+     * Take a single item: read and clear the slot, commit HEAD,
+     * release the node, and signal producers. Convenience for
+     * non-combining take paths (e.g. Alt).
      */
-    private boolean writeValue(Object value) {
-        return rf != null ? putXf(value) : putAccumulate(value);
+    Object takeOneItem(long head, Node node) {
+        Object val = readAndClearSlot(head);
+        commitHeadAndSignal(head + 1, head, node);
+        return val;
     }
 
-    /**
-     * Transducer put path. Runs the value through the reducing
-     * function, which calls putAccumulate via baseRf for each output.
-     * If the transducer returns Reduced, runs completion and sets
-     * putSealed (seal is deferred to after the tail flush in put()).
-     */
-    private boolean putXf(Object value) {
-        if (state != OPEN) return false;
-        Object result = rf.invoke(this, value);
-        if (RT.isReduced(result)) {
-            rf.invoke(this);
-            putSealed = true;
-            return true;
-        }
-        return state == OPEN;
-    }
+    // ================================================================
+    //  PUT
+    // ================================================================
 
     @Override
     public boolean put(Object value) throws InterruptedException {
         if (Thread.interrupted()) throw new InterruptedException();
-
-        RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
+        PutNode node = new PutNode(Thread.currentThread(), this);
         node.value = value;
         putLock.acquire(node);
-
         if (node.combined) return true;
-
-        putInterrupted = false;
-        putSealed = false;
-        putTail = tail;
-
-        boolean ok = writeValue(value);
-
-        RelayLock.Node last = node;
-        if (ok && !putSealed) {
-            last = putCombine(node);
-        }
-
-        // Flush accumulated writes (commit only — defer consumer notification)
-        boolean flushed = putTail != tail;
-        if (flushed) {
-            TAIL.setVolatile(this, putTail);
-        }
-
-        // Seal must precede release: successors must see SEALED state
-        if (putSealed) seal();
-
-        last.release();
-
-        // Notify consumers after release — successor parks on signal
-        // immediately (buffer still full), gets woken by consumer side
-        if (flushed && !putSealed) {
-            takeLock.resume();
-        }
-
-        if (putInterrupted) Thread.currentThread().interrupt();
-        return ok;
-    }
-
-    /**
-     * Combine waiting successors. Each value goes through
-     * {@link #writeValue} — the same path as the owner's value.
-     * Parks on backpressure (consumer drains, combiner continues),
-     * amortizing lock acquisition across the batch.
-     */
-    private RelayLock.Node putCombine(RelayLock.Node node) {
-        RelayLock.Node current = node;
-
-        while (state == OPEN && !putSealed) {
-            Object succObj = current.state;
-            if (!(succObj instanceof RelayLock.Node succ)) break;
-
-            if (!writeValue(succ.value)) break;
-
-            succ.combined = true;
-            succ.wake();
-            current = succ;
-        }
-
-        return current;
+        return node.execute();
     }
 
     // ================================================================
@@ -245,72 +195,10 @@ public class BoundedChannel implements IChannel, IBuffered {
     @Override
     public Object take() throws InterruptedException {
         if (Thread.interrupted()) throw new InterruptedException();
-        RelayLock.Node node = new RelayLock.Node(Thread.currentThread());
+        TakeNode node = new TakeNode(Thread.currentThread(), this);
         takeLock.acquire(node);
-
         if (node.combined) return node.value;
-
-        boolean interrupted = false;
-        while (true) {
-            if (state == CANCELLED) {
-                node.release();
-                if (interrupted) Thread.currentThread().interrupt();
-                return IChannel.CANCELLED;
-            }
-            long h = head;
-            long t = (long) TAIL.getAcquire(this);
-            if (t - h > 0) {
-                Object ownValue = buffer[(int)(h & mask)];
-                buffer[(int)(h & mask)] = null;
-
-                RelayLock.Node last = takeCombine(node, h + 1, t);
-
-                if (last == node) HEAD.setVolatile(this, h + 1);
-
-                last.release();
-
-                // Dekker: re-read TAIL after HEAD write — signal producer
-                // only if the buffer was full (producer might be parked)
-                long freshT = (long) TAIL.getAcquire(this);
-                if (freshT - h >= capacity) {
-                    putLock.resume();
-                }
-
-                if (interrupted) Thread.currentThread().interrupt();
-                return ownValue;
-            }
-            if (state >= SEALED) {
-                node.release();
-                if (interrupted) Thread.currentThread().interrupt();
-                return IChannel.CANCELLED;
-            }
-            if (takeLock.suspend()) {
-                interrupted = true;
-            }
-        }
-    }
-
-    private RelayLock.Node takeCombine(RelayLock.Node node, long startHead, long t) {
-        long newHead = startHead;
-        RelayLock.Node current = node;
-
-        while (newHead < t && state != CANCELLED) {
-            Object succObj = current.state;
-            if (!(succObj instanceof RelayLock.Node succ)) break;
-            if (succ instanceof Alt.AltNode) break;  // M1: don't combine alt nodes
-            succ.value = buffer[(int)(newHead & mask)];
-            buffer[(int)(newHead & mask)] = null;
-            newHead++;
-            succ.combined = true;
-            succ.wake();
-            current = succ;
-        }
-
-        if (newHead > startHead) {
-            HEAD.setVolatile(this, newHead);
-        }
-
-        return current;
+        return node.execute();
     }
 
     // ================================================================

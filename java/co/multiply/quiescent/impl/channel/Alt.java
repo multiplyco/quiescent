@@ -87,19 +87,6 @@ public class Alt implements IChannel {
     }
 
     // ================================================================
-    //  AltNode — node in a channel's lock chain
-    // ================================================================
-
-    static class AltNode extends RelayLock.Node {
-        final AltClaim claim;
-
-        AltNode(Thread thread, AltClaim claim) {
-            super(thread);
-            this.claim = claim;
-        }
-    }
-
-    // ================================================================
     //  Fields
     // ================================================================
 
@@ -145,19 +132,14 @@ public class Alt implements IChannel {
         return claim.result;
     }
 
-    private void spawnVT(int idx, AltClaim claim) {
+    void spawnVT(int idx, AltClaim claim) {
         Thread.startVirtualThread(() -> handleChannel(idx, claim));
     }
 
-    private boolean cascade(int idx, AltClaim claim, boolean spawned) {
+    void exitDone(int idx, AltClaim claim, boolean spawned) {
         if (!spawned && idx + 1 < channels.length && !claim.isClaimed()) {
             spawnVT(idx + 1, claim);
         }
-        return true;
-    }
-
-    private void exitDone(int idx, AltClaim claim, boolean spawned) {
-        cascade(idx, claim, spawned);
         if (any) {
             if (claim.tryClaim()) claim.deliver(IChannel.CANCELLED);
         } else {
@@ -167,60 +149,13 @@ public class Alt implements IChannel {
 
     private void handleChannel(int idx, AltClaim claim) {
         BoundedChannel ch = (BoundedChannel) channels[idx];
-        AltNode node = new AltNode(Thread.currentThread(), claim);
-        boolean spawned = false;
-
-        // ── Enqueue into ch.takeLock chain (inline) ──
-        RelayLock.Node prev = (RelayLock.Node) RelayLock.SLOT.getAndSet(ch.takeLock, node);
-        Object prevState = RelayLock.STATE.getAndSet(prev, node);
-        if (prevState != RelayLock.DONE) {
-            spawned = cascade(idx, claim, spawned);
-            while (prev.state != RelayLock.DONE && !node.combined) {
-                LockSupport.park();
-                Thread.interrupted();
-            }
-        }
-        if (node.combined) { exitDone(idx, claim, spawned); return; }
+        AltNode node = new AltNode(Thread.currentThread(), claim, this, idx);
+        ch.takeLock.acquire(node);
+        Thread.interrupted();
+        if (node.combined) { exitDone(idx, claim, node.spawned); return; }
         if (claim.isClaimed()) { node.release(); return; }
-
-        // ── Lock owner ──
         ch.takeLock.owner = node;
-        while (true) {
-            if (claim.isClaimed()) { node.release(); return; }
-            if (ch.state == BoundedChannel.CANCELLED) {
-                node.release();
-                exitDone(idx, claim, spawned);
-                return;
-            }
-
-            long h = ch.head;
-            long t = (long) BoundedChannel.TAIL.getAcquire(ch);
-            if (t - h > 0) {
-                if (claim.tryClaim()) {
-                    Object val = ch.buffer[(int)(h & ch.mask)];
-                    ch.buffer[(int)(h & ch.mask)] = null;
-                    BoundedChannel.HEAD.setVolatile(ch, h + 1);
-                    node.release();
-                    if ((long) BoundedChannel.TAIL.getAcquire(ch) - h >= ch.capacity) {
-                        ch.putLock.resume();
-                    }
-                    claim.deliver(val);
-                    return;
-                } else {
-                    node.release();
-                    return;
-                }
-            }
-
-            if (ch.state >= BoundedChannel.SEALED) {
-                node.release();
-                exitDone(idx, claim, spawned);
-                return;
-            }
-
-            spawned = cascade(idx, claim, spawned);
-            ch.takeLock.suspend();
-        }
+        node.execute();
     }
 
     // ================================================================

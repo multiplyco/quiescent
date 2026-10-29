@@ -3,7 +3,7 @@
     [clojure.test :refer [deftest is testing use-fixtures]]
     [co.multiply.quiescent.test-support :refer [timeout-fixture]])
   (:import
-    [co.multiply.quiescent.impl.channel RelayLock RelayLock$Node]
+    [co.multiply.quiescent.impl.channel RelayLock]
     [java.util.concurrent CountDownLatch]
     [java.util.concurrent.atomic AtomicLong AtomicBoolean]))
 

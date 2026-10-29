@@ -29,50 +29,20 @@ import java.util.concurrent.locks.LockSupport;
  */
 public class RelayLock {
 
-    static final Object DONE = new Object();
-
     static final Node SIGNALED;
 
     static final VarHandle SLOT;
-    static final VarHandle STATE;
     static final VarHandle REF;
 
     static {
         SIGNALED = new Node(null);
-        SIGNALED.state = DONE;
+        SIGNALED.state = Node.DONE;
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
             SLOT = lookup.findVarHandle(RelayLock.class, "slot", Node.class);
-            STATE = lookup.findVarHandle(Node.class, "state", Object.class);
             REF = lookup.findVarHandle(RelayLock.class, "ref", Node.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
-        }
-    }
-
-    public static class Node {
-        final Thread thread;
-        volatile Object state; // null | Node | DONE
-        Object value;          // payload for combining (put value or take result)
-        volatile boolean combined; // set by combiner before waking; the volatile
-                               // write provides the happens-before edge
-
-        public Node(Thread thread) {
-            this.thread = thread;
-        }
-
-        /** Unpark this node's thread. */
-        public void wake() {
-            LockSupport.unpark(thread);
-        }
-
-        /**
-         * Release this node: write DONE to state and dispatch
-         * on the successor (unpark it if present).
-         */
-        public void release() {
-            Object successor = STATE.getAndSet(this, DONE);
-            dispatch(successor);
         }
     }
 
@@ -82,7 +52,7 @@ public class RelayLock {
 
     public RelayLock() {
         Node initial = new Node(null);
-        initial.state = DONE;
+        initial.state = Node.DONE;
         this.slot = initial;
     }
 
@@ -100,8 +70,8 @@ public class RelayLock {
 
     public Node acquire(Node myNode) {
         Node prev = (Node) SLOT.getAndSet(this, myNode);
-        Object prevState = STATE.getAndSet(prev, myNode);
-        if (prevState != DONE) {
+        Object prevState = Node.STATE.getAndSet(prev, myNode);
+        if (prevState != Node.DONE) {
             awaitPredecessor(prev, myNode);
         }
         if (!myNode.combined) {
@@ -111,8 +81,9 @@ public class RelayLock {
     }
 
     private void awaitPredecessor(Node prev, Node myNode) {
+        myNode.onContention();
         boolean interrupted = false;
-        while (prev.state != DONE && !myNode.combined) {
+        while (prev.state != Node.DONE && !myNode.combined) {
             LockSupport.park(this);
             if (Thread.interrupted()) interrupted = true;
         }
@@ -136,7 +107,7 @@ public class RelayLock {
         Node node = this.owner;
         Node prev = (Node) REF.getAndSet(this, node);
         if (prev == SIGNALED) return false;
-        if (prev != node && prev.state != DONE) {
+        if (prev != node && prev.state != Node.DONE) {
             prev.wake();
         }
         boolean interrupted = false;
@@ -156,16 +127,7 @@ public class RelayLock {
     public void resume() {
         Node prev = (Node) REF.getAndSet(this, SIGNALED);
         if (prev == SIGNALED) return;
-        if (prev.state == DONE) return; // stale
+        if (prev.state == Node.DONE) return; // stale
         prev.wake();
-    }
-
-    /**
-     * Dispatch on a waiter: null or Node.
-     */
-    static void dispatch(Object waiter) {
-        if (waiter instanceof Node n) {
-            n.wake();
-        }
     }
 }
