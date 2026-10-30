@@ -1,0 +1,91 @@
+Thu Oct 29 23:44:36 UTC 2026
+Darwin Clavain.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:22:49 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6000 arm64
+ProductName:		macOS
+ProductVersion:		27.0
+BuildVersion:		26A428
+machdep.cpu.brand_string: Apple M1 Max
+hw.ncpu: 10
+hw.memsize: 68719476736
+hw.perflevel0.physicalcpu: 8
+hw.perflevel1.physicalcpu: 2
+kern.boottime: { sec = 1792395969, usec = 572701 } Mon Oct 19 09:46:09 2026
+vm.swapusage: total = 3072.00M  used = 2339.31M  free = 732.69M  (encrypted)
+ 0:44  up 10 days, 15:58, 11 users, load averages: 2.39 2.86 3.44
+Now drawing from 'AC Power'
+ -InternalBattery-0 (id=25559139)	80%; AC attached; not charging present: true
+Note: No thermal warning level has been recorded
+Note: No performance warning level has been recorded
+Note: No CPU power status has been recorded
+Battery Power:
+ Sleep On Power Button 1
+ powermode            0
+ standby              1
+ ttyskeepawake        1
+ hibernatemode        3
+ powernap             1
+ hibernatefile        /var/vm/sleepimage
+ displaysleep         5
+ womp                 0
+ networkoversleep     0
+ sleep                1
+ lessbright           1
+ tcpkeepalive         1
+ disksleep            10
+AC Power:
+ Sleep On Power Button 1
+ powermode            0
+ standby              1
+ ttyskeepawake        1
+ hibernatemode        3
+ powernap             1
+ hibernatefile        /var/vm/sleepimage
+ displaysleep         10
+ womp                 1
+ networkoversleep     0
+ sleep                1
+ tcpkeepalive         1
+ disksleep            10
+openjdk version "26.0.2" 2026-07-21
+OpenJDK Runtime Environment Corretto-26.0.2.10.1 (build 26.0.2+10-FR)
+OpenJDK 64-Bit Server VM Corretto-26.0.2.10.1 (build 26.0.2+10-FR, mixed mode, sharing)
+IMPLEMENTOR="Amazon.com Inc."
+IMPLEMENTOR_VERSION="Corretto-26.0.2.10.1"
+JAVA_RUNTIME_VERSION="26.0.2+10-FR"
+JAVA_VERSION="26.0.2"
+JAVA_VERSION_DATE="2026-07-21"
+LIBC="default"
+MODULES="java.base java.compiler java.datatransfer java.xml java.prefs java.desktop java.instrument java.logging java.management java.security.sasl java.naming java.rmi java.management.rmi java.net.http java.scripting java.security.jgss java.transaction.xa java.sql java.sql.rowset java.xml.crypto java.se java.smartcardio jdk.accessibility jdk.internal.jvmstat jdk.attach jdk.charsets jdk.internal.opt jdk.zipfs jdk.compiler jdk.crypto.cryptoki jdk.crypto.ec jdk.dynalink jdk.internal.ed jdk.editpad jdk.internal.vm.ci jdk.graal.compiler jdk.graal.compiler.management jdk.hotspot.agent jdk.httpserver jdk.incubator.vector jdk.internal.le jdk.internal.md jdk.jartool jdk.javadoc jdk.jcmd jdk.management jdk.management.agent jdk.jconsole jdk.jdeps jdk.jdwp.agent jdk.jdi jdk.jfr jdk.jlink jdk.jpackage jdk.jshell jdk.jstatd jdk.localedata jdk.management.jfr jdk.naming.dns jdk.naming.rmi jdk.net jdk.nio.mapmode jdk.sctp jdk.security.auth jdk.security.jgss jdk.unsupported jdk.unsupported.desktop jdk.xml.dom"
+OS_ARCH="aarch64"
+OS_NAME="Darwin"
+SOURCE=".:git:40a35aa89d1f+"
+{:version "1.12.6.1673"
+ :config-files ["/opt/homebrew/Cellar/clojure/1.12.6.1673/deps.edn" "/Users/henrik/.clojure/deps.edn" "deps.edn" ]
+ :config-user "/Users/henrik/.clojure/deps.edn"
+ :config-project "deps.edn"
+ :install-dir "/opt/homebrew/Cellar/clojure/1.12.6.1673"
+ :config-dir "/Users/henrik/.clojure"
+ :cache-dir ".cpcache"
+ :force false
+ :repro false
+ :main-aliases ""
+ :repl-aliases ""}
+  PID  %CPU %MEM COMM
+ 1174  58.1  0.8 /Applications/iTerm.app/Contents/MacOS/iTerm2
+    1  41.1  0.0 /sbin/launchd
+48350  39.6  0.3 /Applications/Sublime Text.app/Contents/MacOS/sublime_text
+  446  25.6  0.4 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+55393   9.9  0.0 /usr/bin/caffeinate
+55388   7.2  0.0 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdworker_shared
+55391   6.4  0.0 /opt/homebrew/Cellar/python@3.15/3.15.2/Frameworks/Python.framework/Versions/3.15/Resources/Python.app/Contents/MacOS/Python
+88832   6.1  1.2 /Applications/Orion.app/Contents/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent.Orion
+55389   6.0  0.0 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdworker_shared
+29949   3.4  0.6 /System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine
+  677   3.4  0.0 /System/Library/CoreServices/WindowManager.app/Contents/MacOS/WindowManager
+55392   3.3  0.0 /bin/bash
+80908   2.9  0.4 /opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+ 8026   2.8  0.4 /Applications/Docker.app/Contents/MacOS/com.docker.backend
+  440   2.7  0.0 /usr/sbin/notifyd
+26073   2.1  0.2 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds_stores
+24828   1.7  0.9 /Users/henrik/.codex/packages/app-server-daemon/releases/0.166.0-aarch64-apple-darwin/bin/codex
+  560   1.7  0.1 /Applications/Mullvad VPN.app/Contents/Resources/mullvad-daemon
+ 3407   1.7  0.8 /Applications/Orion.app/Contents/MacOS/Orion

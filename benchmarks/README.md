@@ -136,7 +136,8 @@ classes/stacks; do not mix profiling overhead into the timing reference.
 
 ## Artifacts and repeatability
 
-Every invocation creates a new ignored `benchmarks/results/<run>/` directory:
+Every invocation creates a new `benchmarks/results/<run>/` directory. Retained
+captures are tracked in Git, including raw measurements and supporting artifacts:
 
 ```
 batch.edn                 Options, schedule, context and checkpointed progress

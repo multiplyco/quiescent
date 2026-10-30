@@ -1,0 +1,100 @@
+{
+  "by-framework-worker-lifetime": {
+    "quiescent": {
+      "sample-count": 25,
+      "median-user-pct": 30.64,
+      "median-system-pct": 5.12,
+      "median-idle-pct": 62.33
+    },
+    "core-async": {
+      "sample-count": 205,
+      "median-user-pct": 20.82,
+      "median-system-pct": 78.8,
+      "median-idle-pct": 0.1
+    }
+  },
+  "background-processes": {
+    "iTerm2": {
+      "samples-present": 231,
+      "median-percent-of-one-core": 54.3,
+      "max-percent-of-one-core": 62.7
+    },
+    "WindowServer": {
+      "samples-present": 231,
+      "median-percent-of-one-core": 23.6,
+      "max-percent-of-one-core": 36.6
+    },
+    "com.apple.Virtua": {
+      "samples-present": 231,
+      "median-percent-of-one-core": 11.4,
+      "max-percent-of-one-core": 12.5
+    }
+  },
+  "vm-stat-intervals": {
+    "intervals": 351,
+    "nonzero-swap-in-intervals": 7,
+    "nonzero-swap-out-intervals": 0,
+    "nonzero-pageout-intervals": 0,
+    "swap-in-bytes": 737280,
+    "swap-out-bytes": 0,
+    "pageout-bytes": 0
+  },
+  "timing-trends": [
+    {
+      "framework": "quiescent",
+      "fork": 1,
+      "first-three-mean-ms": 71.80094433333333,
+      "last-three-mean-ms": 54.08345833333333,
+      "last-over-first": 0.7532416019802302
+    },
+    {
+      "framework": "core-async",
+      "fork": 1,
+      "first-three-mean-ms": 35231.205986333334,
+      "last-three-mean-ms": 41345.40480533333,
+      "last-over-first": 1.1735449766145325
+    },
+    {
+      "framework": "core-async",
+      "fork": 2,
+      "first-three-mean-ms": 33274.39047233333,
+      "last-three-mean-ms": 43613.865430666665,
+      "last-over-first": 1.3107337147747393
+    },
+    {
+      "framework": "quiescent",
+      "fork": 2,
+      "first-three-mean-ms": 80.23883333333333,
+      "last-three-mean-ms": 51.278264,
+      "last-over-first": 0.639070408551138
+    },
+    {
+      "framework": "quiescent",
+      "fork": 3,
+      "first-three-mean-ms": 63.308222,
+      "last-three-mean-ms": 67.971361,
+      "last-over-first": 1.0736577154228089
+    },
+    {
+      "framework": "core-async",
+      "fork": 3,
+      "first-three-mean-ms": 37713.631944333334,
+      "last-three-mean-ms": 43262.19697233333,
+      "last-over-first": 1.1471235927685215
+    },
+    {
+      "framework": "core-async",
+      "fork": 4,
+      "first-three-mean-ms": 36694.871125,
+      "last-three-mean-ms": 40387.727194,
+      "last-over-first": 1.1006368453079014
+    },
+    {
+      "framework": "quiescent",
+      "fork": 4,
+      "first-three-mean-ms": 63.9475,
+      "last-three-mean-ms": 71.81129166666668,
+      "last-over-first": 1.122972620769642
+    }
+  ]
+}

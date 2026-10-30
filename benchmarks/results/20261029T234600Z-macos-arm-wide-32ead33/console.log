@@ -1,0 +1,12 @@
+[1/2] {:fork 1, :case :wide-fan-in, :framework :quiescent, :directory fork-1/wide-fan-in/quiescent}
+[2/2] {:fork 1, :case :wide-fan-in, :framework :core-async, :directory fork-1/wide-fan-in/core-async}
+Saved /Users/henrik/clojure/quiescent/benchmarks/results/20261029T234600Z-macos-arm-wide-32ead33/smoke
+[1/8] {:fork 1, :case :wide-fan-in, :framework :quiescent, :directory fork-1/wide-fan-in/quiescent}
+[2/8] {:fork 1, :case :wide-fan-in, :framework :core-async, :directory fork-1/wide-fan-in/core-async}
+[3/8] {:fork 2, :case :wide-fan-in, :framework :core-async, :directory fork-2/wide-fan-in/core-async}
+[4/8] {:fork 2, :case :wide-fan-in, :framework :quiescent, :directory fork-2/wide-fan-in/quiescent}
+[5/8] {:fork 3, :case :wide-fan-in, :framework :quiescent, :directory fork-3/wide-fan-in/quiescent}
+[6/8] {:fork 3, :case :wide-fan-in, :framework :core-async, :directory fork-3/wide-fan-in/core-async}
+[7/8] {:fork 4, :case :wide-fan-in, :framework :core-async, :directory fork-4/wide-fan-in/core-async}
+[8/8] {:fork 4, :case :wide-fan-in, :framework :quiescent, :directory fork-4/wide-fan-in/quiescent}
+Saved /Users/henrik/clojure/quiescent/benchmarks/results/20261029T234600Z-macos-arm-wide-32ead33/measurement

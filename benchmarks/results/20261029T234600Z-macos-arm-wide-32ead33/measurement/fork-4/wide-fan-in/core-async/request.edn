@@ -1,0 +1,232 @@
+{:options
+ {:profile :full,
+  :suite :primary,
+  :forks 4,
+  :timeout-ms 300000,
+  :frameworks [:quiescent :core-async],
+  :cases [:wide-fan-in],
+  :label "Native ARM/macOS wide-fan-in comparison",
+  :output
+  "/Users/henrik/clojure/quiescent/benchmarks/results/20261029T234600Z-macos-arm-wide-32ead33/measurement"},
+ :entry
+ {:fork 4,
+  :case :wide-fan-in,
+  :framework :core-async,
+  :directory "fork-4/wide-fan-in/core-async"},
+ :context
+ {:git
+  {:commit "32ead331a48a70904c96b0b58ac82b2814ea6da0",
+   :description "v0.11.5-37-g32ead33",
+   :status ""},
+  :source-sha256
+  {"java/co/multiply/quiescent/impl/ICancellable.java"
+   "b31e70f45f12f97d9492ee03ce4fcd0d714b51e4ae5009682040b185365e26eb",
+   "java/co/multiply/quiescent/impl/IStateful.java"
+   "402af9690f025e54be4fe85d7cb74a5d881123e14110db26c3afaf0a5d1160db",
+   "java/co/multiply/quiescent/impl/ITask.java"
+   "1bc386f673355de049a87b3287063610acf1a9349d76e5db1a6d0358b7d2d9f1",
+   "java/co/multiply/quiescent/impl/TaskClassLoader.java"
+   "bd4235aca6d9f984bd1e7493c823e621671c8af837b1c22ea502a6256e273df9",
+   "java/co/multiply/quiescent/impl/TaskState.java"
+   "cb1058bfc386cc9fcb813656a0ee1b87a9c8c889657e78a69e9adf98585d32d0",
+   "java/co/multiply/quiescent/impl/channel/Alt.java"
+   "f223f674208e8050efe42214689cc809cd885eefbf20053bd4fa6c17aa1e32ee",
+   "java/co/multiply/quiescent/impl/channel/BoundedChannel.java"
+   "6945a0458cebc8d9a411b7150daac284e269524bab75f046f769eff61b215e56",
+   "java/co/multiply/quiescent/impl/channel/IBuffered.java"
+   "1188f579a371330161d21cb48363054893dc51a58027a56e6097bd82e16ad92f",
+   "java/co/multiply/quiescent/impl/channel/IChannel.java"
+   "ccaa811d0333a4eabd7daefabe7c688fc7c024ac808555395030f0a99304d991",
+   "java/co/multiply/quiescent/impl/channel/RelayLock.java"
+   "1ac36c2f41ad1dbd64a33163aa2b7a2c92492e673ddc243c6c2dd6bbd703f7ba",
+   "java/co/multiply/quiescent/impl/subscription/CallbackSubscription.java"
+   "1f49beee2e8d3f728ccac9788fcc759311705d96e64ad8bd9536643a4dbf3cdd",
+   "java/co/multiply/quiescent/impl/subscription/CancelExecSubscription.java"
+   "07fb58e24507bfe4943c10cd03fce2c3e349caabc57304972864a000e5f27c0c",
+   "java/co/multiply/quiescent/impl/subscription/Subscription.java"
+   "90ba84656f1d1b00cc2eceff810072d437a5f2bc36d0a3f4725d175c8c8e4efa",
+   "java/co/multiply/quiescent/impl/subscription/TeardownSubscription.java"
+   "f3755eb9d41cadcae2139dc45023836b4746acabc4fb79934e8760c9c86f07b4",
+   "java/co/multiply/quiescent/impl/subscription/UnsubSubscription.java"
+   "a9e5d8f8876783b8998e420435a7245035b849e0ac91236b41aad0979d062d12",
+   "src/co/multiply/quiescent.cljc"
+   "47c202abd6f4f468f7b65b51282a5981e1e0f06fe2860dbdddc7bdd22c0aa3b8",
+   "src/co/multiply/quiescent/adapter/core_async.cljc"
+   "8cdaec3550d97e04f39d59ede52b8a394a32ac528d78b0dde896107697696872",
+   "src/co/multiply/quiescent/channel.clj"
+   "51bf3127e5fcdf16213712a12391462d3aa78d239a308d0c477af9fdb6074d56",
+   "src/co/multiply/quiescent/impl.cljc"
+   "7bc1806bb56e192da2d1c9f338155d8a0cf4870fb6aee69e8ef5e2a6bfa4691c",
+   "src/co/multiply/quiescent/impl/executor.cljc"
+   "93353e11834d65e4e52c9f1942a83a041f7312dd1206ff0d258aed7edc18b409",
+   "src/co/multiply/quiescent/impl/gate.cljc"
+   "4aa45c35e17d2863ed5c6d5fda209439d4471ff61287980f535d109784f605d2",
+   "src/co/multiply/quiescent/impl/ground.cljc"
+   "556db3cba0f0f5a04cbfb621706d8e4c996a2a81f34d846727a6b9392c12118c",
+   "src/co/multiply/quiescent/impl/race.cljc"
+   "59b786d439b58fa2eb00eaef376947fce4ae68ed085eda3b136ae9f49aaa3ec1",
+   "src/co/multiply/quiescent/impl/state_machine.cljc"
+   "e4ebe4e568e29d4bb8194c387e2551eaf173cdd92daaabd7336e43562fdab99b",
+   "src/co/multiply/quiescent/impl/subscription.cljc"
+   "34ee66953bf431198ef36b0853d74e66865d2f5b72f16e0360955803f2ba4ea9",
+   "src/co/multiply/quiescent/impl/subscription/subscription.cljs"
+   "5f45e210e9cec099c487fa9d84e3638ab3290bea7b27ab84297d5257b6f9c1b7",
+   "src/co/multiply/quiescent/type.cljc"
+   "67e4a3aa1a544d7a98664f97c45a79b9033225038317292b69dcbd6f5b59711e",
+   "src/co/multiply/quiescent/type/call.cljc"
+   "986b5e930a0154f30c8a3e36b878a083379e2c4c3608569444de4579fbd4cb93",
+   "src/co/multiply/quiescent/util.cljc"
+   "33ff8852e3c589555e3f274fd3efc14d7ba622860ed69d2f255864a004f11756"},
+  :harness-sha256
+  {"bb.edn"
+   "20d66fa74616dd23ad38a01eea649359a89f25ab0907e51735734ee053e840e3",
+   "bench-test/quiescent/benchmark_test.clj"
+   "71c799dc440e7dfc979a075371c11321ac318b001adccf88dec1eb5b3a762cf4",
+   "bench/quiescent/allocation.clj"
+   "97cd69ebdd4e339d23f4ab658de100b529ffe5c59e411a8bcaf1abc3b862a882",
+   "bench/quiescent/artifacts.clj"
+   "d2693e5563606e2c4724fbe336daeab91fce0b2a5b318ed75cd97b729fd528c1",
+   "bench/quiescent/benchmark.clj"
+   "a95a0bf556a0353bb0d6fa7bf92c684d80ba39b3fbf94ab9bfdcfe1884ea5488",
+   "bench/quiescent/scenarios.clj"
+   "0a7a65744ac9fe5393b01086687ee2b53b1f4171db4beb62c01661781aa9a3e9",
+   "bench/quiescent/workload.clj"
+   "77bcb2a60539c1375b8848fa49d76904335a8032bac7525b82da3daaf8c7dd68",
+   "build.clj"
+   "27940e685e4009620fb98c77f43ab76c3f0cabd63597e6242fcda66d21ec8df0",
+   "deps.edn"
+   "e199d2497894af6fb3bf472bf99d7365eafd2974dc42d4d6fa645442819bbb00",
+   "dev/channel_bench.clj"
+   "28724dc9473cfb796ebdbaef2a0bb2fd1fcb526e526787af6387a730adc2d456",
+   "test/co/multiply/quiescent/ancestry_test.cljc"
+   "698f88c24724ed00ecc9580a1ede762cc099153774eff3ae9b01e400fb9a4ce8",
+   "test/co/multiply/quiescent/arities_test.cljc"
+   "06367009b98d9406641d0e277c99b41120e0e45858e6e732142f40a752d880c2",
+   "test/co/multiply/quiescent/basic_test.cljc"
+   "3f6093dccc96a7f1d203d8ee8f36bdccb8ed227632dd9df19fe2a22202d5e3d9",
+   "test/co/multiply/quiescent/binding_test.cljc"
+   "528db81cc083fb90ee0981080651d931e0331e2139b978b058ce9acb84fa330c",
+   "test/co/multiply/quiescent/bounded_channel_stampede_test.clj"
+   "c866be17210b7e39f20578d8e8c046a67e4dee2c6be4f60a821b566aec2b3aec",
+   "test/co/multiply/quiescent/bounded_channel_test.clj"
+   "38a50ec2365e79b32eea68eccf1ba24e98954f4060782b3b0282a643ca425e0c",
+   "test/co/multiply/quiescent/bounded_channel_xf_test.clj"
+   "2ef79232b23181d6bd0c8bd6241d5124f4e5285a2b4c54a24ef00537d82efcfe",
+   "test/co/multiply/quiescent/cancellation_test.cljc"
+   "6cd3437498a7d33c22c20d8e0ea978465e00b6397e9a027786007752f8380e43",
+   "test/co/multiply/quiescent/channel/alt_test.clj"
+   "a8b2687945e09de694f73cb5b2def2e9a1888dad9363c5e557e5331231c38eae",
+   "test/co/multiply/quiescent/channel/alt_test.clj.old"
+   "1387766a0e845f58845cea1d31ad15fbb325f1f5d4d560843f27201e626c05d4",
+   "test/co/multiply/quiescent/coordination_test.cljc"
+   "6c5671442b34f6c95349eb1749c75daca70cd36695978c115e4bc9b39f0a8491",
+   "test/co/multiply/quiescent/error_handling_test.cljc"
+   "dabd0fe2b2ec9526316a24b118f57b27d981a23365815eca1f5b5522f9fa2155",
+   "test/co/multiply/quiescent/executor_test.clj"
+   "c336205ac8abf15ce55db7da20b731b6c319d0fe180f5f75cc92e3c750956c73",
+   "test/co/multiply/quiescent/gate_soundness_test.cljc"
+   "519f7deccc432ee027c2383254de42f9e34c982685836c783d0da30be9077195",
+   "test/co/multiply/quiescent/gate_test.cljc"
+   "879767f56ced86cad01c695304e167592a4770e3eaf986861188bb556239a8d5",
+   "test/co/multiply/quiescent/interop_test.cljc"
+   "4a660b35448ea35945b35012334c24853ba7daa3369ea9917104d9cc9e2901ab",
+   "test/co/multiply/quiescent/promise_test.cljc"
+   "8a3a245eb28fa8caf275a8892c3c4fefc402d68169805dd1e2aedf1f016effb8",
+   "test/co/multiply/quiescent/qlet_test.cljc"
+   "8bd5c93f8a79255baca51738625a9a1003e51482ee53f10bcd55edead31a2646",
+   "test/co/multiply/quiescent/relay_lock_test.clj"
+   "9116d392978c68478afe5dc05503674e7271caf87e3659a4c8480f4cf482f01f",
+   "test/co/multiply/quiescent/signal_test.clj"
+   "703c99b949170eb1aa9d1f535eff4396935866b38202430925be3832b24915ed",
+   "test/co/multiply/quiescent/subscribe_teardown_test.cljc"
+   "64dd735d5ccd69a23a887ff64de884a40b98ff5025279fb047022939ea720cc6",
+   "test/co/multiply/quiescent/test_support.cljc"
+   "a2753dcf137b46247c2f538ba485b5d2c2e28e92a16a7b0d153ab7d87f996830",
+   "test/co/multiply/quiescent/timeout_test.cljc"
+   "835a7ad2fb6295581e89656a4a7f91371af28dc061f0df7e3e7e90977b5eeb4e",
+   "tests.edn"
+   "bcf612605cb03cc408d52d8c5c393b25946ed3cfa1ce27d740a3c550454160de"},
+  :class-sha256
+  {"target/classes/co/multiply/quiescent/impl/ICancellable.class"
+   "2e09e63b4fe4d959ad08a06134698b93bd509a14bae8282de73fbeea02d317ca",
+   "target/classes/co/multiply/quiescent/impl/IStateful.class"
+   "0bfa43add64417d34c8f505a29a0ba0f32c9a869b24f3a426171b2893ca78650",
+   "target/classes/co/multiply/quiescent/impl/ITask.class"
+   "3365dbb17376ae2baacb3affdb3b2aa5314376d33bd3320bf062cc12914adbdb",
+   "target/classes/co/multiply/quiescent/impl/TaskClassLoader$Base.class"
+   "77a48f7bc532b482d243c49d03158a5b6a6157add2a101e9da0bdf71c2ae1d7f",
+   "target/classes/co/multiply/quiescent/impl/TaskClassLoader.class"
+   "43d050b3e84adf2e9472342e86808e76f20f61531ab556392f8f48df1ba7061a",
+   "target/classes/co/multiply/quiescent/impl/TaskState.class"
+   "3ff720f07ea1dd23e2f051ed95d6bd95e9058eac69334ee112778eb8db85155e",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt$AltClaim.class"
+   "89925fa88d06030007283c77917d2d4afa579d08061786a9797690ae965cb289",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt$AltNode.class"
+   "6706e31dc63955b3f6b8337406724dfe1e67fcd6f39f2e1f63e299a7144fa3e4",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt.class"
+   "02db237a4d2efa37582b70720997dc6879aa108da5e3262ad1ff2953125c3996",
+   "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel$1.class"
+   "9ef1ab160805c73b0b21188cada7b2a98ddffc3bdb0fcf491b476b58e56e879c",
+   "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class"
+   "1bd3927830bc1001603e0c563e4d2ab643225490cd80b3e78b2ac7c93e055dd6",
+   "target/classes/co/multiply/quiescent/impl/channel/IBuffered.class"
+   "534b1b34fb7622715986139b618869e67b5c00f4b24d5243e7abf9fa64cbba7c",
+   "target/classes/co/multiply/quiescent/impl/channel/IChannel.class"
+   "e08d455460d2538662c14179539979b4076ea55fef145c43f532bbe4119b3309",
+   "target/classes/co/multiply/quiescent/impl/channel/RelayLock$Node.class"
+   "704b7160deb1de13ca11f5ca258476c0ad455ed8eecf3968aed7a5bcd63e7388",
+   "target/classes/co/multiply/quiescent/impl/channel/RelayLock.class"
+   "6958cc5e0276e31a89b029aa4c5342e2c2524174e917842926ad9afcac1e7224",
+   "target/classes/co/multiply/quiescent/impl/subscription/CallbackSubscription.class"
+   "bf6282982a669e42de95246ab96289ff0888092ac815c6371bc5f4856978763a",
+   "target/classes/co/multiply/quiescent/impl/subscription/CancelExecSubscription.class"
+   "5ba0f39b5c985a5de7d2b2d9ab372702ee3f1da9849966c19d7bb6714520e3a3",
+   "target/classes/co/multiply/quiescent/impl/subscription/Subscription.class"
+   "c035b18b247d6b7e42d192279a8094bba1131957cea97c1985eaf19a85d0ba56",
+   "target/classes/co/multiply/quiescent/impl/subscription/TeardownSubscription.class"
+   "14cbfefa7ef0efc966ec30821f668f1908e36df17588e71fd3eed2680c50a166",
+   "target/classes/co/multiply/quiescent/impl/subscription/UnsubSubscription.class"
+   "cdc06d3fe62b6a05db42879c6ba4b3c2a2ef9bec832818f3d8987a238b223062"},
+  :loaded-channel
+  "file:/private/tmp/quiescent-arm-baseline-20261030/target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class",
+  :libraries
+  {co.multiply/conc #:mvn{:version "0.1.3"},
+   co.multiply/machine-latch #:mvn{:version "0.1.17"},
+   co.multiply/pathling #:mvn{:version "0.2.1"},
+   co.multiply/scoped #:mvn{:version "0.1.18"},
+   org.clojure/clojure #:mvn{:version "1.12.4"},
+   org.clojure/core.async #:mvn{:version "1.9.865"},
+   org.clojure/core.cache #:mvn{:version "1.1.234"},
+   org.clojure/core.memoize #:mvn{:version "1.1.266"},
+   org.clojure/core.specs.alpha #:mvn{:version "0.4.74"},
+   org.clojure/data.priority-map #:mvn{:version "1.2.0"},
+   org.clojure/spec.alpha #:mvn{:version "0.5.238"},
+   org.clojure/tools.analyzer #:mvn{:version "1.2.0"},
+   org.clojure/tools.analyzer.jvm #:mvn{:version "1.3.3"},
+   org.clojure/tools.reader #:mvn{:version "1.5.0"},
+   org.ow2.asm/asm #:mvn{:version "9.2"}},
+  :environment
+  {:available-processors 10,
+   :max-heap-bytes 2147483648,
+   :core-async-resource
+   "jar:file:/Users/henrik/dotfiles/.m2/repository/org/clojure/core.async/1.9.865/core.async-1.9.865.jar!/clojure/core/async.clj",
+   :scheduler-properties
+   {"jdk.virtualThreadScheduler.parallelism" nil,
+    "jdk.virtualThreadScheduler.maxPoolSize" nil,
+    "clojure.core.async.executor-factory" nil,
+    "clojure.core.async.go-checking" nil},
+   :jvm-options
+   ["-XX:-OmitStackTraceInFastThrow"
+    "-Xms2g"
+    "-Xmx2g"
+    "-Dclojure.basis=.cpcache/2920413443.basis"],
+   :java
+   {"java.version" "26.0.2",
+    "java.vendor" "Amazon.com Inc.",
+    "java.vm.name" "OpenJDK 64-Bit Server VM",
+    "java.vm.version" "26.0.2+10-FR"},
+   :gc ["G1 Young Generation" "G1 Concurrent GC" "G1 Old Generation"],
+   :clojure-version "1.12.4",
+   :os
+   {"os.name" "Mac OS X", "os.arch" "aarch64", "os.version" "27.0"},
+   :cpu-model "Apple M1 Max"}}}

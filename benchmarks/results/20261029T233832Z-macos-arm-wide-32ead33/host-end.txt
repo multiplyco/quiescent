@@ -1,0 +1,7 @@
+Thu Oct 29 23:43:39 UTC 2026
+Now drawing from 'AC Power'
+ -InternalBattery-0 (id=25559139)	80%; AC attached; not charging present: true
+Note: No thermal warning level has been recorded
+Note: No performance warning level has been recorded
+Note: No CPU power status has been recorded
+vm.swapusage: total = 3072.00M  used = 2339.31M  free = 732.69M  (encrypted)

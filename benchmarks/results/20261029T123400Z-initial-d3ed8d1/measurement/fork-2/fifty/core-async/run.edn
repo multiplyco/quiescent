@@ -1,0 +1,5825 @@
+{:samples
+ [{:elapsed-ns 9430362100,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 137500000000,
+    :gc
+    {"G1 Young Generation" {:count 12, :ms 475},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 175090000000,
+    :gc
+    {"G1 Young Generation" {:count 13, :ms 541},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9294802546}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410427499}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9344905660}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390352212}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378590718}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9401024886}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9384637851}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419104837}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9302752951}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387373772}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426186575}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9372398880}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9356229678}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378653878}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399080563}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9380471167}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9366348929}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9337378986}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382811852}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9373094045}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9366002688}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9376449122}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9255707161}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9252407615}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9427854633}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9346935649}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9402797734}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419698672}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9364926372}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403962533}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9339174204}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408997628}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393666783}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9286774375}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9252036145}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9430362100}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9352970424}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421634207}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417867802}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9400621677}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9338340891}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9416615065}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9366861955}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9299280355}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9357324073}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9341000224}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9411995039}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9416550816}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9350155689}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9404049973}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9506823644,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 175470000000,
+    :gc
+    {"G1 Young Generation" {:count 13, :ms 541},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 213350000000,
+    :gc
+    {"G1 Young Generation" {:count 15, :ms 682},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9464710527}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9493954178}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9473404093}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9503115412}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9466260072}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9500370531}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9463915260}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9318903586}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9477349512}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389229008}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9405945577}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9472526581}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9472068360}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9398029489}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9474374594}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9493357543}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450988569}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443109162}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9478196780}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9475579933}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9435843801}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448349237}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9504922887}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9462974841}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9482637910}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9486893849}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9470408209}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9454725181}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9495626784}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9376320576}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9475178247}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378760661}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9405986994}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412929183}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9377753406}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9409932572}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9248796873}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9467726255}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9453765247}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426097211}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9490898508}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9442313817}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9404336330}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9434503498}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9451257381}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9463969106}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9489911760}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9326665817}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386576527}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9506823644}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9429214739,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 213810000000,
+    :gc
+    {"G1 Young Generation" {:count 15, :ms 682},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 251360000000,
+    :gc
+    {"G1 Young Generation" {:count 16, :ms 752},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419458815}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9404412749}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9194560821}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9360589620}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391850587}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9358974433}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9327912148}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394166165}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394555683}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389183849}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9302166493}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9173913280}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9335179865}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410890519}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9344629015}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9293487232}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9248652259}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9327580487}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347366604}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9290219429}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420424420}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9315826236}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9392783104}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9314376030}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420437649}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419588369}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382713872}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9385977561}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420792556}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393046642}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394764905}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9377634838}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390599647}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9351872873}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9368656135}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412955345}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9369316899}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9429204503}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9303575485}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9362944698}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419984637}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389937099}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403554592}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9320796491}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9354412001}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399787416}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9383873919}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9334614694}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9333208522}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9385532503}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9416276181,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 251810000000,
+    :gc
+    {"G1 Young Generation" {:count 17, :ms 754},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 289350000000,
+    :gc
+    {"G1 Young Generation" {:count 18, :ms 811},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9373400482}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9369764006}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9318490426}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9245775954}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9380662530}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9395908917}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9292362965}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9411193814}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9375413566}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399039056}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374370252}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9278807258}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403886851}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9351143427}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9362039208}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9416276181}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9395105474}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9335198241}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9363172850}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9284494295}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9376529836}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9292902647}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9404325567}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396939072}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410365374}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9411304561}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9283206636}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390341748}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9415376575}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9307462880}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9413269843}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347935079}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374591688}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9286960300}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408903456}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403340113}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412981335}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410599044}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378024336}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9370523315}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9254391288}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9310771032}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9348754051}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9357600887}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9367353128}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9324902199}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9397987579}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9383725023}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9322745623}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9385310767}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9489749830,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 289680000000,
+    :gc
+    {"G1 Young Generation" {:count 18, :ms 811},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 327470000000,
+    :gc
+    {"G1 Young Generation" {:count 20, :ms 947},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9459686930}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9461013571}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9455175624}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9473364083}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9466700556}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9423404668}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9483349095}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9474705482}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9363198226}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9440430807}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9323218857}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9353762962}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9427212947}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9411277840}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9359707372}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417996694}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9291652264}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9316139855}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9397242938}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9480916822}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9489749830}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9413321289}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9479113126}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9473561914}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9485814045}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9483194157}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9487993844}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448745093}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374379657}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9481302505}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399399878}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9480934336}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389013989}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9291869332}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9356031673}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9472424970}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387713666}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9488610048}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428825786}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9431182920}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9351151191}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443110124}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9460828272}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9425346707}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9229911465}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9422270340}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9476503730}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9406549944}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443663080}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9468757264}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9462419514,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 327770000000,
+    :gc
+    {"G1 Young Generation" {:count 20, :ms 947},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 365500000000,
+    :gc
+    {"G1 Young Generation" {:count 22, :ms 1066},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9326548080}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9279048292}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382941969}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9449710398}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421901212}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9451157046}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9442960787}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9429694190}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9406899993}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9402522380}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347781952}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448583465}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421520051}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9392959627}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9430473135}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410776723}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9453287873}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9351034506}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382039832}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9425025087}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9418811884}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9451827335}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9458319256}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9427256953}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9407547339}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9432583567}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9462419514}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9398609600}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9323905568}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9435429377}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410388785}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9436888344}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403163891}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9344232831}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426901017}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9404602133}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9388989527}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9185006694}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9425752852}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394999233}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391957407}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9373307408}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9457323061}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412497441}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9453921934}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9432982655}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9449224704}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9441702122}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9456158049}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9459090252}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9457328764,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 365810000000,
+    :gc
+    {"G1 Young Generation" {:count 22, :ms 1066},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 403510000000,
+    :gc
+    {"G1 Young Generation" {:count 24, :ms 1180},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420692521}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428578924}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9277675853}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9447952326}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9288212878}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9392062574}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9402473436}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9364538192}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9409169760}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421762395}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9304854979}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421227488}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347010897}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9356862308}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9436325338}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448221000}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9322713811}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9430935061}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9350380307}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9414514932}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9434603261}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9437625198}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9409490376}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9342203366}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396092821}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396317896}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448552175}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9316791351}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9207419912}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9457328764}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9444438215}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394212197}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412598901}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9372552119}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9444069266}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9353052985}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9429854664}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9418415212}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9336668407}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9343174680}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9436210516}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9315416742}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9454121053}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9356881167}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393872765}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9446600909}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390711813}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382262385}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9305459664}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9439874794}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9459411230,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 403970000000,
+    :gc
+    {"G1 Young Generation" {:count 25, :ms 1215},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 441690000000,
+    :gc
+    {"G1 Young Generation" {:count 27, :ms 1303},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9397800928}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9377838285}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9442666653}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9313096329}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445162574}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9343729950}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9352991894}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9317702909}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9260594261}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9449467385}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450352099}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374329042}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9441856317}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9412407517}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9299546196}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428687285}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9350050964}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9329379419}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410186690}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9423506957}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9456504780}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9459411230}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420724222}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9360936571}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9435681835}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9305202226}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9392350498}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9458845515}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9367598539}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9345875485}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417009861}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9388846132}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9369628243}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9311020935}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9422011656}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9398973564}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9371361183}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417855617}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387762988}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9459289573}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9184959768}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9355457332}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9373491868}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9433811140}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9304280880}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9425414949}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9334242412}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419414780}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9349882411}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450590616}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9445659026,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 442420000000,
+    :gc
+    {"G1 Young Generation" {:count 27, :ms 1303},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 480090000000,
+    :gc
+    {"G1 Young Generation" {:count 29, :ms 1410},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9438394139}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9431952686}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9377717243}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9292887356}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9183889921}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9357210773}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9370366170}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9172019699}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9437164665}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9318965381}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9440693812}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9309930117}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9338657947}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410378538}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9216575201}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408128975}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9309572845}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9415077702}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9285713114}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9434395923}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9298456419}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9384559181}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9444076841}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428355781}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9436162823}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9441810966}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9438452516}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9307745854}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9361956821}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9413712198}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391233003}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9290022802}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9442749939}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9427195731}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426211711}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9435030567}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9375318212}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9432900335}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445659026}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426265806}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9312439166}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9398656978}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443159872}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389377366}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9329797985}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9376589639}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410698214}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9441394196}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443532884}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9401211359}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9452027808,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 480520000000,
+    :gc
+    {"G1 Young Generation" {:count 29, :ms 1410},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 518230000000,
+    :gc
+    {"G1 Young Generation" {:count 31, :ms 1530},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393219482}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9165825607}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9237779486}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9237592131}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445339780}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9411478437}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9430125986}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9250479154}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426598093}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9357778513}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9418427280}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9233667599}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450540816}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408631087}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394259437}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443394562}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9435179286}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9262861959}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9422586802}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445311050}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9380165129}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9444972353}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9423378620}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9451859770}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445762636}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9452027808}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9427494229}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9372997638}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9363484226}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420638074}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450812394}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9281566350}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9346589038}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443213340}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9150846849}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428209058}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9356682380}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396061566}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408135750}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9445089434}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9360180571}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9448670349}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9423423360}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9413075714}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391754229}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9410939229}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9429380162}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9367173375}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9443710656}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9450680636}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9400543354,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 518640000000,
+    :gc
+    {"G1 Young Generation" {:count 31, :ms 1530},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 556110000000,
+    :gc
+    {"G1 Young Generation" {:count 32, :ms 1589},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9319882864}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9375055049}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9317944980}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9315145389}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9330983820}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9362781195}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9355955184}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9370407255}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9329347531}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9383306875}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389987029}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9329812420}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9348742711}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374211547}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9232658241}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9214275848}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9371267451}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9221935426}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9268859946}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390407556}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9358059567}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9368788041}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9368546622}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9359582021}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9357502655}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387319829}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396809661}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9341296341}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9212584108}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9352927172}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9367982663}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9368426109}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9372403495}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9340387168}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347955924}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393667496}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9289443922}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390709307}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9322716860}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9306268250}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9367602274}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9316655475}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378050341}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391497560}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9391439728}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9282566952}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9324606025}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9347537668}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9400533145}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9362607608}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9408769751,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 556590000000,
+    :gc
+    {"G1 Young Generation" {:count 33, :ms 1591},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 594090000000,
+    :gc
+    {"G1 Young Generation" {:count 34, :ms 1654},
+     "G1 Concurrent GC" {:count 6, :ms 20},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386118767}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382675341}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9268796734}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9301406985}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9297605138}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9311299125}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386173798}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403917364}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9201311142}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9292208686}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9335581661}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9212532073}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9343452209}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403866535}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9260487636}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386356110}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9271141206}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9308542420}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390284923}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9175317054}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9370279555}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9328622999}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9379096508}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9339573939}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9307241116}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9195567741}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399387073}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387925482}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9341749469}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9406018780}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9127202009}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9207554386}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9396341531}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9361058434}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9316057177}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386967564}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9362732441}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9316978663}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9271160122}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9360767083}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9266779407}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9386930253}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9337110659}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394593577}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9309884066}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9350950528}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9378320824}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9248238598}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9376158732}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9408769751}],
+   :validation :count-and-sum}],
+ :request
+ {:options
+  {:profile :full,
+   :suite :primary,
+   :forks 4,
+   :timeout-ms 300000,
+   :frameworks [:quiescent :core-async],
+   :label "Initial JVM channel comparison with allocation",
+   :output
+   "/home/bench/bench/results/quiescent/20261029T123400Z-initial-d3ed8d1/measurement"},
+  :entry
+  {:fork 2,
+   :case :fifty,
+   :framework :core-async,
+   :directory "fork-2/fifty/core-async"},
+  :context
+  {:git
+   {:commit "d3ed8d1fdeeb7c32fe3814eb1c0d86588f4197e0",
+    :description "d3ed8d1-dirty",
+    :status
+    " M .gitignore\n M bb.edn\n M build.clj\n M deps.edn\n M dev/channel_bench.clj\n?? bench-test/\n?? bench/\n?? benchmarks/"},
+   :source-sha256
+   {"src/co/multiply/quiescent/util.cljc"
+    "33ff8852e3c589555e3f274fd3efc14d7ba622860ed69d2f255864a004f11756",
+    "java/co/multiply/quiescent/impl/channel/RelayLock.java"
+    "1ac36c2f41ad1dbd64a33163aa2b7a2c92492e673ddc243c6c2dd6bbd703f7ba",
+    "src/co/multiply/quiescent/impl/state_machine.cljc"
+    "e4ebe4e568e29d4bb8194c387e2551eaf173cdd92daaabd7336e43562fdab99b",
+    "java/co/multiply/quiescent/impl/subscription/CallbackSubscription.java"
+    "1f49beee2e8d3f728ccac9788fcc759311705d96e64ad8bd9536643a4dbf3cdd",
+    "java/co/multiply/quiescent/impl/subscription/UnsubSubscription.java"
+    "a9e5d8f8876783b8998e420435a7245035b849e0ac91236b41aad0979d062d12",
+    "java/co/multiply/quiescent/impl/TaskState.java"
+    "cb1058bfc386cc9fcb813656a0ee1b87a9c8c889657e78a69e9adf98585d32d0",
+    "java/co/multiply/quiescent/impl/ICancellable.java"
+    "b31e70f45f12f97d9492ee03ce4fcd0d714b51e4ae5009682040b185365e26eb",
+    "src/co/multiply/quiescent/impl/subscription/subscription.cljs"
+    "5f45e210e9cec099c487fa9d84e3638ab3290bea7b27ab84297d5257b6f9c1b7",
+    "java/co/multiply/quiescent/impl/ITask.java"
+    "1bc386f673355de049a87b3287063610acf1a9349d76e5db1a6d0358b7d2d9f1",
+    "java/co/multiply/quiescent/impl/channel/Alt.java"
+    "f223f674208e8050efe42214689cc809cd885eefbf20053bd4fa6c17aa1e32ee",
+    "src/co/multiply/quiescent/impl/ground.cljc"
+    "556db3cba0f0f5a04cbfb621706d8e4c996a2a81f34d846727a6b9392c12118c",
+    "src/co/multiply/quiescent/impl/gate.cljc"
+    "4aa45c35e17d2863ed5c6d5fda209439d4471ff61287980f535d109784f605d2",
+    "src/co/multiply/quiescent/impl/executor.cljc"
+    "93353e11834d65e4e52c9f1942a83a041f7312dd1206ff0d258aed7edc18b409",
+    "java/co/multiply/quiescent/impl/TaskClassLoader.java"
+    "bd4235aca6d9f984bd1e7493c823e621671c8af837b1c22ea502a6256e273df9",
+    "src/co/multiply/quiescent/type/call.cljc"
+    "986b5e930a0154f30c8a3e36b878a083379e2c4c3608569444de4579fbd4cb93",
+    "src/co/multiply/quiescent.cljc"
+    "47c202abd6f4f468f7b65b51282a5981e1e0f06fe2860dbdddc7bdd22c0aa3b8",
+    "java/co/multiply/quiescent/impl/subscription/TeardownSubscription.java"
+    "f3755eb9d41cadcae2139dc45023836b4746acabc4fb79934e8760c9c86f07b4",
+    "src/co/multiply/quiescent/channel.clj"
+    "51bf3127e5fcdf16213712a12391462d3aa78d239a308d0c477af9fdb6074d56",
+    "java/co/multiply/quiescent/impl/IStateful.java"
+    "402af9690f025e54be4fe85d7cb74a5d881123e14110db26c3afaf0a5d1160db",
+    "src/co/multiply/quiescent/impl/race.cljc"
+    "59b786d439b58fa2eb00eaef376947fce4ae68ed085eda3b136ae9f49aaa3ec1",
+    "java/co/multiply/quiescent/impl/channel/BoundedChannel.java"
+    "6945a0458cebc8d9a411b7150daac284e269524bab75f046f769eff61b215e56",
+    "java/co/multiply/quiescent/impl/subscription/CancelExecSubscription.java"
+    "07fb58e24507bfe4943c10cd03fce2c3e349caabc57304972864a000e5f27c0c",
+    "src/co/multiply/quiescent/impl.cljc"
+    "7bc1806bb56e192da2d1c9f338155d8a0cf4870fb6aee69e8ef5e2a6bfa4691c",
+    "java/co/multiply/quiescent/impl/channel/IBuffered.java"
+    "1188f579a371330161d21cb48363054893dc51a58027a56e6097bd82e16ad92f",
+    "src/co/multiply/quiescent/type.cljc"
+    "67e4a3aa1a544d7a98664f97c45a79b9033225038317292b69dcbd6f5b59711e",
+    "src/co/multiply/quiescent/impl/subscription.cljc"
+    "34ee66953bf431198ef36b0853d74e66865d2f5b72f16e0360955803f2ba4ea9",
+    "src/co/multiply/quiescent/adapter/core_async.cljc"
+    "8cdaec3550d97e04f39d59ede52b8a394a32ac528d78b0dde896107697696872",
+    "java/co/multiply/quiescent/impl/subscription/Subscription.java"
+    "90ba84656f1d1b00cc2eceff810072d437a5f2bc36d0a3f4725d175c8c8e4efa",
+    "java/co/multiply/quiescent/impl/channel/IChannel.java"
+    "ccaa811d0333a4eabd7daefabe7c688fc7c024ac808555395030f0a99304d991"},
+   :harness-sha256
+   {"test/co/multiply/quiescent/signal_test.clj"
+    "703c99b949170eb1aa9d1f535eff4396935866b38202430925be3832b24915ed",
+    "test/co/multiply/quiescent/promise_test.cljc"
+    "8a3a245eb28fa8caf275a8892c3c4fefc402d68169805dd1e2aedf1f016effb8",
+    "bench/quiescent/scenarios.clj"
+    "0a7a65744ac9fe5393b01086687ee2b53b1f4171db4beb62c01661781aa9a3e9",
+    "test/co/multiply/quiescent/channel/alt_test.clj.old"
+    "1387766a0e845f58845cea1d31ad15fbb325f1f5d4d560843f27201e626c05d4",
+    "test/co/multiply/quiescent/bounded_channel_xf_test.clj"
+    "2ef79232b23181d6bd0c8bd6241d5124f4e5285a2b4c54a24ef00537d82efcfe",
+    "bench-test/quiescent/benchmark_test.clj"
+    "71c799dc440e7dfc979a075371c11321ac318b001adccf88dec1eb5b3a762cf4",
+    "bb.edn"
+    "20d66fa74616dd23ad38a01eea649359a89f25ab0907e51735734ee053e840e3",
+    "test/co/multiply/quiescent/channel/alt_test.clj"
+    "a8b2687945e09de694f73cb5b2def2e9a1888dad9363c5e557e5331231c38eae",
+    "test/co/multiply/quiescent/error_handling_test.cljc"
+    "dabd0fe2b2ec9526316a24b118f57b27d981a23365815eca1f5b5522f9fa2155",
+    "bench/quiescent/workload.clj"
+    "77bcb2a60539c1375b8848fa49d76904335a8032bac7525b82da3daaf8c7dd68",
+    "test/co/multiply/quiescent/relay_lock_test.clj"
+    "9116d392978c68478afe5dc05503674e7271caf87e3659a4c8480f4cf482f01f",
+    "bench/quiescent/benchmark.clj"
+    "a95a0bf556a0353bb0d6fa7bf92c684d80ba39b3fbf94ab9bfdcfe1884ea5488",
+    "test/co/multiply/quiescent/ancestry_test.cljc"
+    "698f88c24724ed00ecc9580a1ede762cc099153774eff3ae9b01e400fb9a4ce8",
+    "tests.edn"
+    "bcf612605cb03cc408d52d8c5c393b25946ed3cfa1ce27d740a3c550454160de",
+    "bench/quiescent/artifacts.clj"
+    "d2693e5563606e2c4724fbe336daeab91fce0b2a5b318ed75cd97b729fd528c1",
+    "test/co/multiply/quiescent/test_support.cljc"
+    "a2753dcf137b46247c2f538ba485b5d2c2e28e92a16a7b0d153ab7d87f996830",
+    "test/co/multiply/quiescent/basic_test.cljc"
+    "3f6093dccc96a7f1d203d8ee8f36bdccb8ed227632dd9df19fe2a22202d5e3d9",
+    "test/co/multiply/quiescent/gate_soundness_test.cljc"
+    "519f7deccc432ee027c2383254de42f9e34c982685836c783d0da30be9077195",
+    "dev/channel_bench.clj"
+    "28724dc9473cfb796ebdbaef2a0bb2fd1fcb526e526787af6387a730adc2d456",
+    "test/co/multiply/quiescent/subscribe_teardown_test.cljc"
+    "64dd735d5ccd69a23a887ff64de884a40b98ff5025279fb047022939ea720cc6",
+    "test/co/multiply/quiescent/qlet_test.cljc"
+    "8bd5c93f8a79255baca51738625a9a1003e51482ee53f10bcd55edead31a2646",
+    "build.clj"
+    "27940e685e4009620fb98c77f43ab76c3f0cabd63597e6242fcda66d21ec8df0",
+    "test/co/multiply/quiescent/executor_test.clj"
+    "c336205ac8abf15ce55db7da20b731b6c319d0fe180f5f75cc92e3c750956c73",
+    "test/co/multiply/quiescent/cancellation_test.cljc"
+    "6cd3437498a7d33c22c20d8e0ea978465e00b6397e9a027786007752f8380e43",
+    "test/co/multiply/quiescent/binding_test.cljc"
+    "528db81cc083fb90ee0981080651d931e0331e2139b978b058ce9acb84fa330c",
+    "test/co/multiply/quiescent/arities_test.cljc"
+    "06367009b98d9406641d0e277c99b41120e0e45858e6e732142f40a752d880c2",
+    "bench/quiescent/allocation.clj"
+    "97cd69ebdd4e339d23f4ab658de100b529ffe5c59e411a8bcaf1abc3b862a882",
+    "test/co/multiply/quiescent/coordination_test.cljc"
+    "6c5671442b34f6c95349eb1749c75daca70cd36695978c115e4bc9b39f0a8491",
+    "deps.edn"
+    "e199d2497894af6fb3bf472bf99d7365eafd2974dc42d4d6fa645442819bbb00",
+    "test/co/multiply/quiescent/bounded_channel_test.clj"
+    "38a50ec2365e79b32eea68eccf1ba24e98954f4060782b3b0282a643ca425e0c",
+    "test/co/multiply/quiescent/timeout_test.cljc"
+    "835a7ad2fb6295581e89656a4a7f91371af28dc061f0df7e3e7e90977b5eeb4e",
+    "test/co/multiply/quiescent/bounded_channel_stampede_test.clj"
+    "c866be17210b7e39f20578d8e8c046a67e4dee2c6be4f60a821b566aec2b3aec",
+    "test/co/multiply/quiescent/gate_test.cljc"
+    "879767f56ced86cad01c695304e167592a4770e3eaf986861188bb556239a8d5",
+    "test/co/multiply/quiescent/interop_test.cljc"
+    "4a660b35448ea35945b35012334c24853ba7daa3369ea9917104d9cc9e2901ab"},
+   :class-sha256
+   {"target/classes/co/multiply/quiescent/impl/subscription/TeardownSubscription.class"
+    "14cbfefa7ef0efc966ec30821f668f1908e36df17588e71fd3eed2680c50a166",
+    "target/classes/co/multiply/quiescent/impl/ICancellable.class"
+    "2e09e63b4fe4d959ad08a06134698b93bd509a14bae8282de73fbeea02d317ca",
+    "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel$1.class"
+    "9ef1ab160805c73b0b21188cada7b2a98ddffc3bdb0fcf491b476b58e56e879c",
+    "target/classes/co/multiply/quiescent/impl/channel/RelayLock$Node.class"
+    "704b7160deb1de13ca11f5ca258476c0ad455ed8eecf3968aed7a5bcd63e7388",
+    "target/classes/co/multiply/quiescent/impl/TaskClassLoader$Base.class"
+    "77a48f7bc532b482d243c49d03158a5b6a6157add2a101e9da0bdf71c2ae1d7f",
+    "target/classes/co/multiply/quiescent/impl/IStateful.class"
+    "0bfa43add64417d34c8f505a29a0ba0f32c9a869b24f3a426171b2893ca78650",
+    "target/classes/co/multiply/quiescent/impl/channel/Alt.class"
+    "02db237a4d2efa37582b70720997dc6879aa108da5e3262ad1ff2953125c3996",
+    "target/classes/co/multiply/quiescent/impl/subscription/CallbackSubscription.class"
+    "bf6282982a669e42de95246ab96289ff0888092ac815c6371bc5f4856978763a",
+    "target/classes/co/multiply/quiescent/impl/channel/IChannel.class"
+    "e08d455460d2538662c14179539979b4076ea55fef145c43f532bbe4119b3309",
+    "target/classes/co/multiply/quiescent/impl/subscription/CancelExecSubscription.class"
+    "5ba0f39b5c985a5de7d2b2d9ab372702ee3f1da9849966c19d7bb6714520e3a3",
+    "target/classes/co/multiply/quiescent/impl/channel/IBuffered.class"
+    "534b1b34fb7622715986139b618869e67b5c00f4b24d5243e7abf9fa64cbba7c",
+    "target/classes/co/multiply/quiescent/impl/TaskClassLoader.class"
+    "43d050b3e84adf2e9472342e86808e76f20f61531ab556392f8f48df1ba7061a",
+    "target/classes/co/multiply/quiescent/impl/subscription/UnsubSubscription.class"
+    "cdc06d3fe62b6a05db42879c6ba4b3c2a2ef9bec832818f3d8987a238b223062",
+    "target/classes/co/multiply/quiescent/impl/subscription/Subscription.class"
+    "c035b18b247d6b7e42d192279a8094bba1131957cea97c1985eaf19a85d0ba56",
+    "target/classes/co/multiply/quiescent/impl/channel/RelayLock.class"
+    "6958cc5e0276e31a89b029aa4c5342e2c2524174e917842926ad9afcac1e7224",
+    "target/classes/co/multiply/quiescent/impl/channel/Alt$AltClaim.class"
+    "89925fa88d06030007283c77917d2d4afa579d08061786a9797690ae965cb289",
+    "target/classes/co/multiply/quiescent/impl/TaskState.class"
+    "3ff720f07ea1dd23e2f051ed95d6bd95e9058eac69334ee112778eb8db85155e",
+    "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class"
+    "1bd3927830bc1001603e0c563e4d2ab643225490cd80b3e78b2ac7c93e055dd6",
+    "target/classes/co/multiply/quiescent/impl/ITask.class"
+    "3365dbb17376ae2baacb3affdb3b2aa5314376d33bd3320bf062cc12914adbdb",
+    "target/classes/co/multiply/quiescent/impl/channel/Alt$AltNode.class"
+    "6706e31dc63955b3f6b8337406724dfe1e67fcd6f39f2e1f63e299a7144fa3e4"},
+   :loaded-channel
+   "file:/home/bench/bench/repos/quiescent/target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class",
+   :libraries
+   {org.clojure/clojure #:mvn{:version "1.12.4"},
+    org.clojure/tools.analyzer #:mvn{:version "1.2.0"},
+    co.multiply/pathling #:mvn{:version "0.2.1"},
+    org.clojure/core.specs.alpha #:mvn{:version "0.4.74"},
+    org.clojure/spec.alpha #:mvn{:version "0.5.238"},
+    org.clojure/tools.analyzer.jvm #:mvn{:version "1.3.3"},
+    org.ow2.asm/asm #:mvn{:version "9.2"},
+    co.multiply/conc #:mvn{:version "0.1.3"},
+    co.multiply/scoped #:mvn{:version "0.1.18"},
+    org.clojure/tools.reader #:mvn{:version "1.5.0"},
+    co.multiply/machine-latch #:mvn{:version "0.1.17"},
+    org.clojure/core.memoize #:mvn{:version "1.1.266"},
+    org.clojure/data.priority-map #:mvn{:version "1.2.0"},
+    org.clojure/core.cache #:mvn{:version "1.1.234"},
+    org.clojure/core.async #:mvn{:version "1.9.865"}},
+   :environment
+   {:available-processors 4,
+    :max-heap-bytes 2147483648,
+    :core-async-resource
+    "jar:file:/home/bench/.m2/repository/org/clojure/core.async/1.9.865/core.async-1.9.865.jar!/clojure/core/async.clj",
+    :scheduler-properties
+    {"jdk.virtualThreadScheduler.parallelism" nil,
+     "jdk.virtualThreadScheduler.maxPoolSize" nil,
+     "clojure.core.async.executor-factory" nil,
+     "clojure.core.async.go-checking" nil},
+    :jvm-options
+    ["-XX:-OmitStackTraceInFastThrow"
+     "-Xms2g"
+     "-Xmx2g"
+     "-Dclojure.basis=.cpcache/1414862254.basis"],
+    :java
+    {"java.version" "26.0.2",
+     "java.vendor" "Amazon.com Inc.",
+     "java.vm.name" "OpenJDK 64-Bit Server VM",
+     "java.vm.version" "26.0.2+10-FR"},
+    :gc ["G1 Young Generation" "G1 Concurrent GC" "G1 Old Generation"],
+    :clojure-version "1.12.4",
+    :os
+    {"os.name" "Linux",
+     "os.arch" "amd64",
+     "os.version" "7.0.0-38-generic"},
+    :cpu-model "Intel(R) Core(TM) i5-4590S CPU @ 3.00GHz"}}},
+ :postflight :passed,
+ :process {:pid 273123, :started-at "2026-10-29T13:20:04.885Z"},
+ :schema-version 1,
+ :settings
+ {:warmup-ms 10000,
+  :warmup-min 3,
+  :samples 12,
+  :allocation-samples 5,
+  :small? false},
+ :mean-ns 9.446548828416666E9,
+ :preflight :passed,
+ :spec
+ {:scenario "50×1P1C",
+  :group :saturated,
+  :buffer 64,
+  :workloads [{:count 50, :producers 1, :consumers 1, :n 100000}],
+  :id :fifty},
+ :status :complete,
+ :context
+ {:git
+  {:commit "d3ed8d1fdeeb7c32fe3814eb1c0d86588f4197e0",
+   :description "d3ed8d1-dirty",
+   :status
+   " M .gitignore\n M bb.edn\n M build.clj\n M deps.edn\n M dev/channel_bench.clj\n?? bench-test/\n?? bench/\n?? benchmarks/"},
+  :source-sha256
+  {"java/co/multiply/quiescent/impl/ICancellable.java"
+   "b31e70f45f12f97d9492ee03ce4fcd0d714b51e4ae5009682040b185365e26eb",
+   "java/co/multiply/quiescent/impl/IStateful.java"
+   "402af9690f025e54be4fe85d7cb74a5d881123e14110db26c3afaf0a5d1160db",
+   "java/co/multiply/quiescent/impl/ITask.java"
+   "1bc386f673355de049a87b3287063610acf1a9349d76e5db1a6d0358b7d2d9f1",
+   "java/co/multiply/quiescent/impl/TaskClassLoader.java"
+   "bd4235aca6d9f984bd1e7493c823e621671c8af837b1c22ea502a6256e273df9",
+   "java/co/multiply/quiescent/impl/TaskState.java"
+   "cb1058bfc386cc9fcb813656a0ee1b87a9c8c889657e78a69e9adf98585d32d0",
+   "java/co/multiply/quiescent/impl/channel/Alt.java"
+   "f223f674208e8050efe42214689cc809cd885eefbf20053bd4fa6c17aa1e32ee",
+   "java/co/multiply/quiescent/impl/channel/BoundedChannel.java"
+   "6945a0458cebc8d9a411b7150daac284e269524bab75f046f769eff61b215e56",
+   "java/co/multiply/quiescent/impl/channel/IBuffered.java"
+   "1188f579a371330161d21cb48363054893dc51a58027a56e6097bd82e16ad92f",
+   "java/co/multiply/quiescent/impl/channel/IChannel.java"
+   "ccaa811d0333a4eabd7daefabe7c688fc7c024ac808555395030f0a99304d991",
+   "java/co/multiply/quiescent/impl/channel/RelayLock.java"
+   "1ac36c2f41ad1dbd64a33163aa2b7a2c92492e673ddc243c6c2dd6bbd703f7ba",
+   "java/co/multiply/quiescent/impl/subscription/CallbackSubscription.java"
+   "1f49beee2e8d3f728ccac9788fcc759311705d96e64ad8bd9536643a4dbf3cdd",
+   "java/co/multiply/quiescent/impl/subscription/CancelExecSubscription.java"
+   "07fb58e24507bfe4943c10cd03fce2c3e349caabc57304972864a000e5f27c0c",
+   "java/co/multiply/quiescent/impl/subscription/Subscription.java"
+   "90ba84656f1d1b00cc2eceff810072d437a5f2bc36d0a3f4725d175c8c8e4efa",
+   "java/co/multiply/quiescent/impl/subscription/TeardownSubscription.java"
+   "f3755eb9d41cadcae2139dc45023836b4746acabc4fb79934e8760c9c86f07b4",
+   "java/co/multiply/quiescent/impl/subscription/UnsubSubscription.java"
+   "a9e5d8f8876783b8998e420435a7245035b849e0ac91236b41aad0979d062d12",
+   "src/co/multiply/quiescent.cljc"
+   "47c202abd6f4f468f7b65b51282a5981e1e0f06fe2860dbdddc7bdd22c0aa3b8",
+   "src/co/multiply/quiescent/adapter/core_async.cljc"
+   "8cdaec3550d97e04f39d59ede52b8a394a32ac528d78b0dde896107697696872",
+   "src/co/multiply/quiescent/channel.clj"
+   "51bf3127e5fcdf16213712a12391462d3aa78d239a308d0c477af9fdb6074d56",
+   "src/co/multiply/quiescent/impl.cljc"
+   "7bc1806bb56e192da2d1c9f338155d8a0cf4870fb6aee69e8ef5e2a6bfa4691c",
+   "src/co/multiply/quiescent/impl/executor.cljc"
+   "93353e11834d65e4e52c9f1942a83a041f7312dd1206ff0d258aed7edc18b409",
+   "src/co/multiply/quiescent/impl/gate.cljc"
+   "4aa45c35e17d2863ed5c6d5fda209439d4471ff61287980f535d109784f605d2",
+   "src/co/multiply/quiescent/impl/ground.cljc"
+   "556db3cba0f0f5a04cbfb621706d8e4c996a2a81f34d846727a6b9392c12118c",
+   "src/co/multiply/quiescent/impl/race.cljc"
+   "59b786d439b58fa2eb00eaef376947fce4ae68ed085eda3b136ae9f49aaa3ec1",
+   "src/co/multiply/quiescent/impl/state_machine.cljc"
+   "e4ebe4e568e29d4bb8194c387e2551eaf173cdd92daaabd7336e43562fdab99b",
+   "src/co/multiply/quiescent/impl/subscription.cljc"
+   "34ee66953bf431198ef36b0853d74e66865d2f5b72f16e0360955803f2ba4ea9",
+   "src/co/multiply/quiescent/impl/subscription/subscription.cljs"
+   "5f45e210e9cec099c487fa9d84e3638ab3290bea7b27ab84297d5257b6f9c1b7",
+   "src/co/multiply/quiescent/type.cljc"
+   "67e4a3aa1a544d7a98664f97c45a79b9033225038317292b69dcbd6f5b59711e",
+   "src/co/multiply/quiescent/type/call.cljc"
+   "986b5e930a0154f30c8a3e36b878a083379e2c4c3608569444de4579fbd4cb93",
+   "src/co/multiply/quiescent/util.cljc"
+   "33ff8852e3c589555e3f274fd3efc14d7ba622860ed69d2f255864a004f11756"},
+  :harness-sha256
+  {"bb.edn"
+   "20d66fa74616dd23ad38a01eea649359a89f25ab0907e51735734ee053e840e3",
+   "bench-test/quiescent/benchmark_test.clj"
+   "71c799dc440e7dfc979a075371c11321ac318b001adccf88dec1eb5b3a762cf4",
+   "bench/quiescent/allocation.clj"
+   "97cd69ebdd4e339d23f4ab658de100b529ffe5c59e411a8bcaf1abc3b862a882",
+   "bench/quiescent/artifacts.clj"
+   "d2693e5563606e2c4724fbe336daeab91fce0b2a5b318ed75cd97b729fd528c1",
+   "bench/quiescent/benchmark.clj"
+   "a95a0bf556a0353bb0d6fa7bf92c684d80ba39b3fbf94ab9bfdcfe1884ea5488",
+   "bench/quiescent/scenarios.clj"
+   "0a7a65744ac9fe5393b01086687ee2b53b1f4171db4beb62c01661781aa9a3e9",
+   "bench/quiescent/workload.clj"
+   "77bcb2a60539c1375b8848fa49d76904335a8032bac7525b82da3daaf8c7dd68",
+   "build.clj"
+   "27940e685e4009620fb98c77f43ab76c3f0cabd63597e6242fcda66d21ec8df0",
+   "deps.edn"
+   "e199d2497894af6fb3bf472bf99d7365eafd2974dc42d4d6fa645442819bbb00",
+   "dev/channel_bench.clj"
+   "28724dc9473cfb796ebdbaef2a0bb2fd1fcb526e526787af6387a730adc2d456",
+   "test/co/multiply/quiescent/ancestry_test.cljc"
+   "698f88c24724ed00ecc9580a1ede762cc099153774eff3ae9b01e400fb9a4ce8",
+   "test/co/multiply/quiescent/arities_test.cljc"
+   "06367009b98d9406641d0e277c99b41120e0e45858e6e732142f40a752d880c2",
+   "test/co/multiply/quiescent/basic_test.cljc"
+   "3f6093dccc96a7f1d203d8ee8f36bdccb8ed227632dd9df19fe2a22202d5e3d9",
+   "test/co/multiply/quiescent/binding_test.cljc"
+   "528db81cc083fb90ee0981080651d931e0331e2139b978b058ce9acb84fa330c",
+   "test/co/multiply/quiescent/bounded_channel_stampede_test.clj"
+   "c866be17210b7e39f20578d8e8c046a67e4dee2c6be4f60a821b566aec2b3aec",
+   "test/co/multiply/quiescent/bounded_channel_test.clj"
+   "38a50ec2365e79b32eea68eccf1ba24e98954f4060782b3b0282a643ca425e0c",
+   "test/co/multiply/quiescent/bounded_channel_xf_test.clj"
+   "2ef79232b23181d6bd0c8bd6241d5124f4e5285a2b4c54a24ef00537d82efcfe",
+   "test/co/multiply/quiescent/cancellation_test.cljc"
+   "6cd3437498a7d33c22c20d8e0ea978465e00b6397e9a027786007752f8380e43",
+   "test/co/multiply/quiescent/channel/alt_test.clj"
+   "a8b2687945e09de694f73cb5b2def2e9a1888dad9363c5e557e5331231c38eae",
+   "test/co/multiply/quiescent/channel/alt_test.clj.old"
+   "1387766a0e845f58845cea1d31ad15fbb325f1f5d4d560843f27201e626c05d4",
+   "test/co/multiply/quiescent/coordination_test.cljc"
+   "6c5671442b34f6c95349eb1749c75daca70cd36695978c115e4bc9b39f0a8491",
+   "test/co/multiply/quiescent/error_handling_test.cljc"
+   "dabd0fe2b2ec9526316a24b118f57b27d981a23365815eca1f5b5522f9fa2155",
+   "test/co/multiply/quiescent/executor_test.clj"
+   "c336205ac8abf15ce55db7da20b731b6c319d0fe180f5f75cc92e3c750956c73",
+   "test/co/multiply/quiescent/gate_soundness_test.cljc"
+   "519f7deccc432ee027c2383254de42f9e34c982685836c783d0da30be9077195",
+   "test/co/multiply/quiescent/gate_test.cljc"
+   "879767f56ced86cad01c695304e167592a4770e3eaf986861188bb556239a8d5",
+   "test/co/multiply/quiescent/interop_test.cljc"
+   "4a660b35448ea35945b35012334c24853ba7daa3369ea9917104d9cc9e2901ab",
+   "test/co/multiply/quiescent/promise_test.cljc"
+   "8a3a245eb28fa8caf275a8892c3c4fefc402d68169805dd1e2aedf1f016effb8",
+   "test/co/multiply/quiescent/qlet_test.cljc"
+   "8bd5c93f8a79255baca51738625a9a1003e51482ee53f10bcd55edead31a2646",
+   "test/co/multiply/quiescent/relay_lock_test.clj"
+   "9116d392978c68478afe5dc05503674e7271caf87e3659a4c8480f4cf482f01f",
+   "test/co/multiply/quiescent/signal_test.clj"
+   "703c99b949170eb1aa9d1f535eff4396935866b38202430925be3832b24915ed",
+   "test/co/multiply/quiescent/subscribe_teardown_test.cljc"
+   "64dd735d5ccd69a23a887ff64de884a40b98ff5025279fb047022939ea720cc6",
+   "test/co/multiply/quiescent/test_support.cljc"
+   "a2753dcf137b46247c2f538ba485b5d2c2e28e92a16a7b0d153ab7d87f996830",
+   "test/co/multiply/quiescent/timeout_test.cljc"
+   "835a7ad2fb6295581e89656a4a7f91371af28dc061f0df7e3e7e90977b5eeb4e",
+   "tests.edn"
+   "bcf612605cb03cc408d52d8c5c393b25946ed3cfa1ce27d740a3c550454160de"},
+  :class-sha256
+  {"target/classes/co/multiply/quiescent/impl/ICancellable.class"
+   "2e09e63b4fe4d959ad08a06134698b93bd509a14bae8282de73fbeea02d317ca",
+   "target/classes/co/multiply/quiescent/impl/IStateful.class"
+   "0bfa43add64417d34c8f505a29a0ba0f32c9a869b24f3a426171b2893ca78650",
+   "target/classes/co/multiply/quiescent/impl/ITask.class"
+   "3365dbb17376ae2baacb3affdb3b2aa5314376d33bd3320bf062cc12914adbdb",
+   "target/classes/co/multiply/quiescent/impl/TaskClassLoader$Base.class"
+   "77a48f7bc532b482d243c49d03158a5b6a6157add2a101e9da0bdf71c2ae1d7f",
+   "target/classes/co/multiply/quiescent/impl/TaskClassLoader.class"
+   "43d050b3e84adf2e9472342e86808e76f20f61531ab556392f8f48df1ba7061a",
+   "target/classes/co/multiply/quiescent/impl/TaskState.class"
+   "3ff720f07ea1dd23e2f051ed95d6bd95e9058eac69334ee112778eb8db85155e",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt$AltClaim.class"
+   "89925fa88d06030007283c77917d2d4afa579d08061786a9797690ae965cb289",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt$AltNode.class"
+   "6706e31dc63955b3f6b8337406724dfe1e67fcd6f39f2e1f63e299a7144fa3e4",
+   "target/classes/co/multiply/quiescent/impl/channel/Alt.class"
+   "02db237a4d2efa37582b70720997dc6879aa108da5e3262ad1ff2953125c3996",
+   "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel$1.class"
+   "9ef1ab160805c73b0b21188cada7b2a98ddffc3bdb0fcf491b476b58e56e879c",
+   "target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class"
+   "1bd3927830bc1001603e0c563e4d2ab643225490cd80b3e78b2ac7c93e055dd6",
+   "target/classes/co/multiply/quiescent/impl/channel/IBuffered.class"
+   "534b1b34fb7622715986139b618869e67b5c00f4b24d5243e7abf9fa64cbba7c",
+   "target/classes/co/multiply/quiescent/impl/channel/IChannel.class"
+   "e08d455460d2538662c14179539979b4076ea55fef145c43f532bbe4119b3309",
+   "target/classes/co/multiply/quiescent/impl/channel/RelayLock$Node.class"
+   "704b7160deb1de13ca11f5ca258476c0ad455ed8eecf3968aed7a5bcd63e7388",
+   "target/classes/co/multiply/quiescent/impl/channel/RelayLock.class"
+   "6958cc5e0276e31a89b029aa4c5342e2c2524174e917842926ad9afcac1e7224",
+   "target/classes/co/multiply/quiescent/impl/subscription/CallbackSubscription.class"
+   "bf6282982a669e42de95246ab96289ff0888092ac815c6371bc5f4856978763a",
+   "target/classes/co/multiply/quiescent/impl/subscription/CancelExecSubscription.class"
+   "5ba0f39b5c985a5de7d2b2d9ab372702ee3f1da9849966c19d7bb6714520e3a3",
+   "target/classes/co/multiply/quiescent/impl/subscription/Subscription.class"
+   "c035b18b247d6b7e42d192279a8094bba1131957cea97c1985eaf19a85d0ba56",
+   "target/classes/co/multiply/quiescent/impl/subscription/TeardownSubscription.class"
+   "14cbfefa7ef0efc966ec30821f668f1908e36df17588e71fd3eed2680c50a166",
+   "target/classes/co/multiply/quiescent/impl/subscription/UnsubSubscription.class"
+   "cdc06d3fe62b6a05db42879c6ba4b3c2a2ef9bec832818f3d8987a238b223062"},
+  :loaded-channel
+  "file:/home/bench/bench/repos/quiescent/target/classes/co/multiply/quiescent/impl/channel/BoundedChannel.class",
+  :libraries
+  {co.multiply/conc #:mvn{:version "0.1.3"},
+   co.multiply/machine-latch #:mvn{:version "0.1.17"},
+   co.multiply/pathling #:mvn{:version "0.2.1"},
+   co.multiply/scoped #:mvn{:version "0.1.18"},
+   org.clojure/clojure #:mvn{:version "1.12.4"},
+   org.clojure/core.async #:mvn{:version "1.9.865"},
+   org.clojure/core.cache #:mvn{:version "1.1.234"},
+   org.clojure/core.memoize #:mvn{:version "1.1.266"},
+   org.clojure/core.specs.alpha #:mvn{:version "0.4.74"},
+   org.clojure/data.priority-map #:mvn{:version "1.2.0"},
+   org.clojure/spec.alpha #:mvn{:version "0.5.238"},
+   org.clojure/tools.analyzer #:mvn{:version "1.2.0"},
+   org.clojure/tools.analyzer.jvm #:mvn{:version "1.3.3"},
+   org.clojure/tools.reader #:mvn{:version "1.5.0"},
+   org.ow2.asm/asm #:mvn{:version "9.2"}},
+  :environment
+  {:available-processors 4,
+   :max-heap-bytes 2147483648,
+   :core-async-resource
+   "jar:file:/home/bench/.m2/repository/org/clojure/core.async/1.9.865/core.async-1.9.865.jar!/clojure/core/async.clj",
+   :scheduler-properties
+   {"jdk.virtualThreadScheduler.parallelism" nil,
+    "jdk.virtualThreadScheduler.maxPoolSize" nil,
+    "clojure.core.async.executor-factory" nil,
+    "clojure.core.async.go-checking" nil},
+   :jvm-options
+   ["-XX:-OmitStackTraceInFastThrow"
+    "-Xms2g"
+    "-Xmx2g"
+    "-Dclojure.basis=.cpcache/1414862254.basis"],
+   :java
+   {"java.version" "26.0.2",
+    "java.vendor" "Amazon.com Inc.",
+    "java.vm.name" "OpenJDK 64-Bit Server VM",
+    "java.vm.version" "26.0.2+10-FR"},
+   :gc ["G1 Young Generation" "G1 Concurrent GC" "G1 Old Generation"],
+   :clojure-version "1.12.4",
+   :os
+   {"os.name" "Linux",
+    "os.arch" "amd64",
+    "os.version" "7.0.0-38-generic"},
+   :cpu-model "Intel(R) Core(TM) i5-4590S CPU @ 3.00GHz"}},
+ :warmup
+ [{:elapsed-ns 10240847549,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 18970000000,
+    :gc
+    {"G1 Young Generation" {:count 6, :ms 95},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 59770000000,
+    :gc
+    {"G1 Young Generation" {:count 8, :ms 274},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10235670759}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10215223226}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10182336618}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10178767827}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10133572591}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10213182265}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10172903772}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10158725715}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10158049451}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10193582754}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10210073234}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10176741968}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10159688531}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10221960659}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10121499731}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10160927533}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10215444876}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10216585621}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10180611803}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10213329439}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10182551075}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10211095102}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10161196360}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10183612893}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10170910763}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10229322733}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10076303378}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10123757936}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10185451477}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10207403699}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10214640627}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10156562085}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10118528289}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10150027373}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10227194608}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10178674291}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10183285708}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10103410795}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10213095130}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10179697170}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10196696009}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10212594032}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10229102328}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10237756773}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10230414003}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10177242093}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10213781028}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10192280051}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10179850386}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 10240835543}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9692617292,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 60430000000,
+    :gc
+    {"G1 Young Generation" {:count 8, :ms 274},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 99060000000,
+    :gc
+    {"G1 Young Generation" {:count 10, :ms 406},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9666087978}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9587990242}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9550790001}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9564103820}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9638077159}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9632966870}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9666341033}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9615623498}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9612997117}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9579664055}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9672558210}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9681662944}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9536681852}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9671191298}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9647863381}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9573181632}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9629049849}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9638266341}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9629363700}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9651652741}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9616223216}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9550550734}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9618633487}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9667783167}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9516316970}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9665756301}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9692617292}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9681055454}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9508865794}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9678990133}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9681447691}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9674054618}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9638639084}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9614528665}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9682772906}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9466957316}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9649683813}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9627036862}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9497855521}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9641364957}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9653929848}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9650893949}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9613282922}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9688611747}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9646810319}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9596069415}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9629345923}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9668975853}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9619544900}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9536223208}],
+   :validation :count-and-sum}
+  {:elapsed-ns 9436098968,
+   :allocation nil,
+   :counters-before
+   {:process-cpu-ns 99480000000,
+    :gc
+    {"G1 Young Generation" {:count 10, :ms 406},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :counters-after
+   {:process-cpu-ns 137120000000,
+    :gc
+    {"G1 Young Generation" {:count 11, :ms 473},
+     "G1 Concurrent GC" {:count 4, :ms 11},
+     "G1 Old Generation" {:count 0, :ms 0}}},
+   :workloads
+   [{:workload 0,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9415198751}
+    {:workload 1,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9202369149}
+    {:workload 2,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9328517277}
+    {:workload 3,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9430327041}
+    {:workload 4,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9387237807}
+    {:workload 5,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9395277843}
+    {:workload 6,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9293826364}
+    {:workload 7,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417829353}
+    {:workload 8,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426146719}
+    {:workload 9,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428490219}
+    {:workload 10,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9426446035}
+    {:workload 11,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9173514448}
+    {:workload 12,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382959209}
+    {:workload 13,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9388062224}
+    {:workload 14,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9280291660}
+    {:workload 15,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9393834906}
+    {:workload 16,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9245232159}
+    {:workload 17,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9370863467}
+    {:workload 18,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9428524790}
+    {:workload 19,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9401758419}
+    {:workload 20,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9360705273}
+    {:workload 21,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9436098968}
+    {:workload 22,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9413896087}
+    {:workload 23,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9325800617}
+    {:workload 24,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9417681745}
+    {:workload 25,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9432291373}
+    {:workload 26,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9399594272}
+    {:workload 27,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9394170063}
+    {:workload 28,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9348711810}
+    {:workload 29,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9283059773}
+    {:workload 30,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9421443310}
+    {:workload 31,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9415295701}
+    {:workload 32,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9403140914}
+    {:workload 33,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9355904318}
+    {:workload 34,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9254087015}
+    {:workload 35,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9432802097}
+    {:workload 36,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9308732963}
+    {:workload 37,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9392428455}
+    {:workload 38,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9305109638}
+    {:workload 39,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9419883580}
+    {:workload 40,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9374241734}
+    {:workload 41,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9363380960}
+    {:workload 42,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9390501719}
+    {:workload 43,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9352802204}
+    {:workload 44,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9382807428}
+    {:workload 45,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9348587324}
+    {:workload 46,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9389091106}
+    {:workload 47,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9350397232}
+    {:workload 48,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9420049732}
+    {:workload 49,
+     :count 100000,
+     :sum 4999950000,
+     :consumer-counts [100000],
+     :elapsed-ns 9423779274}],
+   :validation :count-and-sum}],
+ :finished-at "2026-10-29T13:23:26.783405951Z",
+ :allocation
+ {:status :measured,
+  :method :thread-mx-bean-total,
+  :scope :all-jvm-threads,
+  :probe
+  {:status :passed,
+   :virtual-thread-terminated? true,
+   :expected-payload-bytes 1048576,
+   :observed-bytes 1049632,
+   :read-pair-control-bytes [24 24 24 24 24],
+   :control-subtracted? false},
+  :samples
+  [{:elapsed-ns 9439170845,
+    :allocation
+    {:setup-bytes 147403896,
+     :transfer-bytes 1593574016,
+     :setup-and-transfer-bytes 1740977912},
+    :counters-before
+    {:process-cpu-ns 594500000000,
+     :gc
+     {"G1 Young Generation" {:count 35, :ms 1657},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :counters-after
+    {:process-cpu-ns 632160000000,
+     :gc
+     {"G1 Young Generation" {:count 36, :ms 1718},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :workloads
+    [{:workload 0,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9363712184}
+     {:workload 1,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9304200918}
+     {:workload 2,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9399153743}
+     {:workload 3,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9294105521}
+     {:workload 4,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9372571670}
+     {:workload 5,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9346778556}
+     {:workload 6,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9438157814}
+     {:workload 7,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9420594214}
+     {:workload 8,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9422044479}
+     {:workload 9,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9433124060}
+     {:workload 10,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9188171131}
+     {:workload 11,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9403624092}
+     {:workload 12,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9413886226}
+     {:workload 13,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9263328737}
+     {:workload 14,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9276425204}
+     {:workload 15,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9426632007}
+     {:workload 16,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9370720160}
+     {:workload 17,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9419368547}
+     {:workload 18,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9417260110}
+     {:workload 19,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9342119933}
+     {:workload 20,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9421916678}
+     {:workload 21,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9377346000}
+     {:workload 22,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9420827142}
+     {:workload 23,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9411779506}
+     {:workload 24,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9324999807}
+     {:workload 25,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9333568692}
+     {:workload 26,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9349061079}
+     {:workload 27,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9402412237}
+     {:workload 28,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9263416882}
+     {:workload 29,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9406589259}
+     {:workload 30,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9425822730}
+     {:workload 31,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9382051053}
+     {:workload 32,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9400756880}
+     {:workload 33,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9371892396}
+     {:workload 34,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9417224448}
+     {:workload 35,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9356165600}
+     {:workload 36,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9313613245}
+     {:workload 37,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9411519163}
+     {:workload 38,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9381553098}
+     {:workload 39,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9409380526}
+     {:workload 40,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9432701034}
+     {:workload 41,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9352877506}
+     {:workload 42,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9403197470}
+     {:workload 43,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9424894295}
+     {:workload 44,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9359615027}
+     {:workload 45,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9439170845}
+     {:workload 46,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9392814757}
+     {:workload 47,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9388762736}
+     {:workload 48,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9433563166}
+     {:workload 49,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9397012275}],
+    :validation :count-and-sum}
+   {:elapsed-ns 9575391031,
+    :allocation
+    {:setup-bytes 147404016,
+     :transfer-bytes 1603834496,
+     :setup-and-transfer-bytes 1751238512},
+    :counters-before
+    {:process-cpu-ns 632220000000,
+     :gc
+     {"G1 Young Generation" {:count 36, :ms 1718},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :counters-after
+    {:process-cpu-ns 670370000000,
+     :gc
+     {"G1 Young Generation" {:count 38, :ms 1834},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :workloads
+    [{:workload 0,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9536734810}
+     {:workload 1,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9486113118}
+     {:workload 2,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9546695696}
+     {:workload 3,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9456628204}
+     {:workload 4,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9494914138}
+     {:workload 5,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9478233695}
+     {:workload 6,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9549631486}
+     {:workload 7,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9398257878}
+     {:workload 8,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9556063571}
+     {:workload 9,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9320451285}
+     {:workload 10,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9278570400}
+     {:workload 11,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9558428336}
+     {:workload 12,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9556486229}
+     {:workload 13,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9559710239}
+     {:workload 14,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9565807471}
+     {:workload 15,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9537786924}
+     {:workload 16,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9544248223}
+     {:workload 17,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9562667798}
+     {:workload 18,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9509520963}
+     {:workload 19,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9561889599}
+     {:workload 20,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9434018007}
+     {:workload 21,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9505435263}
+     {:workload 22,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9535742545}
+     {:workload 23,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9476032399}
+     {:workload 24,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9490000122}
+     {:workload 25,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9536411154}
+     {:workload 26,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9575376164}
+     {:workload 27,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9469069305}
+     {:workload 28,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9482754268}
+     {:workload 29,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9521474727}
+     {:workload 30,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9557153633}
+     {:workload 31,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9556506392}
+     {:workload 32,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9520969346}
+     {:workload 33,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9476334132}
+     {:workload 34,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9537265023}
+     {:workload 35,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9453092250}
+     {:workload 36,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9490427791}
+     {:workload 37,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9411142689}
+     {:workload 38,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9509581560}
+     {:workload 39,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9523436685}
+     {:workload 40,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9431908861}
+     {:workload 41,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9527511661}
+     {:workload 42,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9517234310}
+     {:workload 43,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9462637440}
+     {:workload 44,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9541120008}
+     {:workload 45,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9513064920}
+     {:workload 46,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9526534671}
+     {:workload 47,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9534079268}
+     {:workload 48,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9542760586}
+     {:workload 49,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9538852307}],
+    :validation :count-and-sum}
+   {:elapsed-ns 9474870238,
+    :allocation
+    {:setup-bytes 147403928,
+     :transfer-bytes 1593737056,
+     :setup-and-transfer-bytes 1741140984},
+    :counters-before
+    {:process-cpu-ns 670430000000,
+     :gc
+     {"G1 Young Generation" {:count 38, :ms 1834},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :counters-after
+    {:process-cpu-ns 708210000000,
+     :gc
+     {"G1 Young Generation" {:count 40, :ms 1955},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :workloads
+    [{:workload 0,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9434045103}
+     {:workload 1,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9444008203}
+     {:workload 2,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9455732420}
+     {:workload 3,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9454835845}
+     {:workload 4,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9382089539}
+     {:workload 5,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9320673561}
+     {:workload 6,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9355380447}
+     {:workload 7,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9412313388}
+     {:workload 8,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9395478920}
+     {:workload 9,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9441472750}
+     {:workload 10,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9467443156}
+     {:workload 11,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9462470703}
+     {:workload 12,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9474858542}
+     {:workload 13,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9329861431}
+     {:workload 14,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9423149041}
+     {:workload 15,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9435241640}
+     {:workload 16,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9423011377}
+     {:workload 17,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9347589324}
+     {:workload 18,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9450665904}
+     {:workload 19,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9423325102}
+     {:workload 20,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9221650169}
+     {:workload 21,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9317958886}
+     {:workload 22,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9386202049}
+     {:workload 23,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9354999859}
+     {:workload 24,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9470480310}
+     {:workload 25,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9456253567}
+     {:workload 26,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9416045840}
+     {:workload 27,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9421969426}
+     {:workload 28,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9440039761}
+     {:workload 29,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9442155046}
+     {:workload 30,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9453645014}
+     {:workload 31,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9461307780}
+     {:workload 32,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9328983707}
+     {:workload 33,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9389570029}
+     {:workload 34,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9385047698}
+     {:workload 35,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9162653595}
+     {:workload 36,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9235994115}
+     {:workload 37,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9416111668}
+     {:workload 38,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9465913206}
+     {:workload 39,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9391101699}
+     {:workload 40,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9355056696}
+     {:workload 41,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9441779591}
+     {:workload 42,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9445974286}
+     {:workload 43,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9453299033}
+     {:workload 44,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9209590911}
+     {:workload 45,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9453752160}
+     {:workload 46,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9401966806}
+     {:workload 47,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9466574158}
+     {:workload 48,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9326912946}
+     {:workload 49,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9428401833}],
+    :validation :count-and-sum}
+   {:elapsed-ns 9470615769,
+    :allocation
+    {:setup-bytes 147403928,
+     :transfer-bytes 1593697136,
+     :setup-and-transfer-bytes 1741101064},
+    :counters-before
+    {:process-cpu-ns 708270000000,
+     :gc
+     {"G1 Young Generation" {:count 40, :ms 1955},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :counters-after
+    {:process-cpu-ns 746020000000,
+     :gc
+     {"G1 Young Generation" {:count 42, :ms 2068},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :workloads
+    [{:workload 0,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9431354827}
+     {:workload 1,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9455021623}
+     {:workload 2,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9453387131}
+     {:workload 3,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9335422069}
+     {:workload 4,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9438560943}
+     {:workload 5,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9454388307}
+     {:workload 6,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9408173027}
+     {:workload 7,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9443148800}
+     {:workload 8,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9254489112}
+     {:workload 9,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9401231540}
+     {:workload 10,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9398253891}
+     {:workload 11,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9338853582}
+     {:workload 12,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9445819680}
+     {:workload 13,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9362138454}
+     {:workload 14,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9444852202}
+     {:workload 15,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9407084353}
+     {:workload 16,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9454099875}
+     {:workload 17,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9462893130}
+     {:workload 18,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9368555353}
+     {:workload 19,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9429108772}
+     {:workload 20,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9443314564}
+     {:workload 21,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9465452671}
+     {:workload 22,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9466179307}
+     {:workload 23,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9401812618}
+     {:workload 24,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9385119490}
+     {:workload 25,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9320677868}
+     {:workload 26,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9356675293}
+     {:workload 27,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9413389800}
+     {:workload 28,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9328364778}
+     {:workload 29,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9428595579}
+     {:workload 30,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9418387611}
+     {:workload 31,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9396167236}
+     {:workload 32,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9411652723}
+     {:workload 33,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9444155582}
+     {:workload 34,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9290590035}
+     {:workload 35,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9408210268}
+     {:workload 36,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9442691506}
+     {:workload 37,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9386448538}
+     {:workload 38,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9232979718}
+     {:workload 39,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9425493160}
+     {:workload 40,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9439582219}
+     {:workload 41,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9470605687}
+     {:workload 42,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9352297558}
+     {:workload 43,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9460232487}
+     {:workload 44,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9401954854}
+     {:workload 45,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9288125453}
+     {:workload 46,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9463817147}
+     {:workload 47,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9377583778}
+     {:workload 48,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9455318538}
+     {:workload 49,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9345083989}],
+    :validation :count-and-sum}
+   {:elapsed-ns 9642403963,
+    :allocation
+    {:setup-bytes 147403928,
+     :transfer-bytes 1593433784,
+     :setup-and-transfer-bytes 1740837712},
+    :counters-before
+    {:process-cpu-ns 746080000000,
+     :gc
+     {"G1 Young Generation" {:count 42, :ms 2068},
+      "G1 Concurrent GC" {:count 6, :ms 20},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :counters-after
+    {:process-cpu-ns 784520000000,
+     :gc
+     {"G1 Young Generation" {:count 44, :ms 2175},
+      "G1 Concurrent GC" {:count 8, :ms 25},
+      "G1 Old Generation" {:count 0, :ms 0}}},
+    :workloads
+    [{:workload 0,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9642403963}
+     {:workload 1,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9603452888}
+     {:workload 2,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9568123749}
+     {:workload 3,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9621533611}
+     {:workload 4,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9565183697}
+     {:workload 5,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9444969514}
+     {:workload 6,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9628350814}
+     {:workload 7,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9359911448}
+     {:workload 8,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9626328872}
+     {:workload 9,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9440163567}
+     {:workload 10,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9567811386}
+     {:workload 11,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9607429928}
+     {:workload 12,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9617276607}
+     {:workload 13,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9631251641}
+     {:workload 14,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9621575397}
+     {:workload 15,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9637603759}
+     {:workload 16,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9615336153}
+     {:workload 17,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9633684340}
+     {:workload 18,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9586054790}
+     {:workload 19,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9550540630}
+     {:workload 20,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9594114187}
+     {:workload 21,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9613015639}
+     {:workload 22,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9556535727}
+     {:workload 23,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9618862716}
+     {:workload 24,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9561861988}
+     {:workload 25,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9596276815}
+     {:workload 26,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9577753268}
+     {:workload 27,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9599605195}
+     {:workload 28,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9592233039}
+     {:workload 29,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9569087260}
+     {:workload 30,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9388966711}
+     {:workload 31,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9402128582}
+     {:workload 32,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9626842760}
+     {:workload 33,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9634019669}
+     {:workload 34,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9641041930}
+     {:workload 35,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9575313727}
+     {:workload 36,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9605656896}
+     {:workload 37,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9628812331}
+     {:workload 38,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9476892036}
+     {:workload 39,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9604834578}
+     {:workload 40,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9603655489}
+     {:workload 41,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9588882992}
+     {:workload 42,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9625673784}
+     {:workload 43,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9565656511}
+     {:workload 44,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9513004302}
+     {:workload 45,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9614656183}
+     {:workload 46,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9528327741}
+     {:workload 47,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9637723597}
+     {:workload 48,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9541499190}
+     {:workload 49,
+      :count 100000,
+      :sum 4999950000,
+      :consumer-counts [100000],
+      :elapsed-ns 9619591599}],
+    :validation :count-and-sum}],
+  :mean-transfer-bytes-per-value 319.13105952,
+  :mean-setup-bytes 1.474039392E8}}
