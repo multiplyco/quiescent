@@ -1368,6 +1368,20 @@
    (timeout (await t) ms-or-dur constantly-false)))
 
 
+(defn ^:no-doc -observe
+  "A task that settles as `t` settles, value, failure or cancellation,
+   without owning it: cancelling the returned task never reaches `t`.
+   Non-task values are returned as they are."
+  [t]
+  (if (type/taskable? t)
+    (let [t     (type/as-task t)
+          proxy (-pending-task delegate-sync)]
+      (subs/subscribe-callback t sm/phase-settling
+        (fn adopt [state] (call/doWrite proxy state)))
+      proxy)
+    t))
+
+
 ;; # Async let
 ;; ################################################################################
 (defn- expr->symbols
@@ -1463,6 +1477,15 @@
         order-lookup     (zipmap bind-order (range))
         sort-by-order    (fn [deps] (sort-by order-lookup deps))
 
+        ;; A binding with several consumers is owned by the qlet, not by any one
+        ;; `then` grounding it. Such a `then` is handed an observer instead, so its
+        ;; teardown cannot reach a binding the other consumers still need.
+        consumers        (frequencies (mapcat identity (vals depends)))
+        as-input         (fn [dep]
+                           (if (< 1 (get consumers dep 0))
+                             `(-observe ~dep)
+                             dep))
+
         ;; Use original binding order (already valid dependency order)
         all-form-ids     bind-order
         binding-form-ids (filterv (partial not= body-idx) all-form-ids)
@@ -1479,7 +1502,7 @@
                                    ;; Has dependencies - generate t/then with deps sorted by original order
                                    (let [sorted-deps (vec (sort-by-order deps))]
                                      [form-id
-                                      `(then ~@sorted-deps
+                                      `(then ~@(map as-input sorted-deps)
                                          ~(dep-fn forms sorted-deps [to]))])))))
                            binding-form-ids)
 
@@ -1494,7 +1517,7 @@
             ;; Body has no deps - just wrap in q
             `(q ~@body-expr)
             ;; Body depends on forms - generate final q/then
-            `(then ~@body-deps
+            `(then ~@(map as-input body-deps)
                ~(dep-fn forms body-deps body-expr)))))))
 
 

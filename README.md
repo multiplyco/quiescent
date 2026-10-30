@@ -1164,16 +1164,16 @@ The `qlet` above expands to:
 ```clojure
 (q/task
   (let [form-0 (fetch-user 123)
-        form-1 (q/then form-0
+        form-1 (q/then (q/-observe form-0)
                  (fn [param-0]
                    (let [user param-0]
                      (fetch-orders (:id user)))))
-        form-2 (q/then form-0
+        form-2 (q/then (q/-observe form-0)
                  (fn [param-0]
                    (let [user param-0]
                      (fetch-recommendations (:id user)))))
         form-3 (fetch-promotions)]
-    (q/then form-0 form-1 form-2 form-3
+    (q/then (q/-observe form-0) form-1 form-2 form-3
       (fn [param-0 param-1 param-2 param-3]
         (let [user   param-0
               orders param-1
@@ -1181,6 +1181,11 @@ The `qlet` above expands to:
               promos param-3]
           {:user (:name user) :orders orders :recs recs :promos promos})))))
 ```
+
+`user` has three consumers, so each receives it through `-observe`: a proxy that settles as `user` settles, which the
+consuming `then` may tear down without reaching `user` itself. The bindings belong to the `qlet`, which tears them all
+down when it settles. A `then` settling early, because a sibling input failed, therefore fails its dependents instead of
+cancelling a binding the other consumers still need. A binding with a single consumer is passed directly.
 
 Note that forms with no dependencies remain unchanged and are not automatically wrapped with task conversion. This is
 because:

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Fix `qlet` settling cancelled instead of failed when a binding throws while another binding, shared by several
+  consumers, is still pending. The `then` grounding the failing and the shared binding tore the shared one down on the
+  failure, and that cancellation reached the join before the failure did, so handlers such as `catch` and `handle`
+  never ran. A binding with several consumers is now handed to each of them through `-observe`, a proxy that settles
+  as the binding settles without owning it. The `qlet` still tears down every binding when it settles.
+
 ## 0.11.5 - 2026-10-01
 
 - Fix by-name class lookups on executor threads returning a stale version of a redefined `deftype` or `defrecord`.

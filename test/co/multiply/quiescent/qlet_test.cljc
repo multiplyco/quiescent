@@ -258,6 +258,34 @@
         (is (some? e))))))
 
 
+(def-results shared-binding-test
+  (clause :sibling-failure "A failure beside a shared pending binding surfaces as that failure"
+    (with-task (q/qlet [settled  (q/sleep 5 :settled)
+                        failing  (if settled (throw (make-exception "Sibling failed")) settled)
+                        shared   (q/sleep 200 [:shared settled])
+                        joined   (vector failing shared)
+                        rejoined (vector joined shared)]
+                 rejoined)
+      (result [_value error cancelled]
+        (is (false? cancelled))
+        (is (= "Sibling failed" (ex-message error))))))
+
+  (clause :outer-cancel-tears-down "Cancelling the qlet still tears down a binding shared by several consumers"
+    (let [shared-work (atom nil)
+          outer       (q/qlet [settled  (q/sleep 5 :settled)
+                               shared   (let [work (q/sleep 500 [:shared settled])]
+                                          (reset! shared-work work)
+                                          work)
+                               joined   (vector settled shared)
+                               rejoined (vector joined shared)]
+                        rejoined)]
+      (q/sleep 50 #(q/cancel outer))
+      (with-task (q/then (q/await outer) (fn [_] (q/await @shared-work)))
+        (result []
+          (is (q/cancelled? outer))
+          (is (q/cancelled? @shared-work)))))))
+
+
 (def-results readme-example-test
   (testing :complex "README-style example"
     (let [fetch-user   (fn [id] (q/sleep 5 {:id id :name "Alice"}))
