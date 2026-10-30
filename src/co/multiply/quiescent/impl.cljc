@@ -89,10 +89,17 @@
             (call/newQuiescenceProxy this false))))))
 
 
-  ;; Cascade cancel from parent. Compelled tasks resist - they were marked important
-  ;; at creation time and should complete even if parent is cancelled.
-  (^boolean doCancelCascade [this]
-    (and (not compelled) (call/doCancel this "Task cancelled via cascade.")))
+  ;; Teardown remains cancellation even when a failure caused it. Retain the
+  ;; original error through every hop, while the cancelled flag controls
+  ;; interruption and handler dispatch. Compelled tasks still resist cascades.
+  (^boolean doCancelCascade [this ^TaskState source-state]
+    (and (not compelled)
+      (if (.-exceptional source-state)
+        (call/doWrite this
+          (if (.-cancelled source-state)
+            source-state
+            (TaskState. true true (.-result source-state))))
+        (call/doCancel this "Task cancelled via cascade."))))
 
   IStateful
   (^boolean isCancelled [_this] (true? (when state (.-cancelled ^TaskState state))))
@@ -510,7 +517,7 @@
   ICancellable
   (^boolean doCancel [_this ^String msg] (call/doCancel task msg))
   (doCancelDirect [_this] (call/doCancelDirect task))
-  (^boolean doCancelCascade [_this] (call/doCancelCascade task))
+  (^boolean doCancelCascade [_this ^TaskState source-state] (call/doCancelCascade task source-state))
 
   IStateful
   (^boolean isCancelled [_this] (call/isCancelled task))

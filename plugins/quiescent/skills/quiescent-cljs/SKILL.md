@@ -67,10 +67,11 @@ task scope**. Related: `(q/aborted? signal)` checks whether it has fired; `(q/co
 
 ## Exception handling differences
 
-Cancellation is a `java.util.concurrent.CancellationException` in CLJ, and an `ex-info` carrying `{:cancelled true}` in
-ex-data in CLJS. `q/cancelled?` works uniformly on both — prefer it over inspecting the exception. These are also the
-values `q/get-ex` returns for a cancelled task; note that in CLJS `q/get-ex` returns whatever was thrown, which need
-not be an `Error`.
+Explicit cancellation and cleanup after success generate a `java.util.concurrent.CancellationException` in CLJ,
+and an `ex-info` carrying `{:cancelled true}` in ex-data in CLJS. Failure-driven cancellation instead retains the
+original thrown value through cascades. `q/cancelled?` works uniformly on both — use it instead of inspecting the
+exception. `q/get-ex` returns that retained or generated value, which in CLJS need not be an `Error` or even truthy.
+`catch` and `handle` still skip cancelled tasks regardless of the thrown value.
 
 `catch` clause matching differs — classes in CLJ, predicates in CLJS:
 

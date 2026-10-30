@@ -452,7 +452,14 @@ The returned task settles once the cancelled subtree is "quiescent": all tasks, 
 completed. Note that quiescence doesn't guarantee that all threads have been released; threads are responsible for
 responding to interruption and may delay doing so.
 
-A cancelled task contains a `CancellationException` and will throw if dereferenced.
+A cancelled task throws if dereferenced. When a failure triggers cancellation of other tasks, those tasks retain the
+original exception through subsequent cancellation cascades. Explicit cancellation and cleanup after successful
+completion generate a `CancellationException` on the JVM. Use `cancelled?`, not the exception's type, to identify
+cancellation.
+
+Cancellation remains a control signal: `catch` and `handle` still skip cancelled tasks, even when they carry an
+originating failure. Failure and cancellation can race through a shared dependency graph; the first settlement wins,
+but cancellation caused by that failure preserves its exception.
 
 #### `compel` and direct cancellation
 
@@ -912,14 +919,15 @@ Related utilities:
 
 ### Exception handling differences
 
-**Cancellation exceptions** differ between platforms:
+**Generated cancellation exceptions** differ between platforms:
 
 | Platform | Cancellation exception                        |
 |----------|-----------------------------------------------|
 | CLJ      | `java.util.concurrent.CancellationException`  |
 | CLJS     | `ex-info` with `{:cancelled true}` in ex-data |
 
-The `cancelled?` predicate works uniformly on both platforms.
+Cancellation caused by exceptional teardown retains the original thrown value instead. The `cancelled?` predicate
+works uniformly on both platforms and does not depend on the thrown value's type.
 
 **`catch` clause matching** uses different mechanisms:
 

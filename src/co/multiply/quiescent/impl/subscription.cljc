@@ -28,6 +28,7 @@
 (defn subscribe-teardown
   "Attach a subscription to task `task`, tearing down task `target` when reaching `phase-settling`.
 
+   Exceptional settlement supplies the original error as the cancellation cause.
    If `target` reaches `phase-settling` before `task`, remove the subscription from `task`."
   [task target]
   (cond

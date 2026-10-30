@@ -249,9 +249,12 @@
    whether through failure or cancellation.
 
    Returns the thrown value (always a `Throwable` on the JVM; in CLJS anything
-   can be thrown). For a cancelled task this is a `CancellationException` (CLJ)
-   or an ex-info with `{:cancelled true}` (CLJS). Returns `nil` for a task that
-   has not settled, or settled with a value — use `exceptional?` to disambiguate.
+   can be thrown). Cancellation caused by exceptional teardown retains the
+   originating error. Explicit cancellation and cleanup after success generate
+   a `CancellationException` (CLJ) or ex-info with `{:cancelled true}` (CLJS).
+   Use `cancelled?` to identify cancellation, not the exception's type.
+   Returns `nil` for a task that has not settled, or settled with a value —
+   use `exceptional?` to disambiguate.
 
    Non-blocking snapshot, like `get-now`. Unlike `catch` and `handle`, which
    never see cancellation, this reads the exception out of any exceptionally
@@ -768,7 +771,11 @@
    The function receives `[value error cancelled]`:
    - On success: `[value nil false]` (value may be nil)
    - On error: `[nil exception false]`
-   - On cancellation: `[nil CancellationException true]`
+   - On cancellation: `[nil exception true]`
+
+   Cancellation retains the originating error when exceptional teardown caused it;
+   otherwise the exception is a generated cancellation error. Use `cancelled`,
+   not the exception's type, to distinguish cancellation from failure.
 
    The return value is ignored - the original task result passes through unchanged.
    Exceptions from the function propagate and fail the task chain.
@@ -799,7 +806,11 @@
    The function receives `[value error cancelled]`:
    - On success: `[value nil false]` (value may be nil)
    - On error: `[nil exception false]`
-   - On cancellation: `[nil CancellationException true]`
+   - On cancellation: `[nil exception true]`
+
+   Cancellation retains the originating error when exceptional teardown caused it;
+   otherwise the exception is a generated cancellation error. Use `cancelled`,
+   not the exception's type, to distinguish cancellation from failure.
 
    The return value is ignored - the original task result passes through unchanged.
    Exceptions from the function propagate and fail the task chain.

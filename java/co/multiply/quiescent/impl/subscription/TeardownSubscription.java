@@ -6,7 +6,7 @@ import co.multiply.quiescent.impl.TaskState;
 
 /**
  * Cascading-cancels a target task when the owning task reaches the
- * subscription's phase.
+ * subscription's phase, preserving an exceptional owner's cancellation cause.
  */
 public final class TeardownSubscription extends Subscription {
     private final ICancellable target;
@@ -18,6 +18,6 @@ public final class TeardownSubscription extends Subscription {
 
     @Override
     public void runSub(TaskState taskState) {
-        target.doCancelCascade();
+        target.doCancelCascade(taskState);
     }
 }

@@ -58,7 +58,7 @@
 
      ;; ## ICancellable
      (defshim ICancellable doCancel [this msg])
-     (defshim ICancellable doCancelCascade [this])
+     (defshim ICancellable doCancelCascade [this source-state])
      (defshim ICancellable doCancelDirect [this])
 
 

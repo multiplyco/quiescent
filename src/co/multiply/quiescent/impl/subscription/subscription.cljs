@@ -23,8 +23,8 @@
 
   ISubscription
   (getPhase [_this] phase)
-  (runSub [_this _state]
-    (call/doCancelCascade target)))
+  (runSub [_this state]
+    (call/doCancelCascade target state)))
 
 
 (defn teardown-subscription

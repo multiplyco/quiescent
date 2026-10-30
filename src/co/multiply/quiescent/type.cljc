@@ -43,7 +43,7 @@
 #?(:cljs (defprotocol ICancellable
            (doCancel [this msg])
            (doCancelDirect [this])
-           (doCancelCascade [this])))
+           (doCancelCascade [this source-state])))
 
 
 #?(:cljs (defprotocol IStateful

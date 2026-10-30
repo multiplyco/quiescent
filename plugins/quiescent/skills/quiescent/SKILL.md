@@ -347,7 +347,10 @@ modifiers. Filter the collection before the loop, or bind inside the body.
 (q/cancel my-task)  ; Returns task resolving to boolean (true=cancelled, false=already settled)
 ```
 
-A cancelled task contains a `CancellationException` and throws if dereferenced.
+A cancelled task throws if dereferenced. Failure-driven cancellation retains the original exception through cascades;
+explicit cancellation and cleanup after success generate a `CancellationException` on the JVM. Use `q/cancelled?`,
+not the exception's type, to identify cancellation. `catch` and `handle` still skip cancelled tasks even when they
+carry an originating failure. Failure and its cancellation can race; the first settlement wins.
 
 **See also** for reading a task without `deref`'s throwing behaviour:
 

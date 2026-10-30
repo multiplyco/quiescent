@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Preserve the originating error when exceptional settlement cancels other tasks, including subsequent cancellation
+  cascades. Cancellation remains a control signal: `cancelled?` stays true, execution is stopped, and `catch` and
+  `handle` still skip cancelled tasks. The original error is available through `get-ex`, `finally`, and deref.
+  Explicit cancellation and cleanup after success still generate cancellation errors. Failure and cancellation
+  continue to race under the existing first-settlement-wins rule; this does not prioritize failure over cancellation.
+
 ## 0.11.5 - 2026-10-01
 
 - Fix by-name class lookups on executor threads returning a stale version of a redefined `deftype` or `defrecord`.

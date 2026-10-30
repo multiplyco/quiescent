@@ -141,7 +141,7 @@
 
 (def-results chain-propagation-test
   (clause :cancels-upstream-and-downstream "Cancelling task B cancels upstream and downstream tasks"
-    (let [task-a  (q/sleep 10 :a-result)
+    (let [task-a  (q/promise)
           task-b  (q/then task-a str)
           results (atom [])
           record! (fn [& _] (swap! results conj :ran))
@@ -151,6 +151,8 @@
       (with-task [(q/cancel task-b) tasks]
         (result []
           (is (every? q/cancelled? tasks) "All tasks should be cancelled")
+          (is (every? #(identical? (q/get-ex task-b) (q/get-ex %)) tasks)
+            "The original cancellation exception survives the cascade")
           (is (empty? @results) "Handlers should not have run."))))))
 
 
@@ -159,7 +161,7 @@
 
 (def-results handler-behavior-test
   (clause :only-finally-runs "Only finally runs when upstream is cancelled"
-    (let [task-a          (q/sleep 10 :a-result)
+    (let [task-a          (q/promise)
           results         (atom #{})
           first-completed (q/promise)
           record!         (fn [k] (fn [& _] (swap! results conj k) (first-completed k)))
@@ -215,6 +217,103 @@
           (is (false? c) "Parent didn't cancel.")
           (is (some? e) "Parent did throw.")
           (is (not @b-ran) "Sibling b is torn down when parent a terminates."))))))
+
+
+(def-results cancellation-cause-test
+  (clause :shared-input "A shared input retains the failure that cancelled it"
+    (let [error    (make-exception "Sibling failed")
+          failing  (q/promise)
+          shared   (q/promise)
+          joined   (q/then failing shared vector)
+          rejoined (q/then joined shared vector)]
+      (q/fail failing error)
+      (with-task rejoined
+        (result [_v e]
+          ;; Either failure or its teardown may reach the join first. Both must
+          ;; retain the same error; this test makes no promise about that order.
+          (is (identical? error e))
+          (is (q/cancelled? shared))
+          (is (identical? error (q/get-ex shared)))
+          #?(:clj (is (identical? error (try @shared (catch Throwable e e)))))))))
+
+  (clause :handlers "The original failure does not turn cancellation into a handleable error"
+    (let [error       (make-exception "Sibling failed")
+          failing     (q/promise)
+          shared      (q/promise)
+          joined      (q/then failing shared vector)
+          ran         (atom [])
+          handlers    (mapv (fn [handler]
+                              (handler shared (fn [& _] (swap! ran conj :ran))))
+                        [q/then q/catch q/handle q/ok q/err q/done])
+          finally-args (q/promise)]
+      (q/finally shared (fn [v e c] (finally-args [v e c])))
+      (q/fail failing error)
+      (with-task finally-args
+        (result [[v e c]]
+          (is (nil? v))
+          (is (identical? error e))
+          (is (true? c))
+          (is (empty? @ran))
+          (is (every? q/cancelled? handlers))
+          (is (identical? error (q/get-ex joined)))))))
+
+  (clause :qlet "qlet retains the originating error regardless of the winning propagation path"
+    (let [error   (make-exception "Sibling failed")
+          failing (q/promise)
+          shared  (q/promise)
+          task    (q/qlet [a failing
+                           b shared
+                           joined (vector a b)
+                           rejoined (vector joined b)]
+                    rejoined)]
+      (q/fail failing error)
+      (with-task task
+        (result [_v e]
+          (is (identical? error e))
+          (is (q/cancelled? shared))
+          (is (identical? error (q/get-ex shared)))))))
+
+  (clause :descendants "Failure-driven cancellation retains its cause through multiple generations"
+    (let [error      (make-exception "Parent failed")
+          ready      (q/promise)
+          child-ref  (atom nil)
+          leaf-ref   (atom nil)
+          parent     (q/task
+                       (reset! child-ref
+                         (q/task
+                           (let [leaf (q/promise)]
+                             (reset! leaf-ref leaf)
+                             (ready true)
+                             leaf)))
+                       (q/then ready (fn [_] (throw error))))]
+      (with-task (q/await parent)
+        (result []
+          (is (identical? error (q/get-ex parent)))
+          (doseq [task [@child-ref @leaf-ref]]
+            (is (q/cancelled? task))
+            (is (identical? error (q/get-ex task))))))))
+
+  (clause :successful-owner "Successful scope cleanup still supplies a cancellation exception"
+    (let [child-ref (atom nil)
+          parent    (q/task
+                      (reset! child-ref (q/promise))
+                      :done)]
+      (with-task (q/await parent)
+        (result []
+          (is (= :done (q/get-now parent nil)))
+          (is (q/cancelled? @child-ref))
+          #?(:clj  (is (instance? CancellationException (q/get-ex @child-ref)))
+             :cljs (is (true? (:cancelled (ex-data (q/get-ex @child-ref)))))))))))
+
+
+#?(:cljs (deftest cancellation-retains-falsy-cause-test
+           (let [failing (q/task (throw false))
+                 shared  (q/promise)
+                 joined  (q/then failing shared vector)]
+             (with-task joined
+               (result []
+                 (is (q/cancelled? shared))
+                 (is (false? (q/get-ex shared))))))))
 
 
 ;; # Borrowed vs child
