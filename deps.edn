@@ -2,7 +2,7 @@
 
  :deps  {co.multiply/scoped        {:mvn/version "0.1.18"}
          co.multiply/machine-latch {:mvn/version "0.1.17"}
-         co.multiply/pathling      {:mvn/version "0.2.1"}
+         co.multiply/pathling      {:mvn/version "1.0.0"}
          co.multiply/conc          {:mvn/version "0.1.3"}
 
          #_#_org.clojure/clojure       {:mvn/version "1.12.4"}

@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.11.6 - 2026-10-30
+
+- Update Pathling to 1.0.0, including traversal and replacement fixes on Clojure and ClojureScript.
 
 - Preserve the originating error when exceptional settlement cancels other tasks, including subsequent cancellation
   cascades. Cancellation remains a control signal: `cancelled?` stays true, execution is stopped, and `catch` and
