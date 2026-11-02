@@ -1,0 +1,62 @@
+{
+  "source_commit": "ba12d2380a9f1e9c9a6141d63101d36239a26530",
+  "fork_commit": "c6f5ee93d25fee29da3c11421d4baf5993c3ed4b",
+  "files": {
+    "java/co/multiply/quiescent/impl/channel/BoundedChannel.java": {
+      "git_blob": "6bc46608d261f8a0d6c0aa95fe533ce8533b3ffd",
+      "sha256": "7d58cd4bd9238a8576453c5f4904a89196c0916df0e06abd8bba72186347b1da"
+    },
+    "java/co/multiply/quiescent/impl/channel/QNode.java": {
+      "git_blob": "885bedf3ff251a93bc960934a71bf57df8cc19e9",
+      "sha256": "ce2c96437beb776741dd27bcbd4b73a2a732597d061996beb4043c925b3d9203"
+    },
+    "java/co/multiply/quiescent/impl/channel/IChannel.java": {
+      "git_blob": "de4cae26244646493f2107956d0f24ff55899a01",
+      "sha256": "1fdacf62b72d185976febea69b314de9dc79e6a00a20c276e99af984eb2451d5"
+    },
+    "java/co/multiply/quiescent/impl/channel/IBuffered.java": {
+      "git_blob": "98e7e79548283ccfd77165bff8a2a0ed75353e30",
+      "sha256": "1188f579a371330161d21cb48363054893dc51a58027a56e6097bd82e16ad92f"
+    },
+    "src/co/multiply/quiescent/channel.clj": {
+      "git_blob": "a2ed47174dea4c36218e6123f0e81be7c4c1ed14",
+      "sha256": "c0fb400686472dccc3157df61a89b9bc0dc2ae8ed54f7f9d0cf40f97e637adf3"
+    },
+    "dev/channel_bench.clj": {
+      "git_blob": "e1efa1050b31efe68262a19329676b9b039adeb5",
+      "sha256": "9d7e4bb313db638ff272bd36694760b0b4d6782c212b34692de8d59a3a2ef66d"
+    },
+    "plans/channels-queuelock.md": {
+      "git_blob": "d1ccb03f59e7dbc326e2a6f06a35bcb44c8f838a",
+      "sha256": "85046effdeb18f00488178b985d3f301b4d0fd9ab44ce846fdaf4aeb159e9759"
+    },
+    "plans/channels-adaptive.md": {
+      "git_blob": "3cf08843c888062278aa39e866a455386c02e123",
+      "sha256": "0ad3c9dce80e0b5d997fbc93da002d849eeddf5fe66b5eef5a71764d65f1501d"
+    },
+    "plans/channels-small.md": {
+      "git_blob": "d15b503930a0d079559ab711cb0fdcc6d2b54c4b",
+      "sha256": "fdbf68ce62b054b20492944da27075162c0f9adabcc96739e4c2ef8fd2fe0b21"
+    },
+    "benchmark_results.md": {
+      "git_blob": "190a03dfb7d6484987fa39a12ca0528a0c006f86",
+      "sha256": "895589037b9bea5856d2d6b38f9d24ed6688d2b7c3f2fe528d08b33a3f93fd72"
+    },
+    "benchmark_results-reentrant.md": {
+      "git_blob": "7e99e15e9b5c4523618b59df914c46c85dfd6047",
+      "sha256": "f094ef9205571c96bd6c38f6d2a02d362b3a65fb20523feee55effc4f4430fc0"
+    },
+    "deps.edn": {
+      "git_blob": "2c81a62541b65c9310fa4dcdddf7ea00aae4d5c1",
+      "sha256": "cbe494c11c33a8d6e747d7484251abcc047f1b496a5c7ab91f3d0f51f919496d"
+    },
+    "build.clj": {
+      "git_blob": "7ee9a24cd67d73af3eddeed6aa011019bfab7117",
+      "sha256": "fd7e75fa459177646f3e7c1e0f02be8da886839f97680506cc9710dfdce779ea"
+    },
+    "tests.edn": {
+      "git_blob": "aad99fc813765bb335616c5fbb304258ee166ac6",
+      "sha256": "bcf612605cb03cc408d52d8c5c393b25946ed3cfa1ce27d740a3c550454160de"
+    }
+  }
+}
