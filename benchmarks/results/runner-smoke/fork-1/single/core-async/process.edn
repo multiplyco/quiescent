@@ -1,0 +1,16 @@
+{:pid 22903,
+ :exit-status 0,
+ :command
+ ["/Users/henrik/.sdkman/candidates/java/27.0.0-amzn/bin/java"
+  "-XX:-OmitStackTraceInFastThrow"
+  "-Xms2g"
+  "-Xmx2g"
+  "-Dclojure.basis=.cpcache/2920413443.basis"
+  "-cp"
+  "bench:src:target/classes:java:/Users/henrik/.m2/repository/co/multiply/conc/0.1.3/conc-0.1.3.jar:/Users/henrik/.m2/repository/co/multiply/machine-latch/0.1.17/machine-latch-0.1.17.jar:/Users/henrik/.m2/repository/co/multiply/pathling/0.2.1/pathling-0.2.1.jar:/Users/henrik/.m2/repository/co/multiply/scoped/0.1.18/scoped-0.1.18.jar:/Users/henrik/.m2/repository/org/clojure/clojure/1.12.4/clojure-1.12.4.jar:/Users/henrik/.m2/repository/org/clojure/core.async/1.9.865/core.async-1.9.865.jar:/Users/henrik/.m2/repository/org/clojure/core.specs.alpha/0.4.74/core.specs.alpha-0.4.74.jar:/Users/henrik/.m2/repository/org/clojure/spec.alpha/0.5.238/spec.alpha-0.5.238.jar:/Users/henrik/.m2/repository/org/clojure/tools.analyzer.jvm/1.3.3/tools.analyzer.jvm-1.3.3.jar:/Users/henrik/.m2/repository/org/clojure/core.memoize/1.1.266/core.memoize-1.1.266.jar:/Users/henrik/.m2/repository/org/clojure/tools.analyzer/1.2.0/tools.analyzer-1.2.0.jar:/Users/henrik/.m2/repository/org/clojure/tools.reader/1.5.0/tools.reader-1.5.0.jar:/Users/henrik/.m2/repository/org/ow2/asm/asm/9.2/asm-9.2.jar:/Users/henrik/.m2/repository/org/clojure/core.cache/1.1.234/core.cache-1.1.234.jar:/Users/henrik/.m2/repository/org/clojure/data.priority-map/1.2.0/data.priority-map-1.2.0.jar:/opt/homebrew/Cellar/clojure/1.12.6.1673/libexec/exec.jar"
+  "clojure.main"
+  "-m"
+  "quiescent.benchmark"
+  "/Users/henrik/clojure/quiescent/benchmarks/results/runner-smoke/fork-1/single/core-async/request.edn"
+  "/Users/henrik/clojure/quiescent/benchmarks/results/runner-smoke/fork-1/single/core-async"],
+ :timed-out? false}

@@ -1,0 +1,175 @@
+.gitignore --- Text
+19 19 node_modules
+20 20 pom.xml
+21 21 pom.xml.asc
+   22 /benchmarks/results/
+
+bb.edn --- Clojure
+68   format:fix        {:doc  "Fix code  68   format:fix        {:doc  "Fix code
+..  formatting"                          ..  formatting"
+69                      :task (shell "c  69                      :task (shell "c
+.. ljstyle fix")}                        .. ljstyle fix")}
+..                                       70 
+..                                       71   bench:check       {:doc "Check JVM
+..                                       ..  channel benchmark workloads and run
+..                                       .. ner"
+..                                       72                      :depends [compi
+..                                       .. le:java]
+..                                       73                      :task (shell "c
+..                                       .. lojure -Srepro -M:bench:bench-test")
+..                                       .. }
+70                                       74 
+71   bench             {:doc     "Run b  75   bench             {:doc "Run saved
+.. enchmarks (-q/--quick --only :group   ..  JVM channel benchmarks (:profile :f
+.. ... -v/--verbose)"                    .. ull/:quick/:smoke :cases [...] :fork
+..                                       .. s 4)"
+..                                       76                      :depends [test:
+..                                       .. clj bench:check]
+..                                       77                      :task (apply sh
+..                                       .. ell "clojure" "-Srepro" "-X:bench" *
+..                                       .. command-line-args*)}
+..                                       78 
+..                                       79   bench:legacy      {:doc     "Explo
+..                                       .. ratory legacy Criterium harness (-q 
+..                                       .. --only :group)"
+72                      :depends [compi  80                      :depends [compi
+.. le:java]                              .. le:java]
+73                      :task    (do (a  81                      :task    (do (a
+.. pply shell "clj"                      .. pply shell "clj"
+74                                       82                                     
+..       "-J-XX:+StartAttachListener"    ..       "-J-XX:+StartAttachListener"
+
+build.clj --- Clojure
+30                                       30 
+31                                       31 
+32 (def provided-dep                     32 (def provided-dep
+33   "    <dependency>                   33   "    <dependency>
+34       <groupId>org.clojure</groupId>  34       <groupId>org.clojure</groupId>
+35       <artifactId>core.async</artifa  35       <artifactId>core.async</artifa
+.. ctId>                                 .. ctId>
+36       <version>1.8.741</version>      36       <version>1.9.865</version>
+37       <scope>provided</scope>         37       <scope>provided</scope>
+38     </dependency>")                   38     </dependency>")
+39                                       39 
+40                                       40 
+41 (defn- add-provided-deps              41 (defn- add-provided-deps
+
+deps.edn --- Clojure
+ 9          #_#_org.clojure/clojurescri   9          #_#_org.clojure/clojurescri
+ . pt {:mvn/version "1.12.134"}}          . pt {:mvn/version "1.12.134"}}
+10                                       10 
+11  :aliases                             11  :aliases
+12  {:dev         {:extra-paths ["dev"]  12  {:bench       {:extra-paths ["bench
+..                                       .. "]
+..                                       13                 :extra-deps {org.clo
+..                                       .. jure/clojure {:mvn/version "1.12.4"}
+..                                       14                              org.clo
+..                                       .. jure/core.async {:mvn/version "1.9.8
+..                                       .. 65"}}
+..                                       15                 :jvm-opts ["-Xms2g" 
+..                                       .. "-Xmx2g"]
+..                                       16                 :exec-fn quiescent.b
+..                                       .. enchmark/run!}
+..                                       17 
+..                                       18   :bench-test  {:extra-paths ["bench
+..                                       .. -test"]
+..                                       19                 :main-opts ["-m" "qu
+..                                       .. iescent.benchmark-test"]}
+..                                       20 
+..                                       21   :dev         {:extra-paths ["dev"]
+13                 :extra-deps  {org.cl  22                 :extra-deps  {org.cl
+.. ojure/core.async                   {  .. ojure/core.async                   {
+.. :mvn/version "1.8.741"}               .. :mvn/version "1.9.865"}
+14                               com.cl  23                               com.cl
+.. ojure-goes-fast/clj-async-profiler {  .. ojure-goes-fast/clj-async-profiler {
+.. :mvn/version "2.0.0-beta1"}           .. :mvn/version "2.0.0-beta1"}
+15                               criter  24                               criter
+.. ium/criterium                      {  .. ium/criterium                      {
+.. :mvn/version "0.4.6"}                 .. :mvn/version "0.4.6"}
+16                               nrepl/  25                               nrepl/
+.. nrepl                              {  .. nrepl                              {
+.. :mvn/version "1.5.2"}}                .. :mvn/version "1.5.2"}}
+17                 :jvm-opts    ["-Djdk  26                 :jvm-opts    ["-Djdk
+.. .attach.allowAttachSelf"]}            .. .attach.allowAttachSelf"]}
+18                                       27 
+19   :test        {:extra-paths ["test"  28   :test        {:extra-paths ["test"
+.. ]                                     .. ]
+20                 :extra-deps  {org.cl  29                 :extra-deps  {org.cl
+.. ojure/core.async {:mvn/version "1.8.  .. ojure/core.async {:mvn/version "1.9.
+.. 741"}                                 .. 865"}
+21                               lambda  30                               lambda
+.. island/kaocha    {:mvn/version "1.91  .. island/kaocha    {:mvn/version "1.91
+.. .1392"}}}                             .. .1392"}}}
+22                                       31 
+23   :build       {:ns-default build     32   :build       {:ns-default build
+24                 :deps       {io.gith  33                 :deps       {io.gith
+.. ub.clojure/tools.build {:mvn/version  .. ub.clojure/tools.build {:mvn/version
+..  "0.10.11"}                           ..  "0.10.11"}
+25                              slipset  34                              slipset
+.. /deps-deploy           {:mvn/version  .. /deps-deploy           {:mvn/version
+..  "0.2.2"}}}                           ..  "0.2.2"}}}
+26                                       35 
+27   :cljdoc      {:extra-deps {io.gith  36   :cljdoc      {:extra-deps {io.gith
+.. ub.cljdoc/cljdoc-analyzer {:git/tag   .. ub.cljdoc/cljdoc-analyzer {:git/tag 
+.. "v1.0.873" :git/sha "bf4f620c"}       .. "v1.0.873" :git/sha "bf4f620c"}
+28                              org.clo  37                              org.clo
+.. jure/core.async           {:mvn/vers  .. jure/core.async           {:mvn/vers
+.. ion "1.8.741"}}                       .. ion "1.9.865"}}
+29                 :main-opts  ["-m" "c  38                 :main-opts  ["-m" "c
+.. ljdoc-analyzer.cljdoc-main"]}         .. ljdoc-analyzer.cljdoc-main"]}
+30                                       39 
+31   :shadow-cljs {:extra-deps {thhelle  40   :shadow-cljs {:extra-deps {thhelle
+.. r/shadow-cljs {:mvn/version "3.3.4"}  .. r/shadow-cljs {:mvn/version "3.3.4"}
+.. }}}}                                  .. }}}}
+
+dev/channel_bench.clj --- 1/4 --- Clojure
+ 3     [clojure.core.async :as a]         3     [clojure.core.async :as a]
+ 4     [clojure.pprint :as pp]            4     [clojure.pprint :as pp]
+ 5     [clojure.string :as str]           5     [clojure.string :as str]
+ 6     [co.multiply.quiescent :as q :re   6     [co.multiply.quiescent :as q :re
+ . fer [qdo qfor]]                        . fer [qjoin qfor]]
+ 7     [co.multiply.quiescent.channel :   7     [co.multiply.quiescent.channel :
+ . refer [chan pipe poll put! seal! tak   . refer [chan pipe poll put! seal! tak
+ . e!]]                                   . e!]]
+ 8     [criterium.core :as c])            8     [criterium.core :as c])
+ 9   (:import [java.time Duration]        9   (:import [java.time Duration]
+
+dev/channel_bench.clj --- 2/4 --- Clojure
+38       :ping-pong                      38       :ping-pong
+39       (let [ch-a (make-ch buffer)     39       (let [ch-a (make-ch buffer)
+40             ch-b (make-ch buffer)]    40             ch-b (make-ch buffer)]
+41         @(-> (qdo                     41         @(-> (qjoin
+42                (q/task (dotimes [_ n  42                (q/task (dotimes [_ n
+.. ] (put! ch-b (take! ch-a))))          .. ] (put! ch-b (take! ch-a))))
+43                (q/task (dotimes [_ n  43                (q/task (dotimes [_ n
+.. ] (put! ch-a :ping) (take! ch-b))))   .. ] (put! ch-a :ping) (take! ch-b))))
+44            (q/timeout timeout (Timeo  44            (q/timeout timeout (Timeo
+.. utException. "Benchmark took more th  .. utException. "Benchmark took more th
+.. an 10 minutes"))))                    .. an 10 minutes"))))
+
+dev/channel_bench.clj --- 3/4 --- Clojure
+47       (let [ch-a  (if xf (make-ch bu  47       (let [ch-a  (if xf (make-ch bu
+.. ffer xf) (make-ch buffer))            .. ffer xf) (make-ch buffer))
+48             ch-b  (make-ch buffer)    48             ch-b  (make-ch buffer)
+49             per-p (quot n producers)  49             per-p (quot n producers)
+.. ]                                     .. ]
+50         @(-> (qdo                     50         @(-> (qjoin
+51                (pipe ch-a ch-b)       51                (pipe ch-a ch-b)
+52                (qfor [_ (range consu  52                (qfor [_ (range consu
+.. mers)]                                .. mers)]
+53                  (q/task (loop [] (p  53                  (q/task (loop [] (p
+.. oll [_ ch-b] (recur) nil))))          .. oll [_ ch-b] (recur) nil))))
+
+dev/channel_bench.clj --- 4/4 --- Clojure
+60       ;; default: throughput (plain   60       ;; default: throughput (plain 
+.. or xf, determined by :xf key)         .. or xf, determined by :xf key)
+61       (let [ch    (if xf (make-ch bu  61       (let [ch    (if xf (make-ch bu
+.. ffer xf) (make-ch buffer))            .. ffer xf) (make-ch buffer))
+62             per-p (quot n producers)  62             per-p (quot n producers)
+.. ]                                     .. ]
+63         @(-> (qdo                     63         @(-> (qjoin
+64                (qfor [_ (range consu  64                (qfor [_ (range consu
+.. mers)]                                .. mers)]
+65                  (q/task (loop [] (p  65                  (q/task (loop [] (p
+.. oll [_ ch] (recur) nil))))            .. oll [_ ch] (recur) nil))))
+66                (q/task                66                (q/task
