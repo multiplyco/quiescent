@@ -9,7 +9,11 @@ The current Quiescent channel API uses sealing only: rejected puts return false,
 and the workload handles exhausted takes through `if-take!`'s else branch.
 Public `take!` throws `NoSuchElementException` on exhaustion unless a default
 value is supplied; the Java exhaustion sentinel stays internal. Workload cleanup
-seals channels in both arms (using core.async's `close!` in its arm). Retained
+seals channels in both arms (using core.async's `close!` in its arm). Quiescent
+sealing waits behind earlier puts. On a failed trial, cleanup requests sealing
+on separate virtual threads so an abandoned producer cannot hide the original
+failure or timeout; the isolated worker process terminates remaining actors.
+Successful-trial cleanup remains synchronous and outside measurement. Retained
 captures preserve their original source snapshots and earlier lifecycle behavior.
 
 ```sh

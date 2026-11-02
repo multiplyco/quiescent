@@ -1,9 +1,11 @@
 (ns quiescent.benchmark-test
   (:require [clojure.test :refer [deftest is run-tests testing]]
+    [co.multiply.quiescent.channel :as ch]
     [quiescent.benchmark :as bench]
     [quiescent.allocation :as allocation]
     [quiescent.scenarios :as scenarios]
-    [quiescent.workload :as workload]))
+    [quiescent.workload :as workload])
+  (:import [java.util.concurrent CountDownLatch]))
 
 
 (deftest option-validation
@@ -65,6 +67,38 @@
       (is (= :passed (:status probe)))
       (is (:virtual-thread-terminated? probe))
       (is (<= (:expected-payload-bytes probe) (:observed-bytes probe))))))
+
+
+(deftest failed-trial-cleanup-does-not-block-behind-an-earlier-put
+  (let [channel (ch/chan 1)
+        _ (ch/put! channel :full)
+        ^java.lang.reflect.Field lock-field
+        (doto (.getDeclaredField (class channel) "putLock") (.setAccessible true))
+        lock (.get lock-field channel)
+        ;; Hold ownership so cleanup's seal cannot complete before the test
+        ;; releases it. This models a producer suspended on a full buffer.
+        blocker (.acquire ^co.multiply.quiescent.impl.channel.RelayLock lock)
+        result (promise)
+        preparation {:ready (CountDownLatch. 0) :done (CountDownLatch. 1)
+                     :gates [] :results [] :handles [] :channels [channel] :specs []}]
+    (try
+      (with-redefs [workload/prepare (fn [& _] preparation)]
+        (let [worker (Thread/startVirtualThread
+                       #(deliver result
+                          (try
+                            (workload/execute! {:id :blocked} :quiescent {:timeout-ms 25})
+                            (catch Throwable e e))))
+              error (deref result 2000 ::timeout)]
+          (is (instance? clojure.lang.ExceptionInfo error)
+            "The transfer timeout must escape even while cleanup is queued")
+          (when (instance? clojure.lang.ExceptionInfo error)
+            (is (= :transfer (get-in (ex-data error) [:cause :phase]))))
+          (.join worker 100)))
+      (finally (.release blocker)))
+    ;; Complete any queued cleanup and leave no channel workers behind.
+    (ch/seal! channel)
+    (is (= :full (ch/take! channel)))
+    (is (= ::end (ch/take! channel ::end)))))
 
 
 (defn -main

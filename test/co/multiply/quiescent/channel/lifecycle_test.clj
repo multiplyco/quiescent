@@ -24,8 +24,8 @@
 
 (deftest take-forms-wait-while-open-and-empty
   (doseq [[label take-fn] [[:take ch/take!]
-                         [:default #(ch/take! % ::exhausted)]
-                         [:branch #(ch/if-take! [v %] v ::exhausted)]]]
+                           [:default #(ch/take! % ::exhausted)]
+                           [:branch #(ch/if-take! [v %] v ::exhausted)]]]
     (testing (name label)
       (let [channel (ch/chan 1)
             result (promise)
@@ -44,11 +44,10 @@
             (.join worker 1000)))))))
 
 
-(deftest seal-releases-queued-operations
-  (doseq [operation [:put :take] xf? [false true]]
-    (testing (str operation " transducer=" xf?)
+(deftest seal-releases-queued-takes
+  (doseq [xf? [false true]]
+    (testing (str "transducer=" xf?)
       (let [channel (if xf? (ch/chan 1 (map identity)) (ch/chan 1))
-            _ (when (= :put operation) (ch/put! channel :buffered))
             results (object-array 8)
             done (CountDownLatch. 8)
             workers (mapv
@@ -56,10 +55,7 @@
                         (Thread/startVirtualThread
                           (fn []
                             (try
-                              (aset results i
-                                (if (= :put operation)
-                                  (ch/put! channel i)
-                                  (ch/take! channel ::exhausted)))
+                              (aset results i (ch/take! channel ::exhausted))
                               (catch Throwable e (aset results i e))
                               (finally (.countDown done))))))
                       (range 8))]
@@ -69,10 +65,7 @@
           (is (= 8 (.getCount done)) "All operations are pending before sealing")
           (ch/seal! channel)
           (is (.await done 2 TimeUnit/SECONDS) "Sealing must release the whole chain")
-          (is (every? (if (= :put operation) false? #(= ::exhausted %))
-                (vec results)))
-          (when (= :put operation)
-            (is (= :buffered (ch/take! channel)) "Sealing preserves existing values"))
+          (is (every? #(= ::exhausted %) (vec results)))
           (is (= ::exhausted (ch/take! channel ::exhausted)))
           (finally
             (ch/seal! channel)

@@ -26,11 +26,22 @@ import java.lang.invoke.VarHandle;
  * backpressure forces a mid-batch flush (e.g. mapcat expansion filling
  * the buffer). This batches volatile writes and gives consumers a
  * larger batch to drain per wake-up.
+ * <p>
+ * Sealing joins the put queue. Once it owns the put lock, it records the
+ * final producer sequence and publishes SEALED. That sequence is a persistent
+ * end marker, outside the ring, so sealing needs no free buffer slot.
  */
 public class BoundedChannel implements IChannel, IBuffered {
 
     static final int OPEN = 0;
     static final int SEALED = 1;
+
+    /** A queue boundary: a combiner must hand ownership to the sealing caller. */
+    private static final class SealNode extends RelayLock.Node {
+        SealNode(Thread thread) {
+            super(thread);
+        }
+    }
 
     static final VarHandle TAIL;
     static final VarHandle HEAD;
@@ -56,6 +67,9 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     // ---- Shared coordination ----
     volatile int state;
+    // Written once under putLock, before publishing state = SEALED.
+    // Consumers read it only after acquiring that state publication.
+    long sealedSequence;
 
     // ---- Padding between shared and consumer ----
     @SuppressWarnings("unused") private long sp01, sp02, sp03, sp04, sp05, sp06, sp07, sp08;
@@ -200,7 +214,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
 
         // Seal must precede release: successors must see SEALED state
-        if (putSealed) seal();
+        if (putSealed) sealOwned();
 
         last.release();
 
@@ -226,6 +240,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         while (state == OPEN && !putSealed) {
             Object succObj = current.state;
             if (!(succObj instanceof RelayLock.Node succ)) break;
+            if (succ instanceof SealNode) break;
 
             if (!writeValue(succ.value)) break;
 
@@ -274,6 +289,10 @@ public class BoundedChannel implements IChannel, IBuffered {
                 return ownValue;
             }
             if (state == SEALED) {
+                // The empty TAIL observation may predate sealing. SEALED
+                // publishes an immutable final sequence, including every
+                // preceding put's flush. Retry if those values remain.
+                if (h != sealedSequence) continue;
                 node.release();
                 if (interrupted) Thread.currentThread().interrupt();
                 return IChannel.SEALED;
@@ -312,10 +331,23 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     @Override
     public boolean seal() {
+        if (state != OPEN) return false;
+        RelayLock.Node node = new SealNode(Thread.currentThread());
+        putLock.acquire(node);
+        try {
+            return sealOwned();
+        } finally {
+            node.release();
+        }
+    }
+
+    /** Called with putLock ownership, after all preceding output is flushed. */
+    private boolean sealOwned() {
         if (this.state != OPEN) return false;
+        sealedSequence = tail;
         this.state = SEALED;
-        VarHandle.fullFence();
-        putLock.resume();
+        // The state write publishes sealedSequence and the preceding output.
+        // Queued producers are released by the normal ownership handoff.
         takeLock.resume();
         return true;
     }

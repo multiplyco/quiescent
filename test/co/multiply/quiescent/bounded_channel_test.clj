@@ -244,16 +244,21 @@
     (is (thrown? NoSuchElementException (take! ch)) "Exhaustion persists")))
 
 
-(deftest seal-wakes-parked-producer-test
+(deftest seal-waits-for-earlier-producer-test
   (let [ch     (chan 1)
-        result (promise)]
+        result (promise)
+        sealed (promise)]
     (put! ch :fill)
     (q/task (deliver result (put! ch :blocked)))
     (Thread/sleep 10)
     (is (not (realized? result)) "Producer should be parked")
-    (seal! ch)
-    (is (false? @result))
+    (q/task (deliver sealed (seal! ch)))
+    (Thread/sleep 10)
+    (is (not (realized? sealed)) "Seal waits behind the earlier put")
     (is (= :fill (take! ch)))
+    (is (true? @result))
+    (is (true? @sealed))
+    (is (= :blocked (take! ch)))
     (is (thrown? NoSuchElementException (take! ch)))))
 
 

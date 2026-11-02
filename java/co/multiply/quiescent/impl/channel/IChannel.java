@@ -18,7 +18,12 @@ public interface IChannel {
     boolean put(Object value) throws InterruptedException;
 
     // Lifecycle
-    /** Stop accepting puts, release waiters, and allow buffered values to drain. */
+    /**
+     * Wait in producer order, then fix the final sequence and allow values to
+     * drain. Puts ahead of this call finish first; puts behind it are rejected.
+     * May wait for consumers to provide capacity to earlier puts. Returns true
+     * only for the call that seals the channel.
+     */
     boolean seal();
 
     // Query

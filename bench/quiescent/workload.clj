@@ -191,6 +191,7 @@
    transfer/drain completion. Validate and await task teardown after timing."
   [spec framework {:keys [timeout-ms exact? small? allocation-bean] :or {timeout-ms 120000}}]
   (let [before-setup (allocation/total allocation-bean)
+        completed? (volatile! false)
         {:keys [ready done gates results handles channels specs]}
         (prepare spec framework exact? small?)]
     (try
@@ -208,6 +209,7 @@
               rs (vec results)
               workloads (validate! specs rs exact?)
               finish (apply max (map :finished-ns rs))]
+          (vreset! completed? true)
           {:elapsed-ns (- finish start)
            :allocation (when allocation-bean
                          {:setup-bytes (- before-transfer before-setup)
@@ -225,4 +227,11 @@
         (doseq [gate gates]
           (if (= framework :quiescent) (.countDown ^CountDownLatch gate) (a/close! gate)))
         (doseq [c channels]
-          (if (= framework :quiescent) (ch/seal! c) (a/close! c)))))))
+          (if (= framework :quiescent)
+            (if @completed?
+              (ch/seal! c)
+              ;; Sealing queues behind earlier puts. A failed trial may have
+              ;; lost its consumers, so cleanup must not hide its timeout.
+              ;; The isolated worker process terminates any remaining actors.
+              (Thread/startVirtualThread #(ch/seal! c)))
+            (a/close! c)))))))

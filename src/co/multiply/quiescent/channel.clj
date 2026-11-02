@@ -5,7 +5,8 @@
    virtual threads. `put!` writes a value, `take!` reads one. Both
    park the virtual thread when the buffer is full or empty.
 
-   `seal!` ends production while allowing buffered values to drain.
+   `seal!` waits its turn in the producer queue, ends production, and allows
+   buffered values to drain.
    Channels do not participate in task cancellation. To seal a channel
    when an owning task settles, explicitly attach a `q/finally` handler:
 
@@ -93,9 +94,11 @@
 ;; # Lifecycle
 ;; ################################################################################
 (defn seal!
-  "Seal the channel. No more puts accepted; existing values drain
-   normally. Releases waiting puts with false; waiting takes consume
-   buffered values or report exhaustion once drained.
+  "Seal the channel in producer queue order. Puts ahead of the seal finish;
+   puts behind it return false. May block waiting for consumers to make room
+   for earlier puts. Sealing itself needs no spare buffer capacity.
+   Buffered values drain normally; waiting takes consume them or report
+   exhaustion once the final producer sequence has been reached.
    Returns true if this call performed the seal. Does not cancel tasks."
   [ch]
   (IChannel/.seal ch))

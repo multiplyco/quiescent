@@ -3,8 +3,11 @@
 Design notes from exploration of adding channels — continuous computation
 primitives — to Quiescent.
 
-**Current bounded-channel contract:** `seal!` ends production and permits buffered
-values to drain. `put!` returns false on rejection. On exhaustion, `(take! ch)`
+**Current bounded-channel contract:** `seal!` queues behind earlier puts, records
+the final producer sequence when it acquires ownership, and permits buffered
+values to drain. Puts ahead of the seal finish; puts behind it are rejected.
+Sealing may wait for consumers to make room for earlier puts, but needs no
+buffer slot of its own. `put!` returns false on rejection. On exhaustion, `(take! ch)`
 throws `NoSuchElementException`, `(take! ch not-found)` returns the supplied
 value, and `if-take!` selects its else branch. Both take forms and `if-take!`
 wait while the channel is open and empty. The Java sentinel stays internal to

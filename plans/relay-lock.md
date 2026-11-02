@@ -9,8 +9,11 @@ piping, lifecycle operations, transducers, and buffer queries. The Alt sections
 below are deferred design sketches; the removed implementation and tests are
 preserved at tag `checkpoint1`.
 
-Channels now have only open/sealed states. `seal!` rejects pending puts, allows
-buffered values to drain, and releases exhausted Java takes with an internal
+Channels now have only open/sealed states. `seal!` joins the producer queue,
+waits for earlier puts, and records the terminal sequence under put ownership.
+Combiners stop before the seal node; later puts are rejected. Sealing may wait
+for consumers to provide capacity to preceding puts. It allows buffered values
+to drain and releases exhausted Java takes with an internal
 sentinel. The Clojure API reports exhaustion through an exception, a supplied
 default, or the else branch of `if-take!`. Channel operations do not explicitly
 cancel tasks; lifecycle wiring uses `q/finally`, and uncaught exceptions follow
