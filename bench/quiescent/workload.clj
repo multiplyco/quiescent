@@ -108,17 +108,17 @@
   [spec framework collect? small?]
   (let [specs (scenarios/workloads spec small?)
         channels (atom [])
-        make-channel (fn [buffer xf]
+        make-channel (fn [buffer]
                        (let [c (if (= framework :quiescent)
-                                 (if xf (ch/chan buffer (scenarios/transducer xf)) (ch/chan buffer))
-                                 (if xf (a/chan buffer (scenarios/transducer xf)) (a/chan buffer)))]
+                                 (ch/chan buffer)
+                                 (a/chan buffer))]
                          (swap! channels conj c)
                          c))
         actors (vec
                  (mapcat
-                   (fn [[id {:keys [type n buffer producers consumers xf]}]]
-                     (let [source (make-channel buffer xf)
-                           sink (if (#{:pipe :ping-pong} type) (make-channel buffer nil) source)
+                   (fn [[id {:keys [type n buffer producers consumers]}]]
+                     (let [source (make-channel buffer)
+                           sink (if (#{:pipe :ping-pong} type) (make-channel buffer) source)
                            values (vec (range n))
                            base {:workload id :collect? collect?}
                            remaining (java.util.concurrent.atomic.AtomicInteger. producers)]
@@ -166,15 +166,8 @@
     (fn [id spec]
       (let [rs (filter #(and (= id (:workload %)) (#{:consumer :ping} (:role %))) results)
             expected (when exact? (scenarios/expected-values spec))
-            input-n (:n spec)
-            even-n (quot (inc input-n) 2)
-            input-sum (quot (* input-n (dec input-n)) 2)
-            [expected-n expected-sum]
-            (case (:xf spec)
-              :map [input-n (+ input-sum input-n)]
-              :filter [even-n (* even-n (dec even-n))]
-              :mapcat [(* 2 input-n) (* 2 input-sum)]
-              [input-n input-sum])
+            expected-n (:n spec)
+            expected-sum (quot (* expected-n (dec expected-n)) 2)
             n (reduce + (map :count rs))
             sum (reduce + (map :sum rs))]
         (when-not (and (= expected-n n) (= expected-sum sum)

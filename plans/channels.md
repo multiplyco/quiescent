@@ -16,6 +16,10 @@ Channels have no cancelled state and are independent of task scope; use an
 explicit `q/finally` handler to seal a channel when its owner settles.
 An uncaught exhaustion exception follows normal task failure propagation.
 
+The current constructor is `(chan n)` only. Transducer support has been removed
+while the plain-channel foundation is established; commit `2115c15` retains the
+previous implementation. A future transducing variant is a separate design task.
+
 The exploratory sections below predate this decision. Their channel cancellation,
 implicit scoping, and additional channel types/operators are historical proposals,
 not the current API. See `src/co/multiply/quiescent/channel.clj` for that API.

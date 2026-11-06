@@ -5,6 +5,11 @@ pressure. Independent channels run concurrently *within* each measurement;
 benchmark JVMs run sequentially. Single-channel results are diagnostic controls.
 This suite is JVM-only. CLJS performance is outside its scope.
 
+The active implementation and benchmark catalog support plain channels only.
+Transducer support has been removed while the channel foundation is reviewed.
+Historical captures retain their transducer cases and original source snapshots;
+reproducing those cases requires the corresponding historical implementation.
+
 The current Quiescent channel API uses sealing only: rejected puts return false,
 and the workload handles exhausted takes through `if-take!`'s else branch.
 Public `take!` throws `NoSuchElementException` on exhaustion unless a default
@@ -31,9 +36,9 @@ case in the catalog, overriding the suite selection. Unknown options, duplicate
 selections and misspelled case names fail before a run starts. An optional
 `:output` is an EDN string naming a **new** directory.
 
-The nine primary cases are single-channel 1P1C, 50×1P1C, 50×4P4C, 200×1P1C with
-buffer 1, the mixed 40-workload case, 24×32P1C, 24×1P32C, 50×mapcat, and 20×map
-relay. The original 25 topologies remain available with `:suite :all`.
+The eight primary cases are single-channel 1P1C, 50×1P1C, 50×4P4C, 200×1P1C with
+buffer 1, the mixed 40-workload case, 24×32P1C, 24×1P32C, and 20×plain relay.
+All 16 plain-channel topologies are available with `:suite :all`.
 `bench/quiescent/scenarios.clj` records every buffer size, message count and
 producer/consumer count. The mixed case contains 30 ordinary channels and ten
 two-channel ping-pong pairs. A relay uses two channels and one forwarding actor;
@@ -50,7 +55,7 @@ pending operations on a single channel. Gate release and scheduling are timed.
 The end is the last actor's transfer/drain completion timestamp. There is no
 clock read or shared counter per message.
 
-Timed work includes puts/takes, scheduler waits, transducers, per-consumer count
+Timed work includes puts/takes, scheduler waits, per-consumer count
 and sum accumulation, producer completion coordination, sealing/closing and
 waking drained consumers. Channel/worker/payload creation, result validation,
 artifact serialization and task teardown are outside timing. Each trial uses
@@ -70,7 +75,7 @@ Each fresh worker JVM runs one topology and implementation. The full profile
 warms up for at least ten seconds of measured channel work and at least three
 trials, then records twelve timing trials and five separate allocation trials. A trial always completes its fixed workload;
 it is not cut short at a time limit. The default four forks per arm/case give
-72 JVMs for the primary suite. Forward/reverse arm order alternates between
+64 JVMs for the primary suite. Forward/reverse arm order alternates between
 forks (AB, BA, AB, BA), with adjacent arms on the same topology. Full runs may take
 hours, especially the buffer-one and contention cases. `:quick` uses full
 workload sizes with reduced warmup/repetition; `:smoke` also reduces messages per
@@ -88,9 +93,8 @@ small message counts but the original concurrency. These compare the complete
 multiset of received values against an independently generated expectation.
 Every timed trial verifies expected counts and sums for every workload. Those
 checks are cheaper but cannot prove absence of compensating loss/duplication;
-the exact checks and library tests supply the complementary evidence. Counts and
-expectations include filter drops and mapcat expansion. All producers must finish,
-and all consumers drain before a sample is accepted.
+the exact checks and library tests supply the complementary evidence. All
+producers must finish, and all consumers drain before a sample is accepted.
 
 The library's FIFO lock/channel tests remain correctness prerequisites. Throughput
 alone does not establish no-barging or starvation freedom. Per-channel completion
@@ -132,9 +136,8 @@ accumulation, result handoff and small measurement costs. Whole-JVM background
 allocation is included. There is no per-message allocation instrumentation.
 The sum is also retained; it excludes validation, serialization and final channel
 cleanup. Transfer bytes per delivered value and setup bytes per workload trial
-are reported for every JVM. Filter/mapcat change delivered counts; relay and
-ping-pong perform extra transfers, so compare like topologies, not these
-normalizations across unrelated cases.
+are reported for every JVM. Relay and ping-pong perform extra transfers, so
+compare like topologies, not these normalizations across unrelated cases.
 
 Five read-pair control deltas are retained without subtraction. These controls
 quantify counter-read noise, not the entire coordination harness. Allocation

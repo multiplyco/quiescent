@@ -10,8 +10,16 @@
 
 (deftest option-validation
   (doseq [opts [{:unknown true} {:cases []} {:cases [:typo]} {:frameworks [:typo]}
-                {:forks 0} {:profile :typo} {:suite :typo} {:list? :yes}]]
+                {:cases [:mapcat]} {:forks 0} {:profile :typo} {:suite :typo} {:list? :yes}]]
     (is (thrown? clojure.lang.ExceptionInfo (bench/options opts)))))
+
+
+(deftest retired-transducer-specifications-are-rejected
+  ;; Old captures must not silently run as plain channels under their old labels.
+  (doseq [spec [{:buffer 8 :n 16 :xf :map}
+                {:buffer 8 :workloads [{:n 16 :xf :identity}]}]]
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Transducer workloads"
+          (scenarios/workloads spec true)))))
 
 
 (deftest balanced-schedule
@@ -36,7 +44,8 @@
 
 
 (deftest every-topology-completes-with-exact-results
-  (is (= (count scenarios/cases) (count scenarios/ids) (count (distinct scenarios/ids))))
+  (is (= (count scenarios/scenarios) (count scenarios/cases)
+         (count scenarios/ids) (count (distinct scenarios/ids))))
   (doseq [spec scenarios/cases framework [:quiescent :core-async]]
     (testing (str (:id spec) " " framework)
       (let [result (workload/execute! spec framework {:small? true :exact? true :timeout-ms 15000})]

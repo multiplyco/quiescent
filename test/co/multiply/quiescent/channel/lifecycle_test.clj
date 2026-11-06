@@ -45,31 +45,29 @@
 
 
 (deftest seal-releases-queued-takes
-  (doseq [xf? [false true]]
-    (testing (str "transducer=" xf?)
-      (let [channel (if xf? (ch/chan 1 (map identity)) (ch/chan 1))
-            results (object-array 8)
-            done (CountDownLatch. 8)
-            workers (mapv
-                      (fn [i]
-                        (Thread/startVirtualThread
-                          (fn []
-                            (try
-                              (aset results i (ch/take! channel ::exhausted))
-                              (catch Throwable e (aset results i e))
-                              (finally (.countDown done))))))
-                      (range 8))]
-        (try
-          ;; The first waiter holds its side's lock; the rest wait in its chain.
-          (run! await-parked! workers)
-          (is (= 8 (.getCount done)) "All operations are pending before sealing")
-          (ch/seal! channel)
-          (is (.await done 2 TimeUnit/SECONDS) "Sealing must release the whole chain")
-          (is (every? #(= ::exhausted %) (vec results)))
-          (is (= ::exhausted (ch/take! channel ::exhausted)))
-          (finally
-            (ch/seal! channel)
-            (doseq [^Thread thread workers] (.join thread 1000))))))))
+  (let [channel (ch/chan 1)
+        results (object-array 8)
+        done (CountDownLatch. 8)
+        workers (mapv
+                  (fn [i]
+                    (Thread/startVirtualThread
+                      (fn []
+                        (try
+                          (aset results i (ch/take! channel ::exhausted))
+                          (catch Throwable e (aset results i e))
+                          (finally (.countDown done))))))
+                  (range 8))]
+    (try
+      ;; The first waiter holds its side's lock; the rest wait in its chain.
+      (run! await-parked! workers)
+      (is (= 8 (.getCount done)) "All operations are pending before sealing")
+      (ch/seal! channel)
+      (is (.await done 2 TimeUnit/SECONDS) "Sealing must release the whole chain")
+      (is (every? #(= ::exhausted %) (vec results)))
+      (is (= ::exhausted (ch/take! channel ::exhausted)))
+      (finally
+        (ch/seal! channel)
+        (doseq [^Thread thread workers] (.join thread 1000))))))
 
 
 (deftest task-lifecycle-wiring-is-explicit

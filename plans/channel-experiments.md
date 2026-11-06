@@ -1,12 +1,15 @@
 # Isolated channel experiments
 
-`channel/main` now contains only bounded channel support. Alt and its tests were
+`channel/main` now contains only plain bounded channel support. Alt and its tests were
 removed after tag `checkpoint1`; that tag preserves the previous implementation.
 Channel cancellation has also been removed: sealing ends production and allows
 buffered values to drain. Put rejection returns false; take exhaustion throws
 `NoSuchElementException`, returns a caller-supplied default, or selects the else
 branch of `if-take!`. Task lifecycle wiring is explicit, for example through
 `q/finally`; uncaught exceptions follow normal task failure propagation.
+Transducer support has also been removed; commit `2115c15` retains that earlier
+implementation. A future transducing variant will be reconsidered after the
+plain-channel foundation is established.
 The experimental branches described below still represent the earlier split and
 need to be reconciled with the simplified base before further comparisons.
 

@@ -13,7 +13,7 @@
 
 ;; -- Channel factories --
 ;;
-;; A framework is: a channel constructor (1-arity plain, 2-arity with xf),
+;; A framework is: a channel constructor taking the buffer size,
 ;; an execution model (:quiescent or :core-async), and a display name.
 ;; Adding a new channel implementation = adding one map entry.
 
@@ -32,7 +32,7 @@
 (declare run-scenario)
 
 (defn- run-quiescent
-  [{:keys [type n producers consumers buffer make-ch xf quick]}]
+  [{:keys [type n producers consumers buffer make-ch quick]}]
   (let [timeout (if quick (Duration/ofMinutes 1) (Duration/ofMinutes 10))]
     (case type
       :ping-pong
@@ -44,7 +44,7 @@
            (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes"))))
 
       :pipe
-      (let [ch-a  (if xf (make-ch buffer xf) (make-ch buffer))
+      (let [ch-a  (make-ch buffer)
             ch-b  (make-ch buffer)
             per-p (quot n producers)]
         @(-> (qjoin
@@ -57,8 +57,8 @@
                  (seal! ch-a)))
            (q/timeout timeout (TimeoutException. "Benchmark took more than 10 minutes"))))
 
-      ;; default: throughput (plain or xf, determined by :xf key)
-      (let [ch    (if xf (make-ch buffer xf) (make-ch buffer))
+      ;; default: plain-channel throughput
+      (let [ch    (make-ch buffer)
             per-p (quot n producers)]
         @(-> (qjoin
                (qfor [_ (range consumers)]
@@ -71,7 +71,7 @@
 
 
 (defn- run-core-async
-  [{:keys [type n producers consumers buffer xf]}]
+  [{:keys [type n producers consumers buffer]}]
   (case type
     :ping-pong
     (let [ch-a (a/chan buffer)
@@ -82,7 +82,7 @@
       (a/<!! pong))
 
     :pipe
-    (let [ch-a (if xf (a/chan buffer xf) (a/chan buffer))
+    (let [ch-a (a/chan buffer)
           ch-b (a/chan buffer)
           _    (a/pipe ch-a ch-b)
           cs   (mapv (fn [_] (a/go (loop [] (when-some [_ (a/<! ch-b)] (recur))))) (range consumers))
@@ -91,8 +91,8 @@
       (a/close! ch-a)
       (run! a/<!! cs))
 
-    ;; default: throughput (plain or xf, determined by :xf key)
-    (let [ch  (if xf (a/chan buffer xf) (a/chan buffer))
+    ;; default: plain-channel throughput
+    (let [ch  (a/chan buffer)
           cs  (mapv (fn [_] (a/go (loop [] (when-some [_ (a/<! ch)] (recur))))) (range consumers))
           ps  (mapv (fn [_] (a/go (dotimes [i (quot n producers)] (a/>! ch i)))) (range producers))]
       (run! a/<!! ps)
@@ -128,8 +128,6 @@
    {:scenario "1P1C" :group :isolated :producers 1 :consumers 1 :n 1000000 :buffer 1}
    {:scenario "4P4C" :group :isolated :producers 4 :consumers 4 :n 1000000 :buffer 1024}
    {:scenario "Ping-pong" :group :isolated :type :ping-pong :n 100000 :buffer 1}
-   {:scenario  "XF map 1P1C" :group :isolated :xf (map inc)
-    :producers 1 :consumers 1 :n 1000000 :buffer 1024}
 
    ;; ================================================================
    ;; Saturated symmetric (M× parallel, balanced producer/consumer)
@@ -165,22 +163,6 @@
     :workloads [{:count 24 :producers 1 :consumers 128 :n 96000}]}
 
    ;; ================================================================
-   ;; Saturated fan-in XF (put-side combining + transducer, buf=64)
-   ;; ================================================================
-   {:scenario  "24×XF 32P1C" :group :fan-in-xf :buffer 64
-    :workloads [{:count 24 :xf (map identity) :producers 32 :consumers 1 :n 96000}]}
-   {:scenario  "24×XF 128P1C" :group :fan-in-xf :buffer 64
-    :workloads [{:count 24 :xf (map identity) :producers 128 :consumers 1 :n 96000}]}
-
-   ;; ================================================================
-   ;; Saturated fan-out XF (take-side combining + transducer, buf=64)
-   ;; ================================================================
-   {:scenario  "24×XF 1P32C" :group :fan-out-xf :buffer 64
-    :workloads [{:count 24 :xf (map identity) :producers 1 :consumers 32 :n 96000}]}
-   {:scenario  "24×XF 1P128C" :group :fan-out-xf :buffer 64
-    :workloads [{:count 24 :xf (map identity) :producers 1 :consumers 128 :n 96000}]}
-
-   ;; ================================================================
    ;; Optimal conditions (buf=1024 — does scaling the consumer side
    ;; help when producers saturate the buffer?)
    ;; n must be divisible by producer count
@@ -191,25 +173,10 @@
     :workloads [{:count 24 :producers 128 :consumers 16 :n 96000}]}
 
    ;; ================================================================
-   ;; Saturated transducer (XF-specific scenarios under saturation)
-   ;; ================================================================
-   {:scenario  "50×XF filter 1P1C" :group :saturated-xf :buffer 64
-    :workloads [{:count 50 :xf (filter even?) :pass-ratio 0.5
-                 :producers 1 :consumers 1 :n 100000}]}
-   {:scenario  "50×XF mapcat 1P1C" :group :saturated-xf :buffer 64
-    :workloads [{:count 50 :xf (mapcat #(vector % %)) :expand-factor 2
-                 :producers 1 :consumers 1 :n 50000}]}
-   {:scenario  "50×XF map 4P4C" :group :saturated-xf :buffer 64
-    :workloads [{:count 50 :xf (map inc)
-                 :producers 4 :consumers 4 :n 100000}]}
-
-   ;; ================================================================
    ;; Saturated pipeline (pipe under saturation)
    ;; ================================================================
    {:scenario  "20×Pipe 4P→4C" :group :saturated-pipe :buffer 64
-    :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000}]}
-   {:scenario  "20×Pipe XF 4P→4C" :group :saturated-pipe :buffer 64
-    :workloads [{:count 20 :type :pipe :xf (map inc) :producers 4 :consumers 4 :n 100000}]}])
+    :workloads [{:count 20 :type :pipe :producers 4 :consumers 4 :n 100000}]}])
 
 
 ;; -- Bench harness --

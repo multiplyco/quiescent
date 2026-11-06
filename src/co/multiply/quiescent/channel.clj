@@ -33,12 +33,9 @@
    Buffer size is rounded up to the next power of 2. The channel
    supports multiple concurrent producers and consumers.
 
-   (chan 8)          ; plain buffer
-   (chan 16 (map inc)) ; with transducer"
-  ([n]
-   (BoundedChannel. (int n)))
-  ([n xf]
-   (BoundedChannel. (int n) xf)))
+   (chan 8)"
+  [n]
+  (BoundedChannel. (int n)))
 
 
 ;; # Core operations

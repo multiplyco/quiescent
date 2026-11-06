@@ -98,7 +98,7 @@
     (when (not= :full (get-in batch [:options :profile]))
       "Exploratory measurements; not a performance baseline.\n\n")
     "Primary metric: common start release through all transfer/drain work, including scheduler waits, "
-    "transducers, checksum/count accumulation, channel closing and wakeups. Channel, payload and worker creation, "
+    "checksum/count accumulation, channel closing and wakeups. Channel, payload and worker creation, "
     "validation and task teardown are outside timing. These are finite-batch durations, not per-operation latency.\n\n"
     "Each row summarizes independent JVM means. All raw trials and JVMs are retained. Spread is "
     "(max - min) / median; it is not a confidence interval. One fork does not establish JVM variability.\n\n"

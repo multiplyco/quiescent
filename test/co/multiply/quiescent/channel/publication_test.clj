@@ -9,9 +9,9 @@
 
 
 (deftest mutable-payload-publication-and-backpressure
-  (doseq [capacity [1 8] xf? [false true]]
-    (testing (str "capacity=" capacity " transducer=" xf?)
-      (let [ch (if xf? (BoundedChannel. capacity (map identity)) (BoundedChannel. capacity))
+  (doseq [capacity [1 8]]
+    (testing (str "capacity=" capacity)
+      (let [ch (BoundedChannel. capacity)
             done (CountDownLatch. 2)
             failure (atom nil)
             n 2000

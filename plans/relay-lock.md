@@ -5,9 +5,11 @@ A FIFO handoff lock with integrated cross-lock signaling. Three exchange
 structure.
 
 The active implementation is limited to bounded channels: put/take, `if-take!`,
-piping, lifecycle operations, transducers, and buffer queries. The Alt sections
-below are deferred design sketches; the removed implementation and tests are
-preserved at tag `checkpoint1`.
+piping, sealing, and buffer queries. Transducer support has been removed to
+establish the plain-channel foundation; the implementation through commit
+`2115c15` retains the previous transducer path. The transducer sections below
+are historical design notes. The Alt sections are also deferred design sketches;
+that implementation and its tests are preserved at tag `checkpoint1`.
 
 Channels now have only open/sealed states. `seal!` joins the producer queue,
 waits for earlier puts, and records the terminal sequence under put ownership.

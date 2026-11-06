@@ -3,13 +3,29 @@
 The current JVM channel needs an ordering argument for ownership transfer,
 buffer publication and reuse, operation completion, sealing, and notification.
 This is the issue list for working through that argument together. The agreed
-queued-sealing implementation and its ordering argument are recorded below;
-the other issues remain open.
+queued-sealing and put-handoff fixes are recorded below. Transducer support has
+been removed; the remaining plain-channel issues are open.
 
 Reviewed source: `channel/main` at
 `03a7ebfc3d1de16a7c7e9f0e813c3c76f3a91d33`, on 2026-11-02. Scope is the current
 `BoundedChannel`, `RelayLock`, their interfaces, and the Clojure channel API.
 Alt, channel cancellation, and the earlier experimental branches are excluded.
+
+On 2026-11-06, transducer support was removed from the active implementation,
+Clojure constructor, tests, and executable benchmark cases. Commit `2115c15`
+retains the preceding transducer implementation. The current channel runs no
+user reducing function under ownership and has no completion or `Reduced` path.
+Issue 4 therefore no longer applies to this implementation; failure semantics
+and implementation boundaries for a future transducing variant remain undecided.
+The proposed failure contract is not being added to the plain channel.
+
+The plain-channel revision passes 467 JVM tests / 4,298 assertions, and 8 benchmark
+checks / 128 assertions covering all 16 remaining cases against both libraries.
+The sealing, handoff, publication, lifecycle, and slot tests also pass with one
+virtual-thread carrier (11 tests / 3,135 assertions). The sealing and handoff
+regressions use ordinary payload nodes and full-buffer backpressure instead of
+transducer callbacks. Against the Java classes from `2115c15`, the rewritten
+handoff test still fails exactly its two interruption-ownership assertions.
 
 **Confirmed** means the source admits the described execution or directly
 violates the stated ownership rule. These are source-level findings, not claims
@@ -21,14 +37,16 @@ argument is missing, not that a failing execution has been established.
 
 The numbers are stable discussion references. The finding descriptions refer to
 the reviewed revision above. Issues 1, 2, and 6 are addressed by the queued-sealing
-change; this does not establish correctness of the entire channel.
+change; issue 3 is addressed by capturing the owner's results before handoff.
+Issue 4 is excluded by removing transducer support.
+This does not establish correctness of the entire channel.
 
 | Issue | Subject | Classification | Status |
 |---|---|---|---|
 | 1 | Empty observation followed by sealing can report premature exhaustion | Confirmed | Addressed by terminal sequence |
 | 2 | A combined put can complete before its values are published | Confirmed sealing conflict | Sealing waits for publication |
-| 3 | Put scratch fields are read after ownership is released | Confirmed ownership violation | Open |
-| 4 | A transducer exception can strand the put chain | Confirmed | Open |
+| 3 | Put scratch fields are read after ownership is released | Confirmed ownership violation | Captured before handoff |
+| 4 | A transducer exception can strand the put chain | Confirmed in removed implementation | Deferred with transducer support |
 | 5 | Conditional notification lacks a complete ordering argument | Proof gap | Open |
 | 6 | Concurrent seal calls can both report success | Confirmed API mismatch | Serialized by put ownership |
 | 7 | Buffer inspection can report a negative count and saturation | Confirmed observation; contract question | Open |
@@ -48,15 +66,14 @@ Puts preceding that boundary finish; later puts acquire in the normal order
 and are rejected. A seal can wait indefinitely behind an earlier put if no
 consumer provides the required capacity.
 
-Under put ownership, `sealOwned()` writes `sealedSequence = tail`, then publishes
+Under put ownership, `seal()` writes `sealedSequence = tail`, then publishes
 `state = SEALED`, and notifies consumers. Only the first sealing operation writes
 the sequence or returns true. The terminal sequence remains immutable. It is
 outside the buffer, needs no slot, and reserves no numeric cursor value.
 
-A transducer returning `Reduced` already owns the producer side. After its
-completion output is flushed, it calls `sealOwned()` directly; it does not queue
-behind itself. Its normal early-termination semantics still reject later puts.
-External sealing does not add new transducer completion behavior.
+The former transducer path could seal directly under producer ownership after
+`Reduced` and completion. That path and its `sealOwned()` helper have been removed;
+sealing now always goes through the producer queue.
 
 An apparently empty take that observes `SEALED` reports exhaustion only when its
 head equals `sealedSequence`. Otherwise it retries the buffer read: the earlier
@@ -73,7 +90,7 @@ buffer publication. It does not discharge the open notification proof in issue 5
    been processed and its owner has flushed. Combining cannot cross the node.
 2. The releasing predecessor's node exchange and the sealing caller's acquire
    establish visibility of that work. The sealer records the final tail under
-   ownership. The transducer path has the same ordering within the current owner.
+   ownership.
 3. The plain write of `sealedSequence` precedes the volatile write of `SEALED`.
    A consumer reads the sequence only after observing that volatile publication.
    Its observation therefore includes the sequence and all preceding output.
@@ -101,9 +118,8 @@ measurement rather than inference from these operation counts.
 
 `channel/sealing_test.clj` checks an ordered queue with puts on both sides of the
 seal, a combiner paused after acknowledging unflushed output, concurrent seals,
-sealing a full buffer, nil/false payloads, numeric cursor wrap, and transducer
-termination while a seal is queued. Repeated concurrent empty/publish/seal trials
-exercise issue 1 without claiming to force its exact interleaving. Existing
+sealing a full buffer, nil/false payloads, and numeric cursor wrap. Repeated
+concurrent empty/publish/seal trials exercise issue 1 without claiming to force its exact interleaving. Existing
 lifecycle tests now expect puts ahead of a seal to finish, while queued empty
 takes still wake on sealing.
 
@@ -111,8 +127,8 @@ Benchmark failure cleanup requests sealing asynchronously so a failed trial's
 deadline is not blocked by this newly queued operation. Its regression test
 holds producer ownership while verifying that the original timeout escapes.
 
-Validation passed: 482 JVM tests / 4,402 assertions, 7 benchmark checks / 179
-assertions, and 11 focused tests / 3,198 assertions with one virtual-thread
+At the queued-sealing revision, validation passed: 482 JVM tests / 4,402 assertions,
+7 benchmark checks / 179 assertions, and 11 focused tests / 3,198 assertions with one virtual-thread
 carrier. The separate before/after performance capture measures this exact
 state-plus-sequence representation; its results do not apply to the alternatives
 below.
@@ -208,9 +224,28 @@ these fields volatile would not make the value belong to the right operation.
 **Obligation:** values used to finish one operation must remain that operation's
 values after ownership is handed off.
 
-**Discussion:** which state belongs to the current lock owner, and which state
-must survive handoff for the outgoing caller? The notification decision and
-interrupt restoration both need that accounting.
+**Resolution:** `put()` captures `interrupted = putInterrupted` before calling
+`last.release()`. The flush decision is also local. Consumer notification and
+interrupt restoration happen afterward using only locals. Before transducer
+removal, the notification decision also captured `!putSealed`; that field and
+condition are now gone.
+
+All reads of the shared put scratch fields now occur under put ownership. The
+successor may reset them once it acquires ownership, but cannot change the
+outgoing caller's local results. The fields can remain plain; this change adds
+no allocation, volatile access, or fence, and preserves notification order.
+
+`channel/handoff_test.clj` forces the successor to run before the former owner
+returns. A test-only queued node overrides `release()` to pause the combiner
+after the real handoff; production code needs no test hook. Actual thread
+interruptions during full-buffer waits exercise both loss of the old owner's
+interrupt and incorrect inheritance of its successor's interrupt. The regression
+fails both cases against the previous implementation and passes with the fix.
+
+Before transducer removal, validation passed: 483 JVM tests / 4,416 assertions
+and 7 benchmark workload checks / 179 assertions. The handoff regression also passes with one
+virtual-thread carrier (14 assertions); the previous implementation fails its
+two interruption-ownership assertions under the same controlled handoff.
 
 ## Issue 4 Transducer exceptions strand the put chain
 
@@ -221,7 +256,12 @@ provides exceptional cleanup that releases the chain.
 If P's transducer throws, P can leave its node unreleased. Q, already queued or
 arriving later, cannot acquire the lock. In the reviewed revision, sealing's
 cross-lock signal did not repair that handoff. With queued sealing, the sealing
-caller also waits behind the stranded owner. This issue remains open.
+caller also waits behind the stranded owner.
+
+**Current scope:** the failing calls and all transducer support have been removed.
+This finding is retained as an obligation for a future transducing implementation,
+not an outstanding exceptional path in the plain channel. No fault state or
+exception-routing protocol has been added.
 
 Combining makes cleanup more involved: an exception may occur after some
 successors have already been completed, and some output may already have been
@@ -318,6 +358,22 @@ interrupt, and from the deliberately removed channel cancellation semantics.
 interruption? The current deferred behavior must either be part of the contract
 or be changed while preserving the queue handoff.
 
+**Deferred proposal:** on interruption, transfer responsibility for the same
+queue entry to a stand-in virtual thread so the original caller can promptly
+throw and retire. The primary goal is prompt caller shutdown, independently of
+whether the operation still completes. Preventing a take from consuming a value
+is a separate question, with its own race against commitment.
+
+Keeping the operation node and its queue position could allow combining to
+continue without knowing that its waiting thread changed. The transfer protocol
+would still need to preserve ownership, completion, and wakeups. With transducers
+removed, executing user callbacks is no longer an obstacle in the current channel;
+transfer of the active channel operation still needs its own protocol.
+
+This proposal is parked for later consideration. It is independent of issue 3:
+prompt caller retirement does not establish the lifetime of shared scratch
+fields, and fixing those fields does not make blocked operations interruptible.
+
 ## Issue 9 FIFO service and completion of the combiner
 
 **Progress proof question.** `putCombine()` has no fixed batch limit. An owner
@@ -331,8 +387,8 @@ caller's put eventually returns under an unbounded stream of arrivals.
 
 **Discussion:** does fairness include eventual return for each caller under
 continuing load, in addition to FIFO service? The progress argument also needs
-explicit assumptions about scheduling, transducer termination, and consumers
-continuing to provide capacity.
+explicit assumptions about scheduling and consumers continuing to provide
+capacity.
 
 ## Ordering strengths to revisit after the obligations are settled
 
@@ -348,10 +404,9 @@ may suffice. These remain candidates for justification or weakening, not accepte
 changes. Cursor publication also serves the notification protocol in issue 5.
 
 The proof should state its construction and usage assumptions: safe publication
-of the channel, fresh nodes for queue entries, synchronous transducer use,
-callback reentrancy rules, cursor arithmetic across overflow, and permitted
-buffer sizes. These are proof boundaries to check, not additional diagnosed
-bugs.
+of the channel, fresh nodes for queue entries, cursor arithmetic across overflow,
+and permitted buffer sizes. These are proof boundaries to check, not additional
+diagnosed bugs.
 
 As each issue is discussed, record the agreed contract, reasoning, resolution,
 and relevant checks here. Tests can corroborate the reasoning; passing stress
