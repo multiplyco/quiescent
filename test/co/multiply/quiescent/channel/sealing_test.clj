@@ -17,8 +17,8 @@
 
 (def ^:private put-lock-field (field BoundedChannel "putLock"))
 (def ^:private slot-field (field RelayLock "slot"))
-(def ^:private head-field (field BoundedChannel "head"))
-(def ^:private tail-field (field BoundedChannel "tail"))
+(def ^:private published-take-sequence-field (field BoundedChannel "publishedTakeSequence"))
+(def ^:private published-put-sequence-field (field BoundedChannel "publishedPutSequence"))
 (def ^:private value-field (field RelayLock$Node "value"))
 (def ^:private combined-field (field RelayLock$Node "combined"))
 
@@ -138,8 +138,8 @@
       (let [channel (ch/chan 4)
             values [:a nil false :b]]
         ;; Set an empty channel near wrap before publishing it to another thread.
-        (.setLong ^java.lang.reflect.Field head-field channel start)
-        (.setLong ^java.lang.reflect.Field tail-field channel start)
+        (.setLong ^java.lang.reflect.Field published-take-sequence-field channel start)
+        (.setLong ^java.lang.reflect.Field published-put-sequence-field channel start)
         (doseq [v values] (is (ch/put! channel v)))
         (is (= 4 (ch/buf-count channel)))
         (is (true? (await-result (spawn #(ch/seal! channel))))

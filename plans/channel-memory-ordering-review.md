@@ -33,6 +33,21 @@ that new runtime reproducers were run for this revision. **Proof gap** means an
 argument is missing, not that a failing execution has been established.
 **Contract question** identifies behavior whose acceptability needs a decision.
 
+## Sequence terminology
+
+The review uses the current sequence names, including in examples of the earlier
+findings. Historical source line references still refer to the reviewed revision.
+
+| Field | Previous name | Meaning |
+|---|---|---|
+| `publishedPutSequence` | `tail` / `TAIL` | Production published to consumers |
+| `publishedTakeSequence` | `head` / `HEAD` | Consumption published to producers, releasing capacity |
+| `putSequence` | `putTail` | Producer owner's working position, including unpublished writes |
+
+The VarHandles are `PUBLISHED_PUT_SEQUENCE` and `PUBLISHED_TAKE_SEQUENCE`.
+These are wrapping positions. For a coherent observation,
+`publishedPutSequence - publishedTakeSequence` is the published buffer occupancy.
+
 ## Issue index
 
 The numbers are stable discussion references. The finding descriptions refer to
@@ -96,19 +111,20 @@ Puts preceding that boundary finish; later puts acquire in the normal order
 and are rejected. A seal can wait indefinitely behind an earlier put if no
 consumer provides the required capacity.
 
-Under put ownership, `seal()` writes `sealedSequence = tail`, then publishes
-`state = SEALED`, and notifies consumers. Only the first sealing operation writes
-the sequence or returns true. The terminal sequence remains immutable. It is
-outside the buffer, needs no slot, and reserves no numeric cursor value.
+Under put ownership, `seal()` writes `sealedSequence = publishedPutSequence`,
+then publishes `state = SEALED`, and notifies consumers. Only the first sealing
+operation writes the sequence or returns true. The terminal sequence remains
+immutable. It is outside the buffer, needs no slot, and reserves no numeric
+cursor value.
 
 The former transducer path could seal directly under producer ownership after
 `Reduced` and completion. That path and its `sealOwned()` helper have been removed;
 sealing now always goes through the producer queue.
 
 An apparently empty take that observes `SEALED` reports exhaustion only when its
-head equals `sealedSequence`. Otherwise it retries the buffer read: the earlier
-empty observation preceded the final publication. The end marker is persistent,
-so exhaustion does not advance the head.
+`publishedTakeSequence` equals `sealedSequence`. Otherwise it retries the buffer
+read: the earlier empty observation preceded the final publication. The end
+marker is persistent, so exhaustion does not advance `publishedTakeSequence`.
 
 ### Ordering argument for the terminal sequence
 
@@ -119,18 +135,18 @@ buffer publication. It does not discharge the open notification proof in issue 5
    cannot acquire ownership until every operation ahead of its queue node has
    been processed and its owner has flushed. Combining cannot cross the node.
 2. The releasing predecessor's node exchange and the sealing caller's acquire
-   establish visibility of that work. The sealer records the final tail under
-   ownership.
+   establish visibility of that work. The sealer records the final
+   `publishedPutSequence` under ownership.
 3. The plain write of `sealedSequence` precedes the volatile write of `SEALED`.
    A consumer reads the sequence only after observing that volatile publication.
    Its observation therefore includes the sequence and all preceding output.
 4. Every subsequent producer holds the same put lock and observes the sealed
-   state before accepting output. No later operation advances the tail or
-   changes the terminal sequence.
-5. A consumer holds take ownership while comparing its head to the terminal
-   sequence. Equality establishes exhaustion. Inequality makes it reread TAIL
-   after acquiring the seal publication; it cannot then reuse the earlier empty
-   observation to return exhaustion.
+   state before accepting output. No later operation advances
+   `publishedPutSequence` or changes the terminal sequence.
+5. A consumer holds take ownership while comparing its `publishedTakeSequence`
+   to the terminal sequence. Equality establishes exhaustion. Inequality makes
+   it reread `publishedPutSequence` after acquiring the seal publication; it
+   cannot then reuse the earlier empty observation to return exhaustion.
 
 The state publication also precedes `takeLock.resume()` and its volatile exchange.
 The existing registered-waiter/banked-signal protocol handles takes that need to
@@ -177,13 +193,14 @@ No representation change has been selected or measured yet.
 ## Issue 1 Empty observation followed by sealing
 
 **Confirmed.** In `BoundedChannel.take()` (lines 254–279), the consumer first
-reads `TAIL`, decides that the buffer is empty, and then reads `state`. It can
-return `IChannel.SEALED` without checking the buffer again.
+reads `publishedPutSequence`, decides that the buffer is empty, and then reads
+`state`. It can return `IChannel.SEALED` without checking the buffer again.
 
 An execution starting with an open, empty channel:
 
-1. Consumer C reads `HEAD = 0` and `TAIL = 0`.
-2. Producer P writes a value, publishes `TAIL = 1`, and completes its put.
+1. Consumer C reads `publishedTakeSequence = 0` and `publishedPutSequence = 0`.
+2. Producer P writes a value, publishes `publishedPutSequence = 1`, and completes
+   its put.
 3. P seals the channel.
 4. C reads `state = SEALED` and returns exhaustion using its earlier empty
    observation.
@@ -205,14 +222,16 @@ buffer check? That decision also needs to account for issue 2.
 
 **Confirmed sealing conflict.** `putCombine()` writes `succ.combined = true`
 and wakes the successor (lines 230–234). The successor can return `true` from
-`put()` at line 183. The combiner may not publish the corresponding `TAIL`
-until its final flush at lines 196–200 or a backpressure flush.
+`put()` at line 183. The combiner may not publish the corresponding
+`publishedPutSequence` until its final flush at lines 196–200 or a backpressure
+flush.
 
 A concrete execution with sufficient buffer space and a transducer that emits
 one output per input:
 
 1. P owns the put lock. Q and R are queued behind it.
-2. P accumulates its own output and Q's output without flushing `TAIL`.
+2. P accumulates its own output and Q's output without flushing
+   `publishedPutSequence`.
 3. P marks Q combined; Q's put returns `true`.
 4. P starts processing R and pauses inside the transducer before emitting R's
    output.
@@ -222,8 +241,9 @@ one output per input:
    outputs, including Q's, which become available to later takes.
 
 This is different from issue 1: Q's put has already returned before sealing,
-but its output is absent from the published cursor. Merely rereading `TAIL`
-after observing `SEALED` cannot discover that output while P is paused.
+but its output is absent from the published cursor. Merely rereading
+`publishedPutSequence` after observing `SEALED` cannot discover that output while
+P is paused.
 
 External `seal()` also does not acquire the put lock. Even an ordinary put can
 pass the `OPEN` check in `putAccumulate()`, pause, and write after another thread
@@ -308,10 +328,10 @@ point?
 ## Issue 5 Conditional notification needs an ordering proof
 
 **Proof gap, not an established missed wakeup.** The producer's full-buffer
-path publishes `TAIL`, calls `takeLock.resume()`, rereads `HEAD`, and may suspend
-(lines 138–144). The consumer publishes `HEAD`, releases its node, rereads
-`TAIL`, and only resumes producers if the buffer was observably full
-(lines 260–270).
+path publishes `publishedPutSequence`, calls `takeLock.resume()`, rereads
+`publishedTakeSequence`, and may suspend (lines 138–144). The consumer publishes
+`publishedTakeSequence`, releases its node, rereads `publishedPutSequence`, and
+only resumes producers if the buffer was observably full (lines 260–270).
 
 The required property is that a producer cannot remain parked for capacity
 while the consumer has made capacity available but omitted the necessary
@@ -357,14 +377,15 @@ check-and-write atomic.
 
 ## Issue 7 Inspection combines different buffer states
 
-**Confirmed observation; contract question.** `count()` reads `TAIL` and then
-`HEAD` independently (line 339). During the interval between those reads,
-producers and consumers can advance both cursors.
+**Confirmed observation; contract question.** `count()` reads
+`publishedPutSequence` and then `publishedTakeSequence` independently (line 339).
+During the interval between those reads, producers and consumers can advance
+both cursors.
 
-For a capacity-one channel, an observer can read `TAIL = 1`, pause while the
-channel transfers two more values, then read `HEAD = 3`. It reports `-2`, even
-though the buffer always contained zero or one value. `saturation()` then
-reports `-2.0`.
+For a capacity-one channel, an observer can read `publishedPutSequence = 1`,
+pause while the channel transfers two more values, then read
+`publishedTakeSequence = 3`. It reports `-2`, even though the buffer always
+contained zero or one value. `saturation()` then reports `-2.0`.
 
 `count()` is documented as approximate, but `saturation()` promises a value
 from zero to one. Volatile access to each cursor does not give a joint snapshot.

@@ -11,14 +11,15 @@ import java.lang.invoke.VarHandle;
  * this is safe because producers and consumers use separate locks.
  * <p>
  * Cross-lock signaling uses a Dekker-style protocol: the producer
- * writes TAIL then reads HEAD; the consumer writes HEAD then reads
- * TAIL. The consumer only signals the producer when the buffer was
+ * publishes its put sequence then reads the published take sequence;
+ * the consumer publishes its take sequence then reads the published put
+ * sequence. The consumer only signals the producer when the buffer was
  * observably full. The ordering argument must include the intervening
- * lock exchanges as well as the cursor accesses. The SIGNALED sentinel in RelayLock
- * handles the residual race between the Dekker check and the park.
+ * lock exchanges as well as the cursor accesses. The SIGNALED sentinel in
+ * RelayLock handles the residual race between the Dekker check and the park.
  * <p>
  * Buffer writes are accumulated via {@link #putAccumulate} without
- * bumping the committed tail. A single volatile TAIL write flushes
+ * advancing publishedPutSequence. A single volatile publication flushes
  * all accumulated values at the end of {@link #put}, or earlier if
  * backpressure forces a mid-batch flush while combining queued puts.
  * This batches volatile writes and gives consumers a
@@ -40,13 +41,15 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
     }
 
-    static final VarHandle TAIL;
-    static final VarHandle HEAD;
+    static final VarHandle PUBLISHED_PUT_SEQUENCE;
+    static final VarHandle PUBLISHED_TAKE_SEQUENCE;
     static {
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            TAIL = lookup.findVarHandle(BoundedChannel.class, "tail", long.class);
-            HEAD = lookup.findVarHandle(BoundedChannel.class, "head", long.class);
+            PUBLISHED_PUT_SEQUENCE = lookup.findVarHandle(
+                BoundedChannel.class, "publishedPutSequence", long.class);
+            PUBLISHED_TAKE_SEQUENCE = lookup.findVarHandle(
+                BoundedChannel.class, "publishedTakeSequence", long.class);
         } catch (ReflectiveOperationException e) {
             throw new ExceptionInInitializerError(e);
         }
@@ -57,7 +60,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     final RelayLock takeLock;
 
     // ---- Producer-side ----
-    volatile long tail;
+    // Published production boundary; consumers may read values before it.
+    volatile long publishedPutSequence;
 
     // ---- Padding between producer and shared ----
     @SuppressWarnings("unused") private long pp01, pp02, pp03, pp04, pp05, pp06, pp07, pp08;
@@ -72,7 +76,8 @@ public class BoundedChannel implements IChannel, IBuffered {
     @SuppressWarnings("unused") private long sp01, sp02, sp03, sp04, sp05, sp06, sp07, sp08;
 
     // ---- Consumer-side ----
-    volatile long head;
+    // Published consumption boundary; producers may reuse slots before it.
+    volatile long publishedTakeSequence;
 
     // ---- Buffer ----
     final Object[] buffer;
@@ -81,7 +86,7 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     // ---- Put-side state (putLock only) ----
     boolean putInterrupted;     // interrupt captured during putAccumulate
-    long putTail;               // accumulator cursor, diverges from tail until flushed
+    long putSequence;           // working position, includes unpublished writes
 
     // ================================================================
     //  Constructors
@@ -107,31 +112,31 @@ public class BoundedChannel implements IChannel, IBuffered {
     // ================================================================
 
     /**
-     * Write one value to the ring buffer without bumping TAIL.
-     * Flushes (commits TAIL, resumes takeLock) and suspends only
+     * Write one value to the ring buffer without advancing publishedPutSequence.
+     * Flushes (publishes putSequence, resumes takeLock) and suspends only
      * when the buffer is full, including while combining queued puts.
      * Called under putLock.
      * <p>
-     * {@code putTail} must be initialized before the first call.
+     * {@code putSequence} must be initialized before the first call.
      *
      * @return true if written, false only when {@code state != OPEN}
      */
     private boolean putAccumulate(Object value) {
         while (true) {
             if (state != OPEN) return false;
-            long h = (long) HEAD.getAcquire(this);
-            if (putTail - h < capacity) {
-                buffer[(int)(putTail & mask)] = value;
-                putTail++;
+            long takeSequence = (long) PUBLISHED_TAKE_SEQUENCE.getAcquire(this);
+            if (putSequence - takeSequence < capacity) {
+                buffer[(int)(putSequence & mask)] = value;
+                putSequence++;
                 return true;
             }
             // Buffer full — flush accumulated writes so consumers can drain
-            TAIL.setVolatile(this, putTail);
+            PUBLISHED_PUT_SEQUENCE.setVolatile(this, putSequence);
             takeLock.resume();
-            // Dekker: re-read HEAD after TAIL write — if the consumer
-            // already drained, skip the park
-            h = (long) HEAD.getAcquire(this);
-            if (putTail - h < capacity) continue;
+            // Dekker: re-read the published take sequence after publishing puts.
+            // If the consumer already drained, skip the park.
+            takeSequence = (long) PUBLISHED_TAKE_SEQUENCE.getAcquire(this);
+            if (putSequence - takeSequence < capacity) continue;
             if (putLock.suspend()) {
                 putInterrupted = true;
             }
@@ -149,7 +154,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         if (node.combined) return true;
 
         putInterrupted = false;
-        putTail = tail;
+        putSequence = publishedPutSequence;
 
         boolean ok = putAccumulate(value);
 
@@ -159,9 +164,9 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
 
         // Flush accumulated writes (commit only — defer consumer notification)
-        boolean flushed = putTail != tail;
+        boolean flushed = putSequence != publishedPutSequence;
         if (flushed) {
-            TAIL.setVolatile(this, putTail);
+            PUBLISHED_PUT_SEQUENCE.setVolatile(this, putSequence);
         }
 
         // Scratch fields belong to putLock's owner. Snapshot everything the
@@ -217,22 +222,22 @@ public class BoundedChannel implements IChannel, IBuffered {
 
         boolean interrupted = false;
         while (true) {
-            long h = head;
-            long t = (long) TAIL.getAcquire(this);
-            if (t - h > 0) {
-                Object ownValue = buffer[(int)(h & mask)];
-                buffer[(int)(h & mask)] = null;
+            long takeSequence = publishedTakeSequence;
+            long observedPutSequence = (long) PUBLISHED_PUT_SEQUENCE.getAcquire(this);
+            if (observedPutSequence - takeSequence > 0) {
+                Object ownValue = buffer[(int)(takeSequence & mask)];
+                buffer[(int)(takeSequence & mask)] = null;
 
-                RelayLock.Node last = takeCombine(node, h + 1, t);
+                RelayLock.Node last = takeCombine(node, takeSequence + 1, observedPutSequence);
 
-                if (last == node) HEAD.setVolatile(this, h + 1);
+                if (last == node) PUBLISHED_TAKE_SEQUENCE.setVolatile(this, takeSequence + 1);
 
                 last.release();
 
-                // Dekker: re-read TAIL after HEAD write — signal producer
-                // only if the buffer was full (producer might be parked)
-                long freshT = (long) TAIL.getAcquire(this);
-                if (freshT - h >= capacity) {
+                // Dekker: re-read the published put sequence after publishing takes.
+                // Signal the producer only if the buffer was full (it might be parked).
+                long refreshedPutSequence = (long) PUBLISHED_PUT_SEQUENCE.getAcquire(this);
+                if (refreshedPutSequence - takeSequence >= capacity) {
                     putLock.resume();
                 }
 
@@ -240,10 +245,10 @@ public class BoundedChannel implements IChannel, IBuffered {
                 return ownValue;
             }
             if (state == SEALED) {
-                // The empty TAIL observation may predate sealing. SEALED
+                // The empty publishedPutSequence observation may predate sealing. SEALED
                 // publishes an immutable final sequence, including every
                 // preceding put's flush. Retry if those values remain.
-                if (h != sealedSequence) continue;
+                if (takeSequence != sealedSequence) continue;
                 node.release();
                 if (interrupted) Thread.currentThread().interrupt();
                 return IChannel.SEALED;
@@ -254,23 +259,24 @@ public class BoundedChannel implements IChannel, IBuffered {
         }
     }
 
-    private RelayLock.Node takeCombine(RelayLock.Node node, long startHead, long t) {
-        long newHead = startHead;
+    private RelayLock.Node takeCombine(
+            RelayLock.Node node, long startTakeSequence, long observedPutSequence) {
+        long takeSequence = startTakeSequence;
         RelayLock.Node current = node;
 
-        while (newHead < t) {
+        while (takeSequence < observedPutSequence) {
             Object succObj = current.state;
             if (!(succObj instanceof RelayLock.Node succ)) break;
-            succ.value = buffer[(int)(newHead & mask)];
-            buffer[(int)(newHead & mask)] = null;
-            newHead++;
+            succ.value = buffer[(int)(takeSequence & mask)];
+            buffer[(int)(takeSequence & mask)] = null;
+            takeSequence++;
             succ.combined = true;
             succ.wake();
             current = succ;
         }
 
-        if (newHead > startHead) {
-            HEAD.setVolatile(this, newHead);
+        if (takeSequence > startTakeSequence) {
+            PUBLISHED_TAKE_SEQUENCE.setVolatile(this, takeSequence);
         }
 
         return current;
@@ -288,7 +294,7 @@ public class BoundedChannel implements IChannel, IBuffered {
         try {
             if (state != OPEN) return false;
             // All preceding puts have flushed before handing over ownership.
-            sealedSequence = tail;
+            sealedSequence = publishedPutSequence;
             state = SEALED;
             // The state write publishes sealedSequence and the preceding output.
             // Queued producers are released by the normal ownership handoff.
@@ -315,7 +321,8 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     @Override
     public int count() {
-        return (int) ((long) TAIL.getVolatile(this) - (long) HEAD.getVolatile(this));
+        return (int) ((long) PUBLISHED_PUT_SEQUENCE.getVolatile(this)
+            - (long) PUBLISHED_TAKE_SEQUENCE.getVolatile(this));
     }
 
     @Override

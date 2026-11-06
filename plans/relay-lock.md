@@ -22,6 +22,12 @@ cancel tasks; lifecycle wiring uses `q/finally`, and uncaught exceptions follow
 normal task failure propagation. References to channel cancellation below
 describe the earlier design and are not part of the current API.
 
+The historical descriptions below use `tail`/`TAIL`, `head`/`HEAD`, and `putTail`
+for the buffer cursors. Their current names are `publishedPutSequence`,
+`publishedTakeSequence`, and `putSequence`, with VarHandles
+`PUBLISHED_PUT_SEQUENCE` and `PUBLISHED_TAKE_SEQUENCE`. Queue-node head/tail
+terminology in comparisons with other locks is separate from these buffer names.
+
 ## Core Idea
 
 A single atomic slot holds a node. Each thread creates a node, swaps it
