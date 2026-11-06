@@ -16,6 +16,11 @@ import java.util.concurrent.locks.LockSupport;
  * already acted. No spinning, no CAS, no queue structure. FIFO
  * ordering falls out of arrival order at the slot.
  * <p>
+ * Waits target virtual threads: an unpinned waiter can unmount so its carrier
+ * can run another participant or unrelated work. Spinning for a peer would
+ * occupy that carrier. This keeps execution resources available; it does not
+ * by itself establish eventual completion of each caller.
+ * <p>
  * <b>Signal (suspend/resume)</b> — a single atomic field transitions
  * between SIGNALED (sentinel, no waiter) and the owner's Node
  * (waiter registered). The SIGNALED sentinel handles the race between

@@ -5,6 +5,12 @@ pressure. Independent channels run concurrently *within* each measurement;
 benchmark JVMs run sequentially. Single-channel results are diagnostic controls.
 This suite is JVM-only. CLJS performance is outside its scope.
 
+The [execution model and performance rationale](../plans/channel-execution-model.md)
+explains why channel waits suspend virtual threads, how carrier availability
+differs from individual operation completion, and how buffer occupancy affects
+sizing. It also distinguishes the current suite from future experiments with
+controlled bursts, rates, and occupancy sampling.
+
 The active implementation and benchmark catalog support plain channels only.
 Transducer support has been removed while the channel foundation is reviewed.
 Historical captures retain their transducer cases and original source snapshots;

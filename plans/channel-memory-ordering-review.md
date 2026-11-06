@@ -6,6 +6,10 @@ This is the issue list for working through that argument together. The agreed
 queued-sealing and put-handoff fixes are recorded below. Transducer support has
 been removed; the remaining plain-channel issues are open.
 
+The [execution model and performance rationale](channel-execution-model.md)
+records the intended virtual-thread workload, carrier availability target,
+reason for avoiding spin waits, and implications for buffer sizing and benchmarks.
+
 Reviewed source: `channel/main` at
 `03a7ebfc3d1de16a7c7e9f0e813c3c76f3a91d33`, on 2026-11-02. Scope is the current
 `BoundedChannel`, `RelayLock`, their interfaces, and the Clojure channel API.
@@ -19,8 +23,9 @@ Issue 4 therefore no longer applies to this implementation; failure semantics
 and implementation boundaries for a future transducing variant remain undecided.
 The proposed failure contract is not being added to the plain channel.
 
-The plain-channel revision passes 467 JVM tests / 4,298 assertions, and 8 benchmark
-checks / 128 assertions covering all 16 remaining cases against both libraries.
+The plain-channel baseline (`8179173`) passed 467 JVM tests / 4,298 assertions,
+and 8 benchmark checks / 128 assertions covering all 16 remaining cases against
+both libraries.
 The sealing, handoff, publication, lifecycle, and slot tests also pass with one
 virtual-thread carrier (11 tests / 3,135 assertions). The sealing and handoff
 regressions use ordinary payload nodes and full-buffer backpressure instead of
@@ -54,6 +59,7 @@ The numbers are stable discussion references. The finding descriptions refer to
 the reviewed revision above. Issues 1, 2, and 6 are addressed by the queued-sealing
 change; issue 3 is addressed by capturing the owner's results before handoff.
 Issue 4 is excluded by removing transducer support.
+Issue 7 is addressed by bounding the diagnostic estimate before integer conversion.
 This does not establish correctness of the entire channel.
 
 | Issue | Subject | Classification | Status |
@@ -64,7 +70,7 @@ This does not establish correctness of the entire channel.
 | 4 | A transducer exception can strand the put chain | Confirmed in removed implementation | Deferred with transducer support |
 | 5 | Conditional notification lacks a complete ordering argument | Proof gap | Address during the protocol proof |
 | 6 | Concurrent seal calls can both report success | Confirmed API mismatch | Serialized by put ownership |
-| 7 | Buffer inspection can report a negative count and saturation | Confirmed observation; contract question | Next; settle before the proof |
+| 7 | Buffer inspection can report a negative count and saturation | Confirmed observation; contract question | Bounded diagnostic estimate |
 | 8 | Interruption is deferred until another event permits progress | Contract question | Redesign deferred until after the proof |
 | 9 | FIFO service does not establish eventual return of the combiner | Progress proof question | Settle contract before the proof |
 
@@ -75,15 +81,14 @@ necessarily addressing the unpublished accepted values in issue 2.
 ## Agreed work order
 
 The plain-channel baseline is commit `8179173`. Continue discussing and handling
-one issue at a time, retaining the issue numbers above. The next discussion is
-issue 7; issue 8's redesign remains parked, then issue 9's contract comes next.
+one issue at a time, retaining the issue numbers above. Issue 7 is addressed;
+issue 8's redesign remains parked. Issue 9's fairness contract is next.
 
 Before constructing the proof:
 
-1. **Issue 7:** settle the inspection contract and fix the range mismatch. The
-   proposed contract keeps `buf-count` approximate but within zero to capacity,
-   and `saturation` within zero to one. The implementation choice remains for
-   that discussion; an exact snapshot is not required by this proposal.
+1. **Issue 7, addressed:** keep inspection approximate, bounding the sampled
+   difference in `long` before returning an `int`. `buf-count` stays within zero
+   to capacity, and `saturation` within zero to one. No atomic snapshot is promised.
 2. **Issue 9:** decide whether fairness includes eventual return of every caller
    under continued arrivals, assuming scheduling and sufficient counterpart
    progress. If required, the current unbounded combining needs a limit on the
@@ -101,6 +106,11 @@ including transfer to a stand-in virtual thread. The initial proof must explicit
 describe the existing deferred-interruption behavior. Transducer support and its
 failure semantics also remain deferred to a later design effort. These later
 changes will need their own proof obligations when introduced.
+
+Also parked: a separate mechanism for very small buffers, such as capacities
+1, 2, or 4. A central lock may reduce coordination overhead at those sizes;
+this is an unmeasured hypothesis. Any future variant must preserve the channel
+contract and be compared under the existing channel-pressure workloads.
 
 ## Agreed queued sealing design
 
@@ -390,8 +400,31 @@ contained zero or one value. `saturation()` then reports `-2.0`.
 `count()` is documented as approximate, but `saturation()` promises a value
 from zero to one. Volatile access to each cursor does not give a joint snapshot.
 
-**Discussion:** what bounds and consistency do these diagnostic methods promise?
-This is separate from correctness of put and take.
+**Resolution:** retain the existing put-first, take-second volatile reads, compute
+their difference in `long`, bound it to `[0, capacity]`, then narrow to `int`.
+`saturation()` delegates to `count()`, so it remains within `[0.0, 1.0]`.
+The put/take paths and their access modes are unchanged.
+
+The queries are exact when no channel operations are in progress. During
+activity they are bounded diagnostic estimates, suitable for periodic sampling,
+not atomic snapshots or promises about a subsequent put or take. With logical
+nonwrapping sequences, put-first sampling can underestimate occupancy; reversing
+the read order would permit overestimation instead.
+
+The sampling error can span many buffer turnovers even at capacity one. A long
+pause between reads can produce a difference outside the `int` range; narrowing
+before bounding can turn a large negative gap into a positive count. The upper
+bound also keeps the result valid for extreme gaps across long wraparound.
+
+`channel/inspection_test.clj` supplies pairs of possible sampled observations to
+exercise negative gaps, integer narrowing, and long wraparound. These pairs need
+not describe a valid simultaneous ring state: the test performs inspection only,
+and models the arithmetic inputs without claiming to force a concurrent race.
+Existing channel tests cover ordinary counts and real transfers across cursor wrap.
+
+Validation passed: 468 JVM tests / 4,304 assertions, Java compilation, formatting,
+and reflection checks. The inspection regression's six assertions pass with the
+fix and all fail against the Java classes from `3a46867`.
 
 ## Issue 8 Interruption does not independently end a wait
 

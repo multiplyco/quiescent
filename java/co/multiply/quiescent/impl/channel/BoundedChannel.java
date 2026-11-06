@@ -321,8 +321,11 @@ public class BoundedChannel implements IChannel, IBuffered {
 
     @Override
     public int count() {
-        return (int) ((long) PUBLISHED_PUT_SEQUENCE.getVolatile(this)
-            - (long) PUBLISHED_TAKE_SEQUENCE.getVolatile(this));
+        // These observations can span many buffer turnovers. Bound the estimate
+        // before narrowing: a large negative difference can otherwise become positive.
+        long observedCount = (long) PUBLISHED_PUT_SEQUENCE.getVolatile(this)
+            - (long) PUBLISHED_TAKE_SEQUENCE.getVolatile(this);
+        return (int) Math.max(0L, Math.min((long) capacity, observedCount));
     }
 
     @Override

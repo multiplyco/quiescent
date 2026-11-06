@@ -141,12 +141,16 @@
 
 
 (defn buf-count
-  "Approximate number of values currently in the buffer."
+  "Approximate buffered count, bounded by zero and capacity.
+   Exact when no channel operations are in progress; concurrent observations
+   need not form an atomic snapshot. Intended for monitoring and sizing, not
+   for deciding whether a subsequent put or take can proceed immediately."
   [ch]
   (IBuffered/.count ch))
 
 
 (defn saturation
-  "Buffer saturation from 0.0 (empty) to 1.0 (full)."
+  "Approximate buffer saturation, bounded by 0.0 and 1.0.
+   Uses buf-count's diagnostic estimate; concurrent activity can affect accuracy."
   [ch]
   (IBuffered/.saturation ch))
