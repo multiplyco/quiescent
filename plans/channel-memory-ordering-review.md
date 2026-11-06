@@ -47,15 +47,45 @@ This does not establish correctness of the entire channel.
 | 2 | A combined put can complete before its values are published | Confirmed sealing conflict | Sealing waits for publication |
 | 3 | Put scratch fields are read after ownership is released | Confirmed ownership violation | Captured before handoff |
 | 4 | A transducer exception can strand the put chain | Confirmed in removed implementation | Deferred with transducer support |
-| 5 | Conditional notification lacks a complete ordering argument | Proof gap | Open |
+| 5 | Conditional notification lacks a complete ordering argument | Proof gap | Address during the protocol proof |
 | 6 | Concurrent seal calls can both report success | Confirmed API mismatch | Serialized by put ownership |
-| 7 | Buffer inspection can report a negative count and saturation | Confirmed observation; contract question | Open |
-| 8 | Interruption is deferred until another event permits progress | Contract question | Open |
-| 9 | FIFO service does not establish eventual return of the combiner | Progress proof question | Open |
+| 7 | Buffer inspection can report a negative count and saturation | Confirmed observation; contract question | Next; settle before the proof |
+| 8 | Interruption is deferred until another event permits progress | Contract question | Redesign deferred until after the proof |
+| 9 | FIFO service does not establish eventual return of the combiner | Progress proof question | Settle contract before the proof |
 
 Issues 1 and 2 concern related exhaustion guarantees, but they are distinct.
 Rechecking a published cursor would address the observation in issue 1 without
 necessarily addressing the unpublished accepted values in issue 2.
+
+## Agreed work order
+
+The plain-channel baseline is commit `8179173`. Continue discussing and handling
+one issue at a time, retaining the issue numbers above. The next discussion is
+issue 7; issue 8's redesign remains parked, then issue 9's contract comes next.
+
+Before constructing the proof:
+
+1. **Issue 7:** settle the inspection contract and fix the range mismatch. The
+   proposed contract keeps `buf-count` approximate but within zero to capacity,
+   and `saturation` within zero to one. The implementation choice remains for
+   that discussion; an exact snapshot is not required by this proposal.
+2. **Issue 9:** decide whether fairness includes eventual return of every caller
+   under continued arrivals, assuming scheduling and sufficient counterpart
+   progress. If required, the current unbounded combining needs a limit on the
+   work an owner accepts before handing over. Choose that mechanism separately;
+   the progress proof must account for any resulting change.
+
+Then construct the proof outline for the whole plain-channel protocol: contract,
+state, invariants, assumptions, and obligations for ownership, transfer,
+combining, sealing, and notification. Issue 5 belongs in this phase. Establish
+the algorithmic argument and then justify the Java access modes it depends on.
+Safety and progress are separate obligations; tests support those arguments.
+
+After the baseline proof, revisit **issue 8's prompt-interruption proposal**,
+including transfer to a stand-in virtual thread. The initial proof must explicitly
+describe the existing deferred-interruption behavior. Transducer support and its
+failure semantics also remain deferred to a later design effort. These later
+changes will need their own proof obligations when introduced.
 
 ## Agreed queued sealing design
 
